@@ -1,0 +1,30 @@
+{
+  "name": "dlman",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A modern, open-source download manager",
+  "keywords": ["download", "manager", "tauri", "rust", "react"],
+  "license": "MIT",
+  "author": "DLMan Contributors",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/dlman.git"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @dlman/desktop dev",
+    "build": "pnpm --filter @dlman/desktop build",
+    "preview": "pnpm --filter @dlman/desktop preview",
+    "lint": "pnpm -r lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "clean": "pnpm -r clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "prettier": "^3.2.5",
+    "typescript": "^5.4.2"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}

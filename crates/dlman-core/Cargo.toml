@@ -1,0 +1,42 @@
+[package]
+name = "dlman-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Core download engine for DLMan"
+
+[dependencies]
+dlman-types = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true }
+tokio-util = { workspace = true, features = ["io"] }
+
+# HTTP client
+reqwest = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Database
+sqlx = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Utilities
+uuid = { workspace = true }
+chrono = { workspace = true }
+url = { workspace = true }
+futures = { workspace = true }
+parking_lot = { workspace = true }
+directories = { workspace = true }
+
+[dev-dependencies]
+tokio-test = "0.4"

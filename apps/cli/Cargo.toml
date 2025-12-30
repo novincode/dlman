@@ -1,0 +1,44 @@
+[package]
+name = "dlman-cli"
+version = "0.1.0"
+edition = "2021"
+description = "DLMan CLI - Command-line download manager"
+authors = ["DLMan Team"]
+license = "MIT"
+repository = "https://github.com/dlman/dlman"
+keywords = ["download", "manager", "cli", "accelerator"]
+categories = ["command-line-utilities"]
+
+[[bin]]
+name = "dlman"
+path = "src/main.rs"
+
+[dependencies]
+dlman-core = { path = "../../crates/dlman-core" }
+dlman-types = { path = "../../crates/dlman-types" }
+
+# CLI framework
+clap = { version = "4", features = ["derive", "color", "env"] }
+clap_complete = "4"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Terminal UI
+indicatif = "0.17"
+console = "0.15"
+dialoguer = "0.11"
+tabled = "0.14"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling
+anyhow = "1"
+thiserror = "1"
+
+# Utilities
+dirs = "5"
+url = "2"
+human_bytes = "0.4"

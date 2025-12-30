@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DLMan - Download Manager</title>
+    <style>
+      /* Prevent flash of unstyled content */
+      html {
+        background-color: hsl(240 10% 3.9%);
+      }
+      html.light {
+        background-color: hsl(0 0% 100%);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script>
+      // Apply theme before React loads to prevent flash
+      (function() {
+        const theme = localStorage.getItem('dlman-theme');
+        if (theme === 'light') {
+          document.documentElement.classList.add('light');
+        } else if (theme === 'dark') {
+          document.documentElement.classList.add('dark');
+        } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
+          document.documentElement.classList.add('light');
+        } else {
+          document.documentElement.classList.add('dark');
+        }
+      })();
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
