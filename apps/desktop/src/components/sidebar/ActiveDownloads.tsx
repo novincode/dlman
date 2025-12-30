@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, ChevronRight, Download, Pause, X } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
@@ -8,13 +8,16 @@ import { formatSpeed, cn } from "@/lib/utils";
 
 export function ActiveDownloads() {
   const [expanded, setExpanded] = useState(true);
-  const downloads = useDownloadStore((s) =>
-    Array.from(s.downloads.values()).filter(
+  const downloads = useDownloadStore((s) => s.downloads);
+  
+  const activeDownloads = useMemo(() => 
+    Array.from(downloads.values()).filter(
       (d) => d.status === "downloading" || d.status === "paused"
-    )
+    ),
+    [downloads]
   );
 
-  if (downloads.length === 0) {
+  if (activeDownloads.length === 0) {
     return null;
   }
 
@@ -32,7 +35,7 @@ export function ActiveDownloads() {
         )}
         <Download className="h-3 w-3 mr-1" />
         ACTIVE
-        <span className="ml-auto text-xs opacity-60">{downloads.length}</span>
+        <span className="ml-auto text-xs opacity-60">{activeDownloads.length}</span>
       </button>
 
       {/* Active Downloads */}
@@ -46,7 +49,7 @@ export function ActiveDownloads() {
             className="overflow-hidden"
           >
             <div className="mt-1 space-y-1">
-              {downloads.map((download) => (
+              {activeDownloads.map((download) => (
                 <ActiveDownloadItem
                   key={download.id}
                   filename={download.filename}

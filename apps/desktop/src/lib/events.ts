@@ -4,8 +4,17 @@ import { listen } from "@tauri-apps/api/event";
 import { useDownloadStore } from "@/stores/downloads";
 import { CoreEvent } from "@/types";
 
+// Check if we're running in Tauri context
+const isTauri = () => typeof window !== 'undefined' && window.__TAURI_INTERNALS__ !== undefined;
+
 export function setupEventListeners(): () => void {
   const unlisten: Array<() => void> = [];
+
+  // Don't set up listeners if not in Tauri context
+  if (!isTauri()) {
+    console.warn("Not running in Tauri context, skipping event listeners");
+    return () => {};
+  }
 
   // Listen for download progress
   listen<CoreEvent>("download-progress", (event) => {
@@ -18,7 +27,7 @@ export function setupEventListeners(): () => void {
         data.payload.eta
       );
     }
-  }).then((fn) => unlisten.push(fn));
+  }).then((fn) => unlisten.push(fn)).catch(console.error);
 
   // Listen for status changes
   listen<CoreEvent>("download-status", (event) => {
@@ -30,7 +39,7 @@ export function setupEventListeners(): () => void {
         data.payload.error
       );
     }
-  }).then((fn) => unlisten.push(fn));
+  }).then((fn) => unlisten.push(fn)).catch(console.error);
 
   // Listen for new downloads
   listen<CoreEvent>("download-added", (event) => {
@@ -38,7 +47,7 @@ export function setupEventListeners(): () => void {
     if (data.type === "DownloadAdded") {
       useDownloadStore.getState().addDownload(data.payload.download);
     }
-  }).then((fn) => unlisten.push(fn));
+  }).then((fn) => unlisten.push(fn)).catch(console.error);
 
   // Listen for removed downloads
   listen<CoreEvent>("download-removed", (event) => {
@@ -46,7 +55,7 @@ export function setupEventListeners(): () => void {
     if (data.type === "DownloadRemoved") {
       useDownloadStore.getState().removeDownload(data.payload.id);
     }
-  }).then((fn) => unlisten.push(fn));
+  }).then((fn) => unlisten.push(fn)).catch(console.error);
 
   // Cleanup function
   return () => {

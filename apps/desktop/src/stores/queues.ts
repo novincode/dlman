@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { useShallow } from "zustand/react/shallow";
 import type { Queue } from "@/types";
 
 interface QueueState {
@@ -104,9 +105,13 @@ export const useQueueStore = create<QueueState>()(
   )
 );
 
-// Selectors
-export const selectQueuesArray = (state: QueueState) =>
+// Selectors - use with shallow comparison to avoid infinite loops
+export const selectQueuesArray = (state: QueueState): Queue[] =>
   Array.from(state.queues.values());
 
 export const selectQueueById = (id: string) => (state: QueueState) =>
   state.queues.get(id);
+
+// Hook for getting queues array with stable reference
+export const useQueuesArray = () =>
+  useQueueStore(useShallow((state) => selectQueuesArray(state)));

@@ -14,13 +14,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useQueueStore, selectQueuesArray, DEFAULT_QUEUE_ID } from "@/stores/queues";
+import { useQueueStore, useQueuesArray, DEFAULT_QUEUE_ID } from "@/stores/queues";
 import { useUIStore } from "@/stores/ui";
 import { cn } from "@/lib/utils";
 
 export function QueueList() {
   const [expanded, setExpanded] = useState(true);
-  const queues = useQueueStore(selectQueuesArray);
+  const queues = useQueuesArray();
   const { selectedQueueId, setSelectedQueue } = useQueueStore();
   const { setShowQueueManagerDialog } = useUIStore();
 
