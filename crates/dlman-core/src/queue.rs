@@ -31,6 +31,7 @@ impl QueueScheduler {
         let queue = core
             .queues
             .read()
+            .await
             .get(&queue_id)
             .cloned()
             .ok_or(DlmanError::NotFound(queue_id))?;
@@ -50,6 +51,7 @@ impl QueueScheduler {
         let pending_downloads: Vec<_> = core
             .downloads
             .read()
+            .await
             .values()
             .filter(|d| d.queue_id == queue_id && d.status == DownloadStatus::Queued)
             .cloned()

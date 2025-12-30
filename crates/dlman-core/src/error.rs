@@ -49,10 +49,11 @@ pub enum DlmanError {
 impl DlmanError {
     /// Check if this error is retryable
     pub fn is_retryable(&self) -> bool {
-        matches!(
-            self,
-            DlmanError::Network(_) | DlmanError::Timeout | DlmanError::ServerError { status, .. } if *status >= 500
-        )
+        match self {
+            DlmanError::Network(_) | DlmanError::Timeout => true,
+            DlmanError::ServerError { status, .. } => *status >= 500,
+            _ => false,
+        }
     }
 }
 

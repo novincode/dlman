@@ -14,11 +14,11 @@ pub use queue::*;
 pub use storage::*;
 
 use dlman_types::{CoreEvent, Download, Queue, Settings};
-use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::broadcast;
+use tokio::sync::RwLock;
 use uuid::Uuid;
 
 /// The main DLMan core instance
@@ -120,7 +120,7 @@ impl DlmanCore {
         self.storage.save_download(&download).await?;
 
         // Add to active downloads
-        self.downloads.write().insert(id, download.clone());
+        self.downloads.write().await.insert(id, download.clone());
 
         // Emit event
         self.emit(CoreEvent::DownloadAdded {
@@ -142,6 +142,7 @@ impl DlmanCore {
         let download = self
             .downloads
             .read()
+            .await
             .get(&id)
             .cloned()
             .ok_or(DlmanError::NotFound(id))?;
@@ -164,7 +165,7 @@ impl DlmanCore {
         let _ = self.download_manager.cancel(id).await;
 
         // Get download info
-        let download = self.downloads.write().remove(&id);
+        let download = self.downloads.write().await.remove(&id);
 
         if let Some(download) = download {
             // Delete file if requested
@@ -201,16 +202,20 @@ impl DlmanCore {
         error: Option<String>,
     ) -> Result<(), DlmanError> {
         // Update in memory
-        if let Some(download) = self.downloads.write().get_mut(&id) {
-            download.status = status;
-            download.error = error.clone();
-            if status == dlman_types::DownloadStatus::Completed {
-                download.completed_at = Some(chrono::Utc::now());
+        {
+            let mut downloads = self.downloads.write().await;
+            if let Some(download) = downloads.get_mut(&id) {
+                download.status = status;
+                download.error = error.clone();
+                if status == dlman_types::DownloadStatus::Completed {
+                    download.completed_at = Some(chrono::Utc::now());
+                }
             }
         }
 
         // Save to storage
-        if let Some(download) = self.downloads.read().get(&id) {
+        let download_copy = self.downloads.read().await.get(&id).cloned();
+        if let Some(download) = download_copy.as_ref() {
             self.storage.save_download(download).await?;
         }
 
@@ -256,7 +261,7 @@ impl DlmanCore {
         self.storage.save_queue(&queue).await?;
 
         // Add to memory
-        self.queues.write().insert(queue.id, queue.clone());
+        self.queues.write().await.insert(queue.id, queue.clone());
 
         Ok(queue)
     }
@@ -270,6 +275,7 @@ impl DlmanCore {
         let mut queue = self
             .queues
             .read()
+            .await
             .get(&id)
             .cloned()
             .ok_or(DlmanError::NotFound(id))?;
@@ -301,7 +307,7 @@ impl DlmanCore {
         self.storage.save_queue(&queue).await?;
 
         // Update in memory
-        self.queues.write().insert(id, queue.clone());
+        self.queues.write().await.insert(id, queue.clone());
 
         Ok(queue)
     }
@@ -317,7 +323,7 @@ impl DlmanCore {
 
         // Move downloads to default queue
         {
-            let mut downloads = self.downloads.write();
+            let mut downloads = self.downloads.write().await;
             for download in downloads.values_mut() {
                 if download.queue_id == id {
                     download.queue_id = Uuid::nil();
@@ -329,7 +335,7 @@ impl DlmanCore {
         self.storage.delete_queue(id).await?;
 
         // Remove from memory
-        self.queues.write().remove(&id);
+        self.queues.write().await.remove(&id);
 
         Ok(())
     }
@@ -388,13 +394,13 @@ impl DlmanCore {
         queue_id: Uuid,
     ) -> Result<(), DlmanError> {
         // Verify queue exists
-        if !self.queues.read().contains_key(&queue_id) {
+        if !self.queues.read().await.contains_key(&queue_id) {
             return Err(DlmanError::NotFound(queue_id));
         }
 
         // Update downloads
         {
-            let mut downloads = self.downloads.write();
+            let mut downloads = self.downloads.write().await;
             for id in &ids {
                 if let Some(download) = downloads.get_mut(id) {
                     download.queue_id = queue_id;
@@ -404,7 +410,8 @@ impl DlmanCore {
 
         // Save to storage
         for id in ids {
-            if let Some(download) = self.downloads.read().get(&id) {
+            let download_copy = self.downloads.read().await.get(&id).cloned();
+            if let Some(download) = download_copy.as_ref() {
                 self.storage.save_download(download).await?;
             }
         }
@@ -417,14 +424,14 @@ impl DlmanCore {
     // ========================================================================
 
     /// Get current settings
-    pub fn get_settings(&self) -> Settings {
-        self.settings.read().clone()
+    pub async fn get_settings(&self) -> Settings {
+        self.settings.read().await.clone()
     }
 
     /// Update settings
     pub async fn update_settings(&self, settings: Settings) -> Result<(), DlmanError> {
         self.storage.save_settings(&settings).await?;
-        *self.settings.write() = settings;
+        *self.settings.write().await = settings;
         Ok(())
     }
 
@@ -434,11 +441,14 @@ impl DlmanCore {
 
     /// Export all data as JSON
     pub async fn export_data(&self) -> Result<String, DlmanError> {
+        let downloads: Vec<_> = self.downloads.read().await.values().cloned().collect();
+        let queues: Vec<_> = self.queues.read().await.values().cloned().collect();
+        let settings = self.get_settings().await;
         let data = serde_json::json!({
             "version": 1,
-            "downloads": self.downloads.read().values().collect::<Vec<_>>(),
-            "queues": self.queues.read().values().collect::<Vec<_>>(),
-            "settings": self.get_settings(),
+            "downloads": downloads,
+            "queues": queues,
+            "settings": settings,
         });
 
         serde_json::to_string_pretty(&data).map_err(|e| DlmanError::Serialization(e.to_string()))
@@ -456,7 +466,7 @@ impl DlmanCore {
                     serde_json::from_value::<Download>(download_value.clone())
                 {
                     self.storage.save_download(&download).await?;
-                    self.downloads.write().insert(download.id, download);
+                    self.downloads.write().await.insert(download.id, download);
                 }
             }
         }
@@ -466,7 +476,7 @@ impl DlmanCore {
             for queue_value in queues {
                 if let Ok(queue) = serde_json::from_value::<Queue>(queue_value.clone()) {
                     self.storage.save_queue(&queue).await?;
-                    self.queues.write().insert(queue.id, queue);
+                    self.queues.write().await.insert(queue.id, queue);
                 }
             }
         }

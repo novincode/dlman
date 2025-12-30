@@ -9,3 +9,4 @@ license.workspace = true
 serde = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
+dirs = "6"

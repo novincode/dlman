@@ -13,7 +13,7 @@ tauri-build = { workspace = true, features = [] }
 dlman-core = { workspace = true }
 dlman-types = { workspace = true }
 
-tauri = { workspace = true, features = ["macos-private-api"] }
+tauri = { workspace = true, features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-shell = "2"
