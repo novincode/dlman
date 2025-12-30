@@ -12,8 +12,17 @@ interface SettingsState {
   updateSettings: (settings: Partial<Settings>) => void;
 }
 
+const getDefaultDownloadPath = (): string => {
+  // Try to get home directory and construct path
+  if (typeof window !== 'undefined') {
+    // In browser/Tauri, we'll use a placeholder that gets resolved
+    return '~/Downloads/dlman';
+  }
+  return '~/Downloads/dlman';
+};
+
 const defaultSettings: Settings = {
-  defaultDownloadPath: "~/Downloads/dlman",
+  defaultDownloadPath: getDefaultDownloadPath(),
   maxConcurrentDownloads: 4,
   defaultSegments: 4,
   globalSpeedLimit: null,

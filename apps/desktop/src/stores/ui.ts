@@ -9,6 +9,7 @@ interface UIState {
   showNewDownloadDialog: boolean;
   showBatchImportDialog: boolean;
   showQueueManagerDialog: boolean;
+  showCategoryDialog: boolean;
   showSettingsDialog: boolean;
   showDevConsole: boolean;
   confirmDialogOpen: boolean;
@@ -30,6 +31,7 @@ interface UIState {
   setShowNewDownloadDialog: (open: boolean) => void;
   setShowBatchImportDialog: (open: boolean) => void;
   setShowQueueManagerDialog: (open: boolean) => void;
+  setShowCategoryDialog: (open: boolean) => void;
   setShowSettingsDialog: (open: boolean) => void;
   setShowDevConsole: (open: boolean) => void;
 
@@ -69,6 +71,7 @@ export const useUIStore = create<UIState>((set) => ({
   showNewDownloadDialog: false,
   showBatchImportDialog: false,
   showQueueManagerDialog: false,
+  showCategoryDialog: false,
   showSettingsDialog: false,
   showDevConsole: true,
   confirmDialogOpen: false,
@@ -87,6 +90,7 @@ export const useUIStore = create<UIState>((set) => ({
   setShowNewDownloadDialog: (open) => set({ showNewDownloadDialog: open }),
   setShowBatchImportDialog: (open) => set({ showBatchImportDialog: open }),
   setShowQueueManagerDialog: (open) => set({ showQueueManagerDialog: open }),
+  setShowCategoryDialog: (open) => set({ showCategoryDialog: open }),
   setShowSettingsDialog: (open) => set({ showSettingsDialog: open }),
   setShowDevConsole: (open) => set({ showDevConsole: open }),
 

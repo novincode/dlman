@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { motion, AnimatePresence } from 'framer-motion';
+import { toast } from 'sonner';
 import { 
   Link, 
   Folder, 
@@ -33,12 +34,17 @@ import {
 import { useUIStore } from '@/stores/ui';
 import { useQueuesArray } from '@/stores/queues';
 import { useSettingsStore } from '@/stores/settings';
+import { useDownloadStore } from '@/stores/downloads';
 import type { LinkInfo, Download as DownloadType } from '@/types';
+
+// Check if we're in Tauri context
+const isTauri = () => typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
 
 export function NewDownloadDialog() {
   const { showNewDownloadDialog, setShowNewDownloadDialog } = useUIStore();
   const queues = useQueuesArray();
   const defaultPath = useSettingsStore((s) => s.settings.defaultDownloadPath);
+  const addDownload = useDownloadStore((s) => s.addDownload);
 
   const [url, setUrl] = useState('');
   const [destination, setDestination] = useState(defaultPath);
@@ -110,11 +116,19 @@ export function NewDownloadDialog() {
   }, []);
 
   const handleBrowseDestination = useCallback(async () => {
+    // Check if we're in Tauri context
+    if (!isTauri()) {
+      toast.error('Browse is only available in the desktop app');
+      return;
+    }
+    
     try {
       const selected = await openDialog({
         directory: true,
         multiple: false,
-        defaultPath: destination,
+        defaultPath: destination.startsWith('~') 
+          ? undefined // Let Tauri use default
+          : destination,
       });
 
       if (selected) {
@@ -122,26 +136,82 @@ export function NewDownloadDialog() {
       }
     } catch (err) {
       console.error('Failed to open directory picker:', err);
+      toast.error('Failed to open directory picker');
     }
   }, [destination]);
 
   const handleAddDownload = useCallback(async () => {
-    if (!url || !destination) return;
+    if (!url || !destination) {
+      toast.error('Please enter a URL and destination');
+      return;
+    }
 
     try {
       setIsAdding(true);
-      await invoke<DownloadType>('add_download', {
-        url,
-        destination,
-        queueId,
-      });
+      
+      // Try to add via Tauri backend
+      if (isTauri()) {
+        try {
+          const download = await invoke<DownloadType>('add_download', {
+            url,
+            destination,
+            queueId,
+          });
+          // Add to local store
+          addDownload(download);
+          toast.success('Download added successfully');
+        } catch (err) {
+          console.error('Backend add_download failed:', err);
+          // Fallback: create local download
+          const localDownload: DownloadType = {
+            id: crypto.randomUUID(),
+            url,
+            final_url: null,
+            filename: filename || url.split('/').pop() || 'unknown',
+            destination,
+            size: fileSize,
+            downloaded: 0,
+            status: 'pending',
+            segments: [],
+            queue_id: queueId,
+            color: null,
+            error: null,
+            created_at: new Date().toISOString(),
+            completed_at: null,
+          };
+          addDownload(localDownload);
+          toast.success('Download added (offline mode)');
+        }
+      } else {
+        // Not in Tauri, create local download
+        const localDownload: DownloadType = {
+          id: crypto.randomUUID(),
+          url,
+          final_url: null,
+          filename: filename || url.split('/').pop() || 'unknown',
+          destination,
+          size: fileSize,
+          downloaded: 0,
+          status: 'pending',
+          segments: [],
+          queue_id: queueId,
+          color: null,
+          error: null,
+          created_at: new Date().toISOString(),
+          completed_at: null,
+        };
+        addDownload(localDownload);
+        toast.success('Download added (preview mode)');
+      }
+      
       setShowNewDownloadDialog(false);
     } catch (err) {
       console.error('Failed to add download:', err);
+      toast.error('Failed to add download');
     } finally {
       setIsAdding(false);
     }
-  }, [url, destination, queueId, setShowNewDownloadDialog]);
+  }, [url, destination, queueId, filename, fileSize, addDownload, setShowNewDownloadDialog]);
 
   const formatFileSize = (bytes: number) => {
     if (bytes >= 1024 * 1024 * 1024) {

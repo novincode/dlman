@@ -249,7 +249,7 @@ export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps)
             <Label>Max Concurrent Downloads: {maxConcurrent}</Label>
             <Slider
               value={[maxConcurrent]}
-              onValueChange={([v]) => setMaxConcurrent(v)}
+              onValueChange={(values: number[]) => setMaxConcurrent(values[0])}
               min={1}
               max={16}
               step={1}
