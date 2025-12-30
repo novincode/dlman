@@ -11,11 +11,9 @@ import { useUIStore } from "@/stores/ui";
 import { setupEventListeners } from "@/lib/events";
 
 function App() {
-  const settings = useSettingsStore((s) => s.settings);
+  const theme = useSettingsStore((s) => s.settings.theme);
+  const devMode = useSettingsStore((s) => s.settings.devMode);
   const { setShowNewDownloadDialog, showDevConsole } = useUIStore();
-
-  const theme = settings.theme;
-  const devMode = settings.devMode;
 
   // Apply theme
   useEffect(() => {

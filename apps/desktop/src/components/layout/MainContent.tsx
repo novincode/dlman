@@ -1,10 +1,10 @@
 import { FilterBar } from "./FilterBar";
 import { DownloadList } from "@/components/downloads/DownloadList";
 import { EmptyState } from "@/components/downloads/EmptyState";
-import { useDownloadStore, selectFilteredDownloads } from "@/stores/downloads";
+import { useDownloadStore, useFilteredDownloads } from "@/stores/downloads";
 
 export function MainContent() {
-  const downloads = useDownloadStore(selectFilteredDownloads);
+  const downloads = useFilteredDownloads();
   const hasDownloads = useDownloadStore((s) => s.downloads.size > 0);
 
   return (

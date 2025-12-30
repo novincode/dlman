@@ -33,7 +33,7 @@ import {
 } from '@/components/ui/select';
 
 import { useUIStore } from '@/stores/ui';
-import { useQueueStore, selectQueuesArray } from '@/stores/queues';
+import { useQueuesArray } from '@/stores/queues';
 import { useSettingsStore } from '@/stores/settings';
 import type { LinkInfo } from '@/types';
 
@@ -47,7 +47,7 @@ interface ParsedLink {
 
 export function BatchImportDialog() {
   const { showBatchImportDialog, setShowBatchImportDialog } = useUIStore();
-  const queues = useQueueStore(selectQueuesArray);
+  const queues = useQueuesArray();
   const defaultPath = useSettingsStore((s) => s.settings.defaultDownloadPath);
 
   const [rawLinks, setRawLinks] = useState('');

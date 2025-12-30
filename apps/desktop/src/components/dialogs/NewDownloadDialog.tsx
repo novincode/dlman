@@ -31,13 +31,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useUIStore } from '@/stores/ui';
-import { useQueueStore, selectQueuesArray } from '@/stores/queues';
+import { useQueuesArray } from '@/stores/queues';
 import { useSettingsStore } from '@/stores/settings';
 import type { LinkInfo, Download as DownloadType } from '@/types';
 
 export function NewDownloadDialog() {
   const { showNewDownloadDialog, setShowNewDownloadDialog } = useUIStore();
-  const queues = useQueueStore(selectQueuesArray);
+  const queues = useQueuesArray();
   const defaultPath = useSettingsStore((s) => s.settings.defaultDownloadPath);
 
   const [url, setUrl] = useState('');
@@ -56,9 +56,11 @@ export function NewDownloadDialog() {
       setFilename('');
       setFileSize(null);
       setProbeError(null);
-      setDestination(defaultPath);
+      // Get the current default path at the time dialog opens
+      const currentDefaultPath = useSettingsStore.getState().settings.defaultDownloadPath;
+      setDestination(currentDefaultPath);
     }
-  }, [showNewDownloadDialog, defaultPath]);
+  }, [showNewDownloadDialog]);
 
   // Probe URL when it changes (debounced)
   useEffect(() => {

@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
 import type { Download, DownloadStatus } from "@/types";
 
 interface DownloadWithProgress extends Download {
@@ -215,3 +216,7 @@ export const selectFilteredDownloads = (state: DownloadState) => {
 
   return downloads;
 };
+
+// Hook for getting filtered downloads with stable reference
+export const useFilteredDownloads = () =>
+  useDownloadStore(useShallow(selectFilteredDownloads));
