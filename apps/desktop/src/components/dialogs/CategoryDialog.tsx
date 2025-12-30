@@ -1,10 +1,20 @@
 import { useState, useEffect, useCallback } from 'react';
 import { 
   Palette, 
-  Smile,
   Save,
   Trash2,
-  FileType
+  FileType,
+  Folder,
+  Music,
+  Film,
+  FileText,
+  Image,
+  Archive,
+  Box,
+  Code,
+  Database,
+  Gamepad2,
+  type LucideIcon,
 } from 'lucide-react';
 
 import {
@@ -33,12 +43,30 @@ const CATEGORY_COLORS = [
   '#14b8a6', '#a855f7', '#eab308', '#0ea5e9', '#d946ef',
 ];
 
-// Predefined icons
-const CATEGORY_ICONS = [
-  '📁', '📂', '📦', '🎵', '🎬', '📚', '🖼️', '📄', '💼', '🎮',
-  '📱', '💻', '🔧', '📝', '🎨', '📷', '🎧', '📺', '🔒', '⭐',
-  '💿', '📀', '🗂️', '📑', '📊', '📈', '🗃️', '💾', '🎯', '🚀',
+// Icon options using Lucide icons
+interface IconOption {
+  id: string;
+  icon: LucideIcon;
+  label: string;
+}
+
+const ICON_OPTIONS: IconOption[] = [
+  { id: 'folder', icon: Folder, label: 'Folder' },
+  { id: 'music', icon: Music, label: 'Music' },
+  { id: 'film', icon: Film, label: 'Video' },
+  { id: 'file-text', icon: FileText, label: 'Document' },
+  { id: 'image', icon: Image, label: 'Image' },
+  { id: 'archive', icon: Archive, label: 'Archive' },
+  { id: 'box', icon: Box, label: 'Program' },
+  { id: 'code', icon: Code, label: 'Code' },
+  { id: 'database', icon: Database, label: 'Data' },
+  { id: 'gamepad-2', icon: Gamepad2, label: 'Game' },
 ];
+
+function getIconComponent(iconId: string): LucideIcon {
+  const option = ICON_OPTIONS.find(opt => opt.id === iconId);
+  return option?.icon || Folder;
+}
 
 interface CategoryDialogProps {
   open: boolean;
@@ -51,7 +79,7 @@ export function CategoryDialog({ open, onOpenChange, editCategory }: CategoryDia
 
   const [name, setName] = useState('');
   const [color, setColor] = useState(CATEGORY_COLORS[0]);
-  const [icon, setIcon] = useState('📁');
+  const [iconId, setIconId] = useState('folder');
   const [extensions, setExtensions] = useState('');
   const [customPath, setCustomPath] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -63,14 +91,14 @@ export function CategoryDialog({ open, onOpenChange, editCategory }: CategoryDia
     if (open && editCategory) {
       setName(editCategory.name);
       setColor(editCategory.color);
-      setIcon(editCategory.icon);
+      setIconId(editCategory.icon);
       setExtensions(editCategory.extensions.join(', '));
       setCustomPath(editCategory.customPath || '');
     } else if (open) {
       // Reset for new category
       setName('');
       setColor(CATEGORY_COLORS[Math.floor(Math.random() * CATEGORY_COLORS.length)]);
-      setIcon('📁');
+      setIconId('folder');
       setExtensions('');
       setCustomPath('');
     }
@@ -91,7 +119,7 @@ export function CategoryDialog({ open, onOpenChange, editCategory }: CategoryDia
         updateCategory(editCategory.id, {
           name,
           color,
-          icon,
+          icon: iconId,
           extensions: extensionList,
           customPath: customPath || undefined,
         });
@@ -100,7 +128,7 @@ export function CategoryDialog({ open, onOpenChange, editCategory }: CategoryDia
           id: crypto.randomUUID(),
           name,
           color,
-          icon,
+          icon: iconId,
           extensions: extensionList,
           customPath: customPath || undefined,
         };
@@ -113,13 +141,15 @@ export function CategoryDialog({ open, onOpenChange, editCategory }: CategoryDia
     } finally {
       setIsSaving(false);
     }
-  }, [name, color, icon, extensions, customPath, isEditing, editCategory, addCategory, updateCategory, onOpenChange]);
+  }, [name, color, iconId, extensions, customPath, isEditing, editCategory, addCategory, updateCategory, onOpenChange]);
 
   const handleDelete = useCallback(() => {
     if (!editCategory) return;
     removeCategory(editCategory.id);
     onOpenChange(false);
   }, [editCategory, removeCategory, onOpenChange]);
+
+  const CurrentIcon = getIconComponent(iconId);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -184,24 +214,28 @@ export function CategoryDialog({ open, onOpenChange, editCategory }: CategoryDia
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" className="w-full justify-start">
-                    <span className="text-lg mr-2">{icon}</span>
-                    <Smile className="h-4 w-4 mr-2" />
+                    <CurrentIcon className="h-4 w-4 mr-2" style={{ color }} />
                     Icon
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-3">
-                  <div className="grid grid-cols-6 gap-2">
-                    {CATEGORY_ICONS.map((i) => (
-                      <button
-                        key={i}
-                        className={`w-8 h-8 rounded-md flex items-center justify-center text-lg hover:bg-accent ${
-                          icon === i ? 'ring-2 ring-primary ring-offset-2' : ''
-                        }`}
-                        onClick={() => setIcon(i)}
-                      >
-                        {i}
-                      </button>
-                    ))}
+                  <div className="grid grid-cols-5 gap-2">
+                    {ICON_OPTIONS.map((option) => {
+                      const IconComp = option.icon;
+                      return (
+                        <button
+                          key={option.id}
+                          className={`w-10 h-10 rounded-md flex flex-col items-center justify-center gap-0.5 hover:bg-accent ${
+                            iconId === option.id ? 'ring-2 ring-primary ring-offset-2 bg-accent' : ''
+                          }`}
+                          onClick={() => setIconId(option.id)}
+                          title={option.label}
+                        >
+                          <IconComp className="h-4 w-4" style={{ color }} />
+                          <span className="text-[9px] text-muted-foreground">{option.label}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </PopoverContent>
               </Popover>

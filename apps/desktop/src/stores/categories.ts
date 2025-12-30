@@ -5,7 +5,7 @@ import { useShallow } from "zustand/react/shallow";
 export interface Category {
   id: string;
   name: string;
-  icon: string;
+  icon: string;  // Icon ID (e.g., 'music', 'film', 'file-text') - not emoji
   color: string;
   extensions: string[]; // File extensions that belong to this category
   customPath?: string;  // Optional custom download path for this category
@@ -23,47 +23,47 @@ interface CategoryState {
   setSelectedCategory: (id: string | null) => void;
 }
 
-// Default categories
+// Default categories with icon IDs instead of emojis
 const DEFAULT_CATEGORIES: Category[] = [
   {
     id: 'music',
     name: 'Music',
-    icon: '🎵',
+    icon: 'music',
     color: '#22c55e',
     extensions: ['mp3', 'wav', 'flac', 'aac', 'm4a', 'ogg', 'wma'],
   },
   {
     id: 'videos',
     name: 'Videos',
-    icon: '🎬',
+    icon: 'film',
     color: '#ef4444',
     extensions: ['mp4', 'mkv', 'avi', 'mov', 'wmv', 'flv', 'webm'],
   },
   {
     id: 'documents',
     name: 'Documents',
-    icon: '📄',
+    icon: 'file-text',
     color: '#3b82f6',
     extensions: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'rtf'],
   },
   {
     id: 'images',
     name: 'Images',
-    icon: '🖼️',
+    icon: 'image',
     color: '#a855f7',
     extensions: ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp', 'ico'],
   },
   {
     id: 'archives',
     name: 'Archives',
-    icon: '📦',
+    icon: 'archive',
     color: '#f59e0b',
     extensions: ['zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz'],
   },
   {
     id: 'programs',
     name: 'Programs',
-    icon: '💿',
+    icon: 'box',
     color: '#06b6d4',
     extensions: ['exe', 'msi', 'dmg', 'pkg', 'deb', 'rpm', 'app'],
   },

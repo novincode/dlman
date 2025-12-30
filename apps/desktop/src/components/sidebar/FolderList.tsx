@@ -8,8 +8,14 @@ import {
   MoreHorizontal,
   Edit,
   Palette,
-  Smile,
   Trash2,
+  Music,
+  Film,
+  FileText,
+  Image,
+  Archive,
+  Box,
+  type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,9 +25,30 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 import { useCategoryStore, useCategoriesArray, Category } from "@/stores/categories";
 import { CategoryDialog } from "@/components/dialogs/CategoryDialog";
+
+// Map category IDs to icons
+const CATEGORY_ICON_MAP: Record<string, LucideIcon> = {
+  music: Music,
+  videos: Film,
+  documents: FileText,
+  images: Image,
+  archives: Archive,
+  programs: Box,
+};
+
+function getCategoryIcon(categoryId: string): LucideIcon {
+  return CATEGORY_ICON_MAP[categoryId] || Folder;
+}
 
 export function FolderList() {
   const [expanded, setExpanded] = useState(true);
@@ -43,11 +70,6 @@ export function FolderList() {
   const handleDeleteCategory = useCallback((id: string) => {
     removeCategory(id);
   }, [removeCategory]);
-
-  const handleContextMenu = useCallback((e: React.MouseEvent, _category: Category) => {
-    e.preventDefault();
-    // Could show custom context menu here
-  }, []);
 
   return (
     <>
@@ -78,61 +100,102 @@ export function FolderList() {
               className="overflow-hidden"
             >
               <div className="mt-1 space-y-0.5">
-                {categories.map((category) => (
-                  <div
-                    key={category.id}
-                    onClick={() => setSelectedCategory(category.id)}
-                    onContextMenu={(e) => handleContextMenu(e, category)}
-                    data-context-menu="category"
-                    className={cn(
-                      "flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors group",
-                      selectedCategoryId === category.id
-                        ? "bg-primary/10 text-foreground"
-                        : "hover:bg-accent text-muted-foreground hover:text-foreground"
-                    )}
-                  >
-                    <span className="text-sm">{category.icon}</span>
-                    <span className="text-sm truncate flex-1">
-                      {category.name}
-                    </span>
+                {/* All Categories option */}
+                <div
+                  onClick={() => setSelectedCategory(null)}
+                  className={cn(
+                    "flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors group",
+                    selectedCategoryId === null
+                      ? "bg-primary/10 text-foreground"
+                      : "hover:bg-accent text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <Folder className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm truncate flex-1">All Categories</span>
+                </div>
 
-                    {/* More menu */}
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
-                          onClick={(e) => e.stopPropagation()}
+                {categories.map((category) => {
+                  const IconComponent = getCategoryIcon(category.id);
+                  
+                  return (
+                    <ContextMenu key={category.id}>
+                      <ContextMenuTrigger asChild>
+                        <div
+                          onClick={() => setSelectedCategory(category.id)}
+                          className={cn(
+                            "flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors group",
+                            selectedCategoryId === category.id
+                              ? "bg-primary/10 text-foreground"
+                              : "hover:bg-accent text-muted-foreground hover:text-foreground"
+                          )}
                         >
-                          <MoreHorizontal className="h-3 w-3" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEditCategory(category); }}>
+                          <div
+                            className="flex items-center justify-center w-5 h-5 rounded"
+                            style={{ backgroundColor: `${category.color}20` }}
+                          >
+                            <IconComponent
+                              className="h-3.5 w-3.5"
+                              style={{ color: category.color }}
+                            />
+                          </div>
+                          <span className="text-sm truncate flex-1">
+                            {category.name}
+                          </span>
+
+                          {/* More menu */}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <MoreHorizontal className="h-3 w-3" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEditCategory(category); }}>
+                                <Edit className="h-4 w-4 mr-2" />
+                                Edit Category
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEditCategory(category); }}>
+                                <Palette className="h-4 w-4 mr-2" />
+                                Change Color
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem 
+                                className="text-destructive focus:text-destructive"
+                                onClick={(e) => { e.stopPropagation(); handleDeleteCategory(category.id); }}
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete Category
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </ContextMenuTrigger>
+                      <ContextMenuContent>
+                        <ContextMenuItem onClick={() => handleEditCategory(category)}>
                           <Edit className="h-4 w-4 mr-2" />
                           Edit Category
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEditCategory(category); }}>
+                        </ContextMenuItem>
+                        <ContextMenuItem onClick={() => handleEditCategory(category)}>
                           <Palette className="h-4 w-4 mr-2" />
                           Change Color
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEditCategory(category); }}>
-                          <Smile className="h-4 w-4 mr-2" />
-                          Change Icon
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem 
+                        </ContextMenuItem>
+                        <ContextMenuSeparator />
+                        <ContextMenuItem 
                           className="text-destructive focus:text-destructive"
-                          onClick={(e) => { e.stopPropagation(); handleDeleteCategory(category.id); }}
+                          onClick={() => handleDeleteCategory(category.id)}
                         >
                           <Trash2 className="h-4 w-4 mr-2" />
                           Delete Category
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                ))}
+                        </ContextMenuItem>
+                      </ContextMenuContent>
+                    </ContextMenu>
+                  );
+                })}
 
                 {/* Add Category Button */}
                 <Button

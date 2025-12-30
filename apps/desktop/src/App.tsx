@@ -12,6 +12,7 @@ import { ContextMenuProvider, useGlobalContextMenu } from "@/components/ContextM
 import { useSettingsStore } from "@/stores/settings";
 import { useUIStore } from "@/stores/ui";
 import { setupEventListeners } from "@/lib/events";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 
 function AppContent() {
   const theme = useSettingsStore((s) => s.settings.theme);
@@ -19,6 +20,9 @@ function AppContent() {
   const { setShowNewDownloadDialog, setShowBatchImportDialog, showDevConsole } = useUIStore();
   
   const handleGlobalContextMenu = useGlobalContextMenu();
+
+  // Enable keyboard shortcuts
+  useKeyboardShortcuts();
 
   // Apply theme
   useEffect(() => {

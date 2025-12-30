@@ -8,8 +8,9 @@ import {
   MoreHorizontal,
   Edit,
   Palette,
-  Smile,
   Trash2,
+  Play,
+  Pause,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,6 +20,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { useQueueStore, useQueuesArray, DEFAULT_QUEUE_ID } from "@/stores/queues";
 import { cn } from "@/lib/utils";
 import { QueueDialog } from "@/components/dialogs/QueueDialog";
@@ -29,7 +37,7 @@ export function QueueList() {
   const [editingQueue, setEditingQueue] = useState<Queue | null>(null);
   const [showQueueDialog, setShowQueueDialog] = useState(false);
   const queues = useQueuesArray();
-  const { selectedQueueId, setSelectedQueue } = useQueueStore();
+  const { selectedQueueId, setSelectedQueue, removeQueue } = useQueueStore();
 
   const handleAddQueue = useCallback(() => {
     setEditingQueue(null);
@@ -39,6 +47,22 @@ export function QueueList() {
   const handleEditQueue = useCallback((queue: Queue) => {
     setEditingQueue(queue);
     setShowQueueDialog(true);
+  }, []);
+
+  const handleDeleteQueue = useCallback((queue: Queue) => {
+    if (queue.id !== DEFAULT_QUEUE_ID) {
+      removeQueue(queue.id);
+    }
+  }, [removeQueue]);
+
+  const handleStartQueue = useCallback((queue: Queue) => {
+    // TODO: Implement start queue
+    console.log("Start queue:", queue.id);
+  }, []);
+
+  const handlePauseQueue = useCallback((queue: Queue) => {
+    // TODO: Implement pause queue
+    console.log("Pause queue:", queue.id);
   }, []);
 
   return (
@@ -71,25 +95,34 @@ export function QueueList() {
             >
               <div className="mt-1 space-y-0.5">
                 {/* All Downloads */}
-                <QueueItem
-                  name="All Downloads"
-                  color="#6b7280"
-                  isSelected={selectedQueueId === null}
+                <div
                   onClick={() => setSelectedQueue(null)}
-                />
+                  className={cn(
+                    "flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors group",
+                    selectedQueueId === null
+                      ? "bg-primary/10 text-foreground"
+                      : "hover:bg-accent text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  <div
+                    className="w-2.5 h-2.5 rounded-sm shrink-0"
+                    style={{ backgroundColor: "#6b7280" }}
+                  />
+                  <span className="text-sm truncate flex-1">All Downloads</span>
+                </div>
 
                 {/* Individual Queues */}
                 {queues.map((queue) => (
                   <QueueItem
                     key={queue.id}
                     queue={queue}
-                    name={queue.name}
-                    color={queue.color}
-                    icon={queue.icon}
                     isSelected={selectedQueueId === queue.id}
                     isDefault={queue.id === DEFAULT_QUEUE_ID}
                     onClick={() => setSelectedQueue(queue.id)}
                     onEdit={() => handleEditQueue(queue)}
+                    onDelete={() => handleDeleteQueue(queue)}
+                    onStart={() => handleStartQueue(queue)}
+                    onPause={() => handlePauseQueue(queue)}
                   />
                 ))}
 
@@ -120,104 +153,111 @@ export function QueueList() {
 }
 
 interface QueueItemProps {
-  queue?: Queue;
-  name: string;
-  color: string;
-  icon?: string | null;
+  queue: Queue;
   isSelected?: boolean;
   isDefault?: boolean;
   onClick?: () => void;
   onEdit?: () => void;
+  onDelete?: () => void;
+  onStart?: () => void;
+  onPause?: () => void;
 }
 
 function QueueItem({
   queue,
-  name,
-  color,
-  icon,
   isSelected,
   isDefault,
   onClick,
   onEdit,
+  onDelete,
+  onStart,
+  onPause,
 }: QueueItemProps) {
-  const { removeQueue } = useQueueStore();
+  const renderMenuItems = (isDropdown: boolean) => {
+    const MenuItem = isDropdown ? DropdownMenuItem : ContextMenuItem;
+    const MenuSeparator = isDropdown ? DropdownMenuSeparator : ContextMenuSeparator;
 
-  const handleDelete = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (queue && queue.id !== DEFAULT_QUEUE_ID) {
-      removeQueue(queue.id);
-    }
-  }, [queue, removeQueue]);
-
-  const handleContextMenu = useCallback((e: React.MouseEvent) => {
-    if (!isDefault && name !== "All Downloads" && onEdit) {
-      e.preventDefault();
-      // Could show custom context menu here
-    }
-  }, [isDefault, name, onEdit]);
-
-  return (
-    <div
-      onClick={onClick}
-      onContextMenu={handleContextMenu}
-      data-context-menu="queue"
-      className={cn(
-        "flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors group",
-        isSelected
-          ? "bg-primary/10 text-foreground"
-          : "hover:bg-accent text-muted-foreground hover:text-foreground"
-      )}
-    >
-      {/* Color indicator or icon */}
-      {icon ? (
-        <span className="text-sm">{icon}</span>
-      ) : (
-        <div
-          className="w-2.5 h-2.5 rounded-sm shrink-0"
-          style={{ backgroundColor: color }}
-        />
-      )}
-
-      {/* Name */}
-      <span className="text-sm truncate flex-1">{name}</span>
-
-      {/* More menu (not for "All Downloads" or default queue) */}
-      {!isDefault && name !== "All Downloads" && queue && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <MoreHorizontal className="h-3 w-3" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit?.(); }}>
-              <Edit className="h-4 w-4 mr-2" />
-              Edit Queue
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit?.(); }}>
-              <Palette className="h-4 w-4 mr-2" />
-              Change Color
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onEdit?.(); }}>
-              <Smile className="h-4 w-4 mr-2" />
-              Change Icon
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem 
+    return (
+      <>
+        <MenuItem onClick={(e) => { e.stopPropagation(); onStart?.(); }}>
+          <Play className="h-4 w-4 mr-2" />
+          Start All
+        </MenuItem>
+        <MenuItem onClick={(e) => { e.stopPropagation(); onPause?.(); }}>
+          <Pause className="h-4 w-4 mr-2" />
+          Pause All
+        </MenuItem>
+        <MenuSeparator />
+        <MenuItem onClick={(e) => { e.stopPropagation(); onEdit?.(); }}>
+          <Edit className="h-4 w-4 mr-2" />
+          Edit Queue
+        </MenuItem>
+        <MenuItem onClick={(e) => { e.stopPropagation(); onEdit?.(); }}>
+          <Palette className="h-4 w-4 mr-2" />
+          Change Color
+        </MenuItem>
+        {!isDefault && (
+          <>
+            <MenuSeparator />
+            <MenuItem 
               className="text-destructive focus:text-destructive"
-              onClick={handleDelete}
+              onClick={(e) => { e.stopPropagation(); onDelete?.(); }}
             >
               <Trash2 className="h-4 w-4 mr-2" />
               Delete Queue
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
-    </div>
+            </MenuItem>
+          </>
+        )}
+      </>
+    );
+  };
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div
+          onClick={onClick}
+          className={cn(
+            "flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors group",
+            isSelected
+              ? "bg-primary/10 text-foreground"
+              : "hover:bg-accent text-muted-foreground hover:text-foreground"
+          )}
+        >
+          {/* Color indicator or icon */}
+          {queue.icon ? (
+            <span className="text-sm">{queue.icon}</span>
+          ) : (
+            <div
+              className="w-2.5 h-2.5 rounded-sm shrink-0"
+              style={{ backgroundColor: queue.color }}
+            />
+          )}
+
+          {/* Name */}
+          <span className="text-sm truncate flex-1">{queue.name}</span>
+
+          {/* More menu (not for default queue) */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MoreHorizontal className="h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {renderMenuItems(true)}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        {renderMenuItems(false)}
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
