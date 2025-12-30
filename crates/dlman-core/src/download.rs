@@ -13,7 +13,7 @@ use tokio::fs::{File, OpenOptions};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 /// Manages all download operations
@@ -100,7 +100,7 @@ impl DownloadManager {
     }
 
     /// Start a download
-    pub async fn start(&self, download: Download, core: DlmanCore) -> Result<(), DlmanError> {
+    pub async fn start(&self, download: Download, _core: DlmanCore) -> Result<(), DlmanError> {
         let id = download.id;
 
         // Check if already running

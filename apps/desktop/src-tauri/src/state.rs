@@ -8,6 +8,7 @@ use tokio::sync::RwLock;
 /// Application state managed by Tauri
 pub struct AppState {
     pub core: Arc<RwLock<Option<DlmanCore>>>,
+    #[allow(dead_code)]
     pub data_dir: PathBuf,
 }
 
@@ -21,6 +22,7 @@ impl AppState {
         })
     }
 
+    #[allow(dead_code)]
     pub async fn with_core<F, R>(&self, f: F) -> Result<R, String>
     where
         F: FnOnce(&DlmanCore) -> R,

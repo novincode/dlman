@@ -63,13 +63,12 @@ pub async fn delete_download(
 
 #[tauri::command]
 pub async fn get_downloads(state: State<'_, AppState>) -> Result<Vec<Download>, String> {
-    state.with_core(|core| {
-        core.downloads
-            .read()
-            .values()
-            .cloned()
-            .collect()
-    }).await
+    state
+        .with_core_async(|core| async move {
+            let downloads = core.downloads.read().await;
+            Ok(downloads.values().cloned().collect())
+        })
+        .await
 }
 
 #[tauri::command]
@@ -88,13 +87,12 @@ pub async fn probe_links(
 
 #[tauri::command]
 pub async fn get_queues(state: State<'_, AppState>) -> Result<Vec<Queue>, String> {
-    state.with_core(|core| {
-        core.queues
-            .read()
-            .values()
-            .cloned()
-            .collect()
-    }).await
+    state
+        .with_core_async(|core| async move {
+            let queues = core.queues.read().await;
+            Ok(queues.values().cloned().collect())
+        })
+        .await
 }
 
 #[tauri::command]
@@ -150,7 +148,9 @@ pub async fn stop_queue(state: State<'_, AppState>, id: String) -> Result<(), St
 
 #[tauri::command]
 pub async fn get_settings(state: State<'_, AppState>) -> Result<Settings, String> {
-    state.with_core(|core| core.get_settings()).await
+    state
+        .with_core_async(|core| async move { Ok(core.get_settings().await) })
+        .await
 }
 
 #[tauri::command]

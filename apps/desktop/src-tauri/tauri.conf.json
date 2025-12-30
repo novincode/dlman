@@ -59,13 +59,6 @@
   "plugins": {
     "shell": {
       "open": true
-    },
-    "fs": {
-      "all": true,
-      "scope": ["$DOWNLOAD/**", "$HOME/**"]
-    },
-    "dialog": {
-      "all": true
     }
   }
 }
