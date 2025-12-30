@@ -13,7 +13,7 @@ interface SettingsState {
 }
 
 const defaultSettings: Settings = {
-  defaultDownloadPath: "",
+  defaultDownloadPath: "~/Downloads/dlman",
   maxConcurrentDownloads: 4,
   defaultSegments: 4,
   globalSpeedLimit: null,

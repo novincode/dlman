@@ -66,10 +66,10 @@ export type PostAction =
 export interface QueueOptions {
   name?: string;
   color?: string;
-  icon?: string;
+  icon?: string | null;
   max_concurrent?: number;
-  speed_limit?: number;
-  schedule?: Schedule;
+  speed_limit?: number | null;
+  schedule?: Schedule | null;
   post_action?: PostAction;
 }
 

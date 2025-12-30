@@ -1,19 +1,24 @@
-import { useEffect } from "react";
+import { useEffect, useCallback } from "react";
 import { Toaster } from "sonner";
 import { Layout } from "@/components/layout/Layout";
 import {
   NewDownloadDialog,
   BatchImportDialog,
   SettingsDialog,
+  QueueManagerDialog,
 } from "@/components/dialogs";
+import { DropZoneOverlay } from "@/components/DropZoneOverlay";
+import { ContextMenuProvider, useGlobalContextMenu } from "@/components/ContextMenu";
 import { useSettingsStore } from "@/stores/settings";
 import { useUIStore } from "@/stores/ui";
 import { setupEventListeners } from "@/lib/events";
 
-function App() {
+function AppContent() {
   const theme = useSettingsStore((s) => s.settings.theme);
   const devMode = useSettingsStore((s) => s.settings.devMode);
-  const { setShowNewDownloadDialog, showDevConsole } = useUIStore();
+  const { setShowNewDownloadDialog, setShowBatchImportDialog, showDevConsole } = useUIStore();
+  
+  const handleGlobalContextMenu = useGlobalContextMenu();
 
   // Apply theme
   useEffect(() => {
@@ -53,48 +58,29 @@ function App() {
     return () => window.removeEventListener("paste", handlePaste);
   }, [setShowNewDownloadDialog]);
 
-  // Handle drag and drop
-  useEffect(() => {
-    const handleDragOver = (e: DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-    };
-
-    const handleDrop = async (e: DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-
-      const text = e.dataTransfer?.getData("text");
-      if (text && (text.startsWith("http://") || text.startsWith("https://"))) {
-        // Open new download dialog with dropped URL
-        setShowNewDownloadDialog(true);
-      }
-
-      // Handle dropped files (e.g., text files with URLs)
-      const files = e.dataTransfer?.files;
-      if (files && files.length > 0) {
-        // TODO: Parse files for URLs
-        console.log("Dropped files:", files);
-      }
-    };
-
-    window.addEventListener("dragover", handleDragOver);
-    window.addEventListener("drop", handleDrop);
-
-    return () => {
-      window.removeEventListener("dragover", handleDragOver);
-      window.removeEventListener("drop", handleDrop);
-    };
-  }, []);
+  // Handle dropped URLs from DropZoneOverlay
+  const handleDrop = useCallback((urls: string[]) => {
+    if (urls.length === 1) {
+      // Single URL - open new download dialog
+      setShowNewDownloadDialog(true);
+    } else if (urls.length > 1) {
+      // Multiple URLs - open batch import dialog
+      setShowBatchImportDialog(true);
+    }
+  }, [setShowNewDownloadDialog, setShowBatchImportDialog]);
 
   return (
-    <>
+    <div onContextMenu={handleGlobalContextMenu}>
       <Layout />
+      
+      {/* Drop Zone Overlay */}
+      <DropZoneOverlay onDrop={handleDrop} />
       
       {/* Dialogs */}
       <NewDownloadDialog />
       <BatchImportDialog />
       <SettingsDialog />
+      <QueueManagerDialog />
       
       <Toaster
         theme={theme === "system" ? undefined : theme}
@@ -108,7 +94,15 @@ function App() {
           {/* Console logs will be rendered here */}
         </div>
       )}
-    </>
+    </div>
+  );
+}
+
+function App() {
+  return (
+    <ContextMenuProvider>
+      <AppContent />
+    </ContextMenuProvider>
   );
 }
 
