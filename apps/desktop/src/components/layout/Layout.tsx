@@ -8,8 +8,8 @@ import { useUIStore } from "@/stores/ui";
 import { cn } from "@/lib/utils";
 
 export function Layout() {
-  const { devMode } = useSettingsStore();
-  const { sidebarCollapsed, consoleHeight } = useUIStore();
+  const devMode = useSettingsStore((s) => s.settings.devMode);
+  const { sidebarCollapsed, setSidebarCollapsed } = useUIStore();
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-background">
@@ -25,9 +25,8 @@ export function Layout() {
             minSize={15}
             maxSize={40}
             collapsible
-            collapsed={sidebarCollapsed}
-            onCollapse={() => useUIStore.getState().setSidebarCollapsed(true)}
-            onExpand={() => useUIStore.getState().setSidebarCollapsed(false)}
+            onCollapse={() => setSidebarCollapsed(true)}
+            onExpand={() => setSidebarCollapsed(false)}
             className={cn(
               "transition-all duration-200",
               sidebarCollapsed && "hidden"

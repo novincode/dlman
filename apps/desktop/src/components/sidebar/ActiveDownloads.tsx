@@ -4,8 +4,7 @@ import { ChevronDown, ChevronRight, Download, Pause, X } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { useDownloadStore } from "@/stores/downloads";
-import { formatBytes, formatSpeed } from "@/lib/utils";
-import { cn } from "@/lib/utils";
+import { formatSpeed, cn } from "@/lib/utils";
 
 export function ActiveDownloads() {
   const [expanded, setExpanded] = useState(true);

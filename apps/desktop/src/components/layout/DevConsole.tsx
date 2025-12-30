@@ -61,10 +61,10 @@ export function DevConsole() {
                   {log.level}
                 </span>
                 <span className="break-all">{log.message}</span>
-                {log.data && (
-                  <span className="text-muted-foreground">
-                    {JSON.stringify(log.data)}
-                  </span>
+                {log.data !== undefined && (
+                  <code className="text-muted-foreground text-xs">
+                    {String(JSON.stringify(log.data, null, 2))}
+                  </code>
                 )}
               </div>
             ))

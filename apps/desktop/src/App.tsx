@@ -7,14 +7,15 @@ import {
   SettingsDialog,
 } from "@/components/dialogs";
 import { useSettingsStore } from "@/stores/settings";
-import { useDownloadStore } from "@/stores/downloads";
 import { useUIStore } from "@/stores/ui";
 import { setupEventListeners } from "@/lib/events";
 
 function App() {
-  const { theme, devMode } = useSettingsStore();
-  const addDownload = useDownloadStore((s) => s.addDownload);
+  const settings = useSettingsStore((s) => s.settings);
   const { setShowNewDownloadDialog, showDevConsole } = useUIStore();
+
+  const theme = settings.theme;
+  const devMode = settings.devMode;
 
   // Apply theme
   useEffect(() => {

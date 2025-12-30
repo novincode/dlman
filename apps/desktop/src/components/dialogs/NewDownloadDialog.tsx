@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -9,7 +9,6 @@ import {
   Loader2, 
   CheckCircle2,
   XCircle,
-  ChevronDown,
   Clipboard
 } from 'lucide-react';
 
@@ -31,16 +30,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Progress } from '@/components/ui/progress';
-
 import { useUIStore } from '@/stores/ui';
-import { useQueueStore } from '@/stores/queues';
+import { useQueueStore, selectQueuesArray } from '@/stores/queues';
 import { useSettingsStore } from '@/stores/settings';
 import type { LinkInfo, Download as DownloadType } from '@/types';
 
 export function NewDownloadDialog() {
   const { showNewDownloadDialog, setShowNewDownloadDialog } = useUIStore();
-  const queues = useQueueStore((s) => s.queues);
+  const queues = useQueueStore(selectQueuesArray);
   const defaultPath = useSettingsStore((s) => s.settings.defaultDownloadPath);
 
   const [url, setUrl] = useState('');

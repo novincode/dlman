@@ -8,7 +8,7 @@ interface EmptyStateProps {
 }
 
 export function EmptyState({ hasAnyDownloads }: EmptyStateProps) {
-  const { openNewDownloadDialog, openBatchImportDialog } = useUIStore();
+  const { setShowNewDownloadDialog, setShowBatchImportDialog } = useUIStore();
 
   if (hasAnyDownloads) {
     // Has downloads but none match current filter
@@ -67,13 +67,13 @@ export function EmptyState({ hasAnyDownloads }: EmptyStateProps) {
 
         {/* Actions */}
         <div className="flex items-center justify-center gap-3">
-          <Button onClick={() => openNewDownloadDialog()} className="gap-2">
+          <Button onClick={() => setShowNewDownloadDialog(true)} className="gap-2">
             <Download className="h-4 w-4" />
             Add Download
           </Button>
           <Button
             variant="outline"
-            onClick={() => openBatchImportDialog()}
+            onClick={() => setShowBatchImportDialog(true)}
             className="gap-2"
           >
             <FolderDown className="h-4 w-4" />

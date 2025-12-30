@@ -6,10 +6,6 @@ interface SettingsState {
   // Settings as an object (for easy passing to dialogs)
   settings: Settings;
 
-  // Individual getters for convenience
-  theme: Theme;
-  devMode: boolean;
-
   // Actions
   setTheme: (theme: Theme) => void;
   setDevMode: (devMode: boolean) => void;
@@ -31,17 +27,9 @@ const defaultSettings: Settings = {
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       // Settings object
       settings: defaultSettings,
-
-      // Convenience getters
-      get theme() {
-        return get().settings.theme;
-      },
-      get devMode() {
-        return get().settings.devMode;
-      },
 
       // Actions
       setTheme: (theme) =>

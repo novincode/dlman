@@ -51,7 +51,7 @@ export type DownloadFilter =
 
 export type SortField = "name" | "size" | "progress" | "date" | "status";
 
-export const useDownloadStore = create<DownloadState>((set, get) => ({
+export const useDownloadStore = create<DownloadState>((set) => ({
   // Initial state
   downloads: new Map(),
   selectedIds: new Set(),

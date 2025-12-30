@@ -62,7 +62,7 @@ interface ConsoleLog {
   data?: unknown;
 }
 
-export const useUIStore = create<UIState>((set, get) => ({
+export const useUIStore = create<UIState>((set) => ({
   // Initial state
   sidebarWidth: 260,
   sidebarCollapsed: false,

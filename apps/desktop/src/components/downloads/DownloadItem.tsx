@@ -65,7 +65,7 @@ export function DownloadItem({ download }: DownloadItemProps) {
           <Checkbox
             checked={isSelected}
             onCheckedChange={() => toggleSelected(download.id)}
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e: React.MouseEvent) => e.stopPropagation()}
           />
 
           {/* Queue Color Indicator */}

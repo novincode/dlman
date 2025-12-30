@@ -1,6 +1,5 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { motion } from 'framer-motion';
 import {
   Settings,
   Folder,
@@ -106,8 +105,8 @@ export function SettingsDialog() {
                   <Checkbox
                     id="startOnBoot"
                     checked={localSettings.startOnBoot}
-                    onCheckedChange={(checked) =>
-                      handleChange('startOnBoot', checked as boolean)
+                    onCheckedChange={(checked: boolean) =>
+                      handleChange('startOnBoot', checked)
                     }
                   />
                 </div>
@@ -118,8 +117,8 @@ export function SettingsDialog() {
                   <Checkbox
                     id="minimizeToTray"
                     checked={localSettings.minimizeToTray}
-                    onCheckedChange={(checked) =>
-                      handleChange('minimizeToTray', checked as boolean)
+                    onCheckedChange={(checked: boolean) =>
+                      handleChange('minimizeToTray', checked)
                     }
                   />
                 </div>
@@ -163,8 +162,8 @@ export function SettingsDialog() {
                   <Checkbox
                     id="rememberPath"
                     checked={localSettings.rememberLastPath}
-                    onCheckedChange={(checked) =>
-                      handleChange('rememberLastPath', checked as boolean)
+                    onCheckedChange={(checked: boolean) =>
+                      handleChange('rememberLastPath', checked)
                     }
                   />
                 </div>
@@ -314,8 +313,8 @@ export function SettingsDialog() {
                   <Checkbox
                     id="devMode"
                     checked={localSettings.devMode}
-                    onCheckedChange={(checked) =>
-                      handleChange('devMode', checked as boolean)
+                    onCheckedChange={(checked: boolean) =>
+                      handleChange('devMode', checked)
                     }
                   />
                 </div>

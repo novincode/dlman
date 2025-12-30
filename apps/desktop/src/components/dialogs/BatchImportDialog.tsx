@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -33,7 +33,7 @@ import {
 } from '@/components/ui/select';
 
 import { useUIStore } from '@/stores/ui';
-import { useQueueStore } from '@/stores/queues';
+import { useQueueStore, selectQueuesArray } from '@/stores/queues';
 import { useSettingsStore } from '@/stores/settings';
 import type { LinkInfo } from '@/types';
 
@@ -47,7 +47,7 @@ interface ParsedLink {
 
 export function BatchImportDialog() {
   const { showBatchImportDialog, setShowBatchImportDialog } = useUIStore();
-  const queues = useQueueStore((s) => s.queues);
+  const queues = useQueueStore(selectQueuesArray);
   const defaultPath = useSettingsStore((s) => s.settings.defaultDownloadPath);
 
   const [rawLinks, setRawLinks] = useState('');

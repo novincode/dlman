@@ -22,7 +22,7 @@ export function QueueList() {
   const [expanded, setExpanded] = useState(true);
   const queues = useQueueStore(selectQueuesArray);
   const { selectedQueueId, setSelectedQueue } = useQueueStore();
-  const { openQueueManagerDialog } = useUIStore();
+  const { setShowQueueManagerDialog } = useUIStore();
 
   return (
     <div>
@@ -78,7 +78,7 @@ export function QueueList() {
                 variant="ghost"
                 size="sm"
                 className="w-full justify-start h-7 text-xs text-muted-foreground hover:text-foreground"
-                onClick={openQueueManagerDialog}
+                onClick={() => setShowQueueManagerDialog(true)}
               >
                 <Plus className="h-3 w-3 mr-2" />
                 Add Queue
