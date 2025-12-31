@@ -419,8 +419,27 @@ impl DlmanCore {
         // Update downloads
         {
             let mut downloads = self.downloads.write().await;
+            let queues = self.queues.read().await;
+            
             for id in &ids {
                 if let Some(download) = downloads.get_mut(id) {
+                    // Get the old queue's speed limit
+                    let old_queue_speed_limit = queues
+                        .get(&download.queue_id)
+                        .and_then(|q| Some(q.speed_limit));
+                    
+                    // Get the new queue's speed limit
+                    let new_queue_speed_limit = queues
+                        .get(&queue_id)
+                        .and_then(|q| Some(q.speed_limit))
+                        .flatten();
+                    
+                    // Only update speed_limit if it was matching the old queue's limit
+                    // (meaning it wasn't a custom override)
+                    if download.speed_limit == old_queue_speed_limit.flatten() {
+                        download.speed_limit = new_queue_speed_limit;
+                    }
+                    
                     download.queue_id = queue_id;
                 }
             }

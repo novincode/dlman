@@ -69,8 +69,20 @@ export function DownloadItem({ download }: DownloadItemProps) {
   const queues = useQueuesArray();
   const [showInfoDialog, setShowInfoDialog] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
-  const [speedLimitInput, setSpeedLimitInput] = useState<string>("");
+  const [speedLimitInput, setSpeedLimitInput] = useState<string>(
+    download.speed_limit ? Math.round(download.speed_limit / 1024).toString() : ""
+  );
   const [isOverrideEnabled, setIsOverrideEnabled] = useState(download.speed_limit !== null);
+
+  // Sync speedLimitInput when download changes
+  useEffect(() => {
+    if (download.speed_limit) {
+      setSpeedLimitInput(Math.round(download.speed_limit / 1024).toString());
+    } else {
+      setSpeedLimitInput("");
+    }
+    setIsOverrideEnabled(download.speed_limit !== null);
+  }, [download.speed_limit]);
   const [fileExists, setFileExists] = useState<boolean | null>(null);
 
   const progress = download.size
@@ -689,7 +701,7 @@ export function DownloadItem({ download }: DownloadItemProps) {
                           <Input
                             type="number"
                             placeholder="Unlimited"
-                            value={download.speed_limit ? Math.round(download.speed_limit / 1024) : ""}
+                            value={speedLimitInput}
                             onChange={(e) => setSpeedLimitInput(e.target.value)}
                             className="h-8 text-sm"
                             min={0}
@@ -700,8 +712,14 @@ export function DownloadItem({ download }: DownloadItemProps) {
                             variant="secondary"
                             className="h-8"
                             onClick={() => {
-                              const value = speedLimitInput ? parseInt(speedLimitInput) : null;
-                              handleSpeedLimitChange(value);
+                              if (speedLimitInput.trim()) {
+                                const value = parseInt(speedLimitInput);
+                                if (!isNaN(value) && value >= 0) {
+                                  handleSpeedLimitChange(value > 0 ? value : null);
+                                }
+                              } else {
+                                handleSpeedLimitChange(null);
+                              }
                             }}
                           >
                             Apply

@@ -214,10 +214,16 @@ async fn download_file(
         tokio::fs::create_dir_all(parent).await?;
     }
 
-    // Handle file collision - get unique path if file exists
-    let dest_path = get_unique_path(&base_dest_path).await;
+    // For new downloads, get unique path. For resumed downloads, use existing file
+    let dest_path = if download.downloaded > 0 {
+        // Resuming - use existing file path
+        base_dest_path
+    } else {
+        // New download - handle file collision
+        get_unique_path(&base_dest_path).await
+    };
     
-    info!("Starting download: {} -> {:?}", url, dest_path);
+    info!("Starting download: {} -> {:?} (resuming: {})", url, dest_path, download.downloaded > 0);
 
     // Get speed limit from download or use none
     let speed_limit = download.speed_limit;
@@ -230,7 +236,8 @@ async fn download_file(
         download_segmented(client, url, &dest_path, download.clone(), cancel_token, event_tx).await
     } else {
         // Single stream download
-        download_single(client, url, &dest_path, download.id, speed_limit, cancel_token, event_tx).await
+        let is_resuming = download.downloaded > 0;
+        download_single(client, url, &dest_path, download.id, download.downloaded, is_resuming, speed_limit, cancel_token, event_tx).await
     }
 }
 
@@ -240,25 +247,59 @@ async fn download_single(
     url: &str,
     dest_path: &Path,
     id: Uuid,
+    already_downloaded: u64,
+    is_resuming: bool,
     speed_limit: Option<u64>,
     cancel_token: CancellationToken,
     event_tx: broadcast::Sender<CoreEvent>,
 ) -> Result<(), DlmanError> {
-    let response = client.get(url).send().await?;
+    // For resuming downloads, use range request
+    let mut request = client.get(url);
+    let mut total: Option<u64> = None;
     
-    if !response.status().is_success() {
+    if is_resuming {
+        // Use range request to resume from where we left off
+        request = request.header(reqwest::header::RANGE, format!("bytes={}-", already_downloaded));
+    }
+    
+    let response = request.send().await?;
+    
+    // Check response status - 206 Partial Content for resume, 200 for new
+    if !(response.status().is_success() || response.status() == reqwest::StatusCode::PARTIAL_CONTENT) {
         return Err(DlmanError::ServerError {
             status: response.status().as_u16(),
             message: response.status().to_string(),
         });
     }
 
-    let total = response.content_length();
+    // For resume, total is from Content-Range header. For new, from Content-Length
+    if is_resuming {
+        // Try to extract total from Content-Range header: "bytes start-end/total"
+        if let Some(content_range) = response.headers().get("content-range").and_then(|v| v.to_str().ok()) {
+            if let Some(total_str) = content_range.split('/').last() {
+                total = total_str.parse().ok();
+            }
+        }
+    } else {
+        total = response.content_length();
+    }
+
     let mut stream = response.bytes_stream();
-    let mut file = File::create(dest_path).await?;
-    let mut downloaded: u64 = 0;
+    
+    // Open file in append mode if resuming, create if new
+    let mut file = if is_resuming {
+        OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(dest_path)
+            .await?
+    } else {
+        File::create(dest_path).await?
+    };
+    
+    let mut downloaded: u64 = already_downloaded;
     let mut last_update = std::time::Instant::now();
-    let mut last_downloaded: u64 = 0;
+    let mut last_downloaded: u64 = already_downloaded;
     
     // Speed limiting state - use a token bucket approach
     let mut bucket_tokens: f64 = 0.0;
