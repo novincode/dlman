@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::fs::{File, OpenOptions};
 use tokio::io::AsyncWriteExt;
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{broadcast, mpsc, Mutex};
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 use uuid::Uuid;
@@ -72,6 +72,8 @@ pub struct DownloadManager {
     client: Client,
     /// Active download tasks and their cancellation tokens
     active: Arc<RwLock<HashMap<Uuid, CancellationToken>>>,
+    /// Paused downloads (id -> pause flag)
+    paused: Arc<RwLock<HashMap<Uuid, Arc<Mutex<bool>>>>>,
     /// Event broadcaster
     event_tx: broadcast::Sender<CoreEvent>,
 }
@@ -87,6 +89,7 @@ impl DownloadManager {
         Self {
             client,
             active: Arc::new(RwLock::new(HashMap::new())),
+            paused: Arc::new(RwLock::new(HashMap::new())),
             event_tx,
         }
     }
@@ -159,21 +162,26 @@ impl DownloadManager {
             return Ok(());
         }
 
-        // Create cancellation token
+        // Create cancellation token and pause flag
         let cancel_token = CancellationToken::new();
+        let pause_flag = Arc::new(Mutex::new(false));
+
         self.active.write().insert(id, cancel_token.clone());
+        self.paused.write().insert(id, Arc::clone(&pause_flag));
 
         // Clone what we need for the task
         let client = self.client.clone();
         let event_tx = self.event_tx.clone();
         let active = Arc::clone(&self.active);
+        let paused = Arc::clone(&self.paused);
 
         // Spawn download task
         tokio::spawn(async move {
-            let result = download_file(client, download.clone(), cancel_token.clone(), event_tx.clone(), _core).await;
+            let result = download_file(client, download.clone(), cancel_token.clone(), event_tx.clone(), _core, pause_flag).await;
 
-            // Remove from active
+            // Remove from active and paused
             active.write().remove(&id);
+            paused.write().remove(&id);
 
             // Update status based on result
             match result {
@@ -204,8 +212,26 @@ impl DownloadManager {
 
     /// Pause a download
     pub async fn pause(&self, id: Uuid) -> Result<(), DlmanError> {
-        if let Some(token) = self.active.write().remove(&id) {
-            token.cancel();
+        let pause_flag = {
+            let paused = self.paused.read();
+            paused.get(&id).cloned()
+        };
+        if let Some(pause_flag) = pause_flag {
+            *pause_flag.lock().await = true;
+            Ok(())
+        } else {
+            Err(DlmanError::NotFound(id))
+        }
+    }
+
+    /// Resume a download
+    pub async fn resume(&self, id: Uuid) -> Result<(), DlmanError> {
+        let pause_flag = {
+            let paused = self.paused.read();
+            paused.get(&id).cloned()
+        };
+        if let Some(pause_flag) = pause_flag {
+            *pause_flag.lock().await = false;
             Ok(())
         } else {
             Err(DlmanError::NotFound(id))
@@ -214,7 +240,17 @@ impl DownloadManager {
 
     /// Cancel a download
     pub async fn cancel(&self, id: Uuid) -> Result<(), DlmanError> {
-        self.pause(id).await
+        if let Some(cancel_token) = self.active.write().remove(&id) {
+            cancel_token.cancel();
+            Ok(())
+        } else {
+            Err(DlmanError::NotFound(id))
+        }
+    }
+
+    /// Check if a download is paused
+    pub async fn is_paused(&self, id: Uuid) -> bool {
+        self.paused.read().contains_key(&id)
     }
 }
 
@@ -225,6 +261,7 @@ async fn download_file(
     cancel_token: CancellationToken,
     event_tx: broadcast::Sender<CoreEvent>,
     core: DlmanCore,
+    pause_flag: Arc<Mutex<bool>>,
 ) -> Result<(), DlmanError> {
     let url = download.final_url.as_ref().unwrap_or(&download.url);
     let base_dest_path = download.destination.join(&download.filename);
@@ -261,7 +298,7 @@ async fn download_file(
 
     if use_segments && download.size.is_some() {
         // Multi-segment download with proper async streaming
-        download_segmented(client, url, &dest_path, download.clone(), cancel_token, event_tx, core).await
+        download_segmented(client, url, &dest_path, download.clone(), cancel_token, event_tx, core, Arc::clone(&pause_flag)).await
     } else {
         // Single stream download with streaming
         let is_resuming = download.downloaded > 0;
@@ -420,6 +457,7 @@ async fn download_segmented(
     cancel_token: CancellationToken,
     event_tx: broadcast::Sender<CoreEvent>,
     core: DlmanCore,
+    pause_flag: Arc<Mutex<bool>>,
 ) -> Result<(), DlmanError> {
     let total_size = download.size.ok_or(DlmanError::ResumeNotSupported)?;
     let id = download.id;
@@ -481,10 +519,12 @@ async fn download_segmented(
         let url = url.to_string();
         let segment = segment_state.clone();
         let cancel_token = cancel_token.clone();
+        let pause_flag = Arc::clone(&pause_flag);
+        let speed_limit = download.speed_limit;
         let progress_tx = progress_tx.clone();
 
         handles.push(tokio::spawn(async move {
-            download_segment_task(client, &url, segment, cancel_token, progress_tx).await
+            download_segment_task(client, &url, segment, cancel_token, progress_tx, pause_flag, speed_limit).await
         }));
     }
 
@@ -513,7 +553,13 @@ async fn download_segmented(
         // Send progress update every 50ms for responsive UI
         if last_update.elapsed() >= std::time::Duration::from_millis(50) {
             let elapsed = last_update.elapsed().as_secs_f64();
-            let speed = ((total_downloaded - last_total_downloaded) as f64 / elapsed) as u64;
+            // Prevent overflow by ensuring we don't go backwards
+            let progress_diff = if total_downloaded >= last_total_downloaded {
+                total_downloaded - last_total_downloaded
+            } else {
+                0
+            };
+            let speed = (progress_diff as f64 / elapsed) as u64;
             let eta = if total_size > total_downloaded {
                 Some(((total_size - total_downloaded) as f64 / speed.max(1) as f64) as u64)
             } else {
@@ -578,6 +624,8 @@ async fn download_segment_task(
     segment: SegmentState,
     cancel_token: CancellationToken,
     progress_tx: mpsc::Sender<SegmentProgress>,
+    pause_flag: Arc<Mutex<bool>>,
+    speed_limit: Option<u64>,
 ) -> Result<(), DlmanError> {
     // Calculate range for this segment
     let start_byte = segment.start + segment.downloaded;
@@ -615,8 +663,23 @@ async fn download_segment_task(
             return Err(DlmanError::Cancelled);
         }
     } {
+        // Check if paused
+        while *pause_flag.lock().await {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+
         let chunk = chunk_result?;
         let chunk_size = chunk.len() as u64;
+
+        // Speed limiting using token bucket algorithm
+        if let Some(limit) = speed_limit {
+            // This is a simplified speed limit - in practice you'd want a more sophisticated approach
+            // For now, just delay based on chunk size and limit
+            let delay_ms = (chunk_size as f64 / limit as f64 * 1000.0) as u64;
+            if delay_ms > 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(delay_ms.min(100))).await;
+            }
+        }
 
         file.write_all(&chunk).await?;
         downloaded += chunk_size;

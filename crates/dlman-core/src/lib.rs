@@ -209,7 +209,7 @@ impl DlmanCore {
 
     /// Pause a download
     pub async fn pause_download(&self, id: Uuid) -> Result<(), DlmanError> {
-        // Try to cancel the active download task (if running)
+        // Try to pause the download (if running)
         let _ = self.download_manager.pause(id).await;
         // Always update the status
         self.update_download_status(id, dlman_types::DownloadStatus::Paused, None)
@@ -226,7 +226,15 @@ impl DlmanCore {
             .cloned()
             .ok_or(DlmanError::NotFound(id))?;
 
-        self.download_manager.start(download, self.clone()).await?;
+        // Check if download is already running (paused)
+        if self.download_manager.is_paused(id).await {
+            // Just unpause it
+            self.download_manager.resume(id).await?;
+        } else {
+            // Start the download
+            self.download_manager.start(download, self.clone()).await?;
+        }
+
         self.update_download_status(id, dlman_types::DownloadStatus::Downloading, None)
             .await
     }
