@@ -4,7 +4,7 @@ use crate::error::DlmanError;
 use crate::DlmanCore;
 use dlman_types::{CoreEvent, Download, DownloadStatus, LinkInfo, Segment};
 use futures::StreamExt;
-use parking_lot::RwLock;
+use tokio::sync::RwLock as AsyncRwLock;
 use reqwest::Client;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -21,7 +21,6 @@ use uuid::Uuid;
 struct SegmentProgress {
     segment_index: u32,
     downloaded: u64,
-    speed: u64,
 }
 
 /// State of a download segment
@@ -71,11 +70,11 @@ pub struct DownloadManager {
     /// HTTP client
     client: Client,
     /// Active download tasks and their cancellation tokens
-    active: Arc<RwLock<HashMap<Uuid, CancellationToken>>>,
+    active: Arc<AsyncRwLock<HashMap<Uuid, CancellationToken>>>,
     /// Paused downloads (id -> pause flag)
-    paused: Arc<RwLock<HashMap<Uuid, Arc<Mutex<bool>>>>>,
+    paused: Arc<AsyncRwLock<HashMap<Uuid, Arc<Mutex<bool>>>>>,
     /// Speed limits for active downloads (id -> speed limit in bytes/s)
-    speed_limits: Arc<RwLock<HashMap<Uuid, Arc<Mutex<Option<u64>>>>>>,
+    speed_limits: Arc<AsyncRwLock<HashMap<Uuid, Arc<Mutex<Option<u64>>>>>>,
     /// Event broadcaster
     event_tx: broadcast::Sender<CoreEvent>,
 }
@@ -90,9 +89,9 @@ impl DownloadManager {
 
         Self {
             client,
-            active: Arc::new(RwLock::new(HashMap::new())),
-            paused: Arc::new(RwLock::new(HashMap::new())),
-            speed_limits: Arc::new(RwLock::new(HashMap::new())),
+            active: Arc::new(AsyncRwLock::new(HashMap::new())),
+            paused: Arc::new(AsyncRwLock::new(HashMap::new())),
+            speed_limits: Arc::new(AsyncRwLock::new(HashMap::new())),
             event_tx,
         }
     }
@@ -160,19 +159,24 @@ impl DownloadManager {
         let id = download.id;
 
         // Check if already running
-        if self.active.read().contains_key(&id) {
+        if self.active.read().await.contains_key(&id) {
             warn!("Download {} is already running", id);
             return Ok(());
         }
+
+        // Get retry settings before spawning (to avoid Send issues with DlmanCore)
+        let settings = _core.get_settings().await;
+        let max_retries = settings.max_retries;
+        let retry_delay = std::time::Duration::from_secs(settings.retry_delay_seconds as u64);
 
         // Create cancellation token and pause flag
         let cancel_token = CancellationToken::new();
         let pause_flag = Arc::new(Mutex::new(false));
         let speed_limit = Arc::new(Mutex::new(download.speed_limit));
 
-        self.active.write().insert(id, cancel_token.clone());
-        self.paused.write().insert(id, Arc::clone(&pause_flag));
-        self.speed_limits.write().insert(id, Arc::clone(&speed_limit));
+        self.active.write().await.insert(id, cancel_token.clone());
+        self.paused.write().await.insert(id, Arc::clone(&pause_flag));
+        self.speed_limits.write().await.insert(id, Arc::clone(&speed_limit));
 
         // Clone what we need for the task
         let client = self.client.clone();
@@ -180,15 +184,77 @@ impl DownloadManager {
         let active = Arc::clone(&self.active);
         let paused = Arc::clone(&self.paused);
         let speed_limits = Arc::clone(&self.speed_limits);
-
-        // Spawn download task
+        
+        // Spawn download task with automatic retry logic
         tokio::spawn(async move {
-            let result = download_file(client, download.clone(), cancel_token.clone(), event_tx.clone(), _core, pause_flag, speed_limit).await;
+            let mut result = download_file(client.clone(), download.clone(), cancel_token.clone(), event_tx.clone(), _core.clone(), pause_flag.clone(), speed_limit.clone()).await;
+            
+            // If download failed and error is retryable, attempt automatic retries
+            let should_retry = match &result {
+                Err(e) => e.is_retryable() || matches!(e, DlmanError::Unknown(_)),
+                Ok(_) => false,
+            };
+            
+            if should_retry {
+                let mut retry_count = download.retry_count;
+                let mut current_download = download;
+                
+                // Attempt retries
+                while retry_count < max_retries {
+                    if result.is_ok() {
+                        break;
+                    }
+                    
+                    // Get error message for logging
+                    let error_msg = match &result {
+                        Err(e) => e.to_string(),
+                        Ok(_) => String::new(),
+                    };
+                    
+                    retry_count += 1;
+                    info!(
+                        "Retrying download {} (attempt {}/{}) after error: {}",
+                        id, retry_count, max_retries, error_msg
+                    );
+                    
+                    // Update retry count in current_download (we'll save it later)
+                    current_download.retry_count = retry_count;
+                    
+                    // Wait before retrying
+                    tokio::time::sleep(retry_delay).await;
+                    
+                    // Check if cancelled
+                    if cancel_token.is_cancelled() {
+                        result = Err(DlmanError::Cancelled);
+                        break;
+                    }
+                    
+                    // Retry the download
+                    let retry_result = download_file(
+                        client.clone(),
+                        current_download.clone(),
+                        cancel_token.clone(),
+                        event_tx.clone(),
+                        _core.clone(),
+                        pause_flag.clone(),
+                        speed_limit.clone(),
+                    ).await;
+                    
+                    // Update result
+                    result = retry_result;
+                    
+                    // If retry succeeded, break
+                    if result.is_ok() {
+                        info!("Download {} succeeded after {} retries", id, retry_count);
+                        break;
+                    }
+                }
+            }
 
             // Remove from active and paused
-            active.write().remove(&id);
-            paused.write().remove(&id);
-            speed_limits.write().remove(&id);
+            active.write().await.remove(&id);
+            paused.write().await.remove(&id);
+            speed_limits.write().await.remove(&id);
 
             // Update status based on result
             match result {
@@ -204,7 +270,7 @@ impl DownloadManager {
                     info!("Download {} cancelled", id);
                 }
                 Err(e) => {
-                    error!("Download {} failed: {}", id, e);
+                    error!("Download {} failed after retries: {}", id, e);
                     let _ = event_tx.send(CoreEvent::DownloadStatusChanged {
                         id,
                         status: DownloadStatus::Failed,
@@ -220,7 +286,7 @@ impl DownloadManager {
     /// Pause a download
     pub async fn pause(&self, id: Uuid) -> Result<(), DlmanError> {
         let pause_flag = {
-            let paused = self.paused.read();
+            let paused = self.paused.read().await;
             paused.get(&id).cloned()
         };
         if let Some(pause_flag) = pause_flag {
@@ -234,7 +300,7 @@ impl DownloadManager {
     /// Resume a download
     pub async fn resume(&self, id: Uuid) -> Result<(), DlmanError> {
         let pause_flag = {
-            let paused = self.paused.read();
+            let paused = self.paused.read().await;
             paused.get(&id).cloned()
         };
         if let Some(pause_flag) = pause_flag {
@@ -247,7 +313,7 @@ impl DownloadManager {
 
     /// Cancel a download
     pub async fn cancel(&self, id: Uuid) -> Result<(), DlmanError> {
-        if let Some(cancel_token) = self.active.write().remove(&id) {
+        if let Some(cancel_token) = self.active.write().await.remove(&id) {
             cancel_token.cancel();
             Ok(())
         } else {
@@ -258,7 +324,7 @@ impl DownloadManager {
     /// Update speed limit for a running download
     pub async fn update_speed_limit(&self, id: Uuid, speed_limit: Option<u64>) -> Result<(), DlmanError> {
         let speed_limit_ref = {
-            let speed_limits = self.speed_limits.read();
+            let speed_limits = self.speed_limits.read().await;
             speed_limits.get(&id).cloned()
         };
         if let Some(speed_limit_ref) = speed_limit_ref {
@@ -271,7 +337,7 @@ impl DownloadManager {
 
     /// Check if a download is paused
     pub async fn is_paused(&self, id: Uuid) -> bool {
-        self.paused.read().contains_key(&id)
+        self.paused.read().await.contains_key(&id)
     }
 }
 
@@ -623,38 +689,132 @@ async fn download_segmented(
         }
     }
 
-    // Wait for all segment tasks to complete
+    // Wait for all segment tasks to complete and collect any errors
+    let mut segment_errors = Vec::new();
     for handle in handles {
         match handle.await {
             Ok(Ok(_)) => {}
-            Ok(Err(e)) => return Err(e),
-            Err(_) => return Err(DlmanError::Unknown("Task panicked".to_string())),
+            Ok(Err(e)) => {
+                // Store error but don't fail yet - we'll retry incomplete segments
+                segment_errors.push(e);
+            }
+            Err(_) => {
+                segment_errors.push(DlmanError::Unknown("Task panicked".to_string()));
+            }
         }
     }
 
-    // Verify all segments are complete before merging
+    // Check for incomplete segments and retry them
+    let mut incomplete_segments = Vec::new();
     for (i, segment_state) in segment_states.iter().enumerate() {
         let expected_size = segment_state.end - segment_state.start + 1;
         let actual_downloaded = segment_progress.get(&(i as u32)).copied().unwrap_or(segment_state.downloaded);
         
+        // Check if segment is incomplete
         if actual_downloaded < expected_size {
+            // Verify file size matches
+            let file_size = tokio::fs::metadata(&segment_state.temp_path)
+                .await
+                .map(|m| m.len())
+                .unwrap_or(0);
+            
+            if file_size < expected_size {
+                warn!(
+                    "Segment {} incomplete: downloaded {} of {} bytes (file: {} bytes). Will retry.",
+                    i, actual_downloaded, expected_size, file_size
+                );
+                incomplete_segments.push((i, segment_state.clone(), actual_downloaded));
+            }
+        }
+    }
+
+    // Retry incomplete segments up to 3 times
+    if !incomplete_segments.is_empty() {
+        const MAX_SEGMENT_RETRIES: u32 = 3;
+        let mut retry_count = 0;
+        
+        while !incomplete_segments.is_empty() && retry_count < MAX_SEGMENT_RETRIES {
+            retry_count += 1;
+            info!("Retrying {} incomplete segments (attempt {}/{})", incomplete_segments.len(), retry_count, MAX_SEGMENT_RETRIES);
+            
+            // Wait a bit before retrying
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            
+            // Create a new progress channel for retries (we don't need to track progress during retries)
+            let (retry_progress_tx, _retry_progress_rx) = mpsc::channel::<SegmentProgress>(32);
+            let mut new_handles = Vec::new();
+            let mut still_incomplete = Vec::new();
+            
+            // Retry each incomplete segment
+            for (_i, segment_state, current_downloaded) in incomplete_segments.iter() {
+                let client = client.clone();
+                let url = url.to_string();
+                let mut segment = segment_state.clone();
+                segment.downloaded = *current_downloaded; // Resume from where we left off
+                let cancel_token = cancel_token.clone();
+                let pause_flag = Arc::clone(&pause_flag);
+                let speed_limit = Arc::clone(&speed_limit);
+                let retry_progress_tx = retry_progress_tx.clone();
+                
+                new_handles.push(tokio::spawn(async move {
+                    download_segment_task(client, &url, segment, cancel_token, retry_progress_tx, pause_flag, speed_limit).await
+                }));
+            }
+            
+            // Wait for retry attempts
+            for handle in new_handles {
+                let _ = handle.await;
+            }
+            
+            // Check which segments are still incomplete by checking file sizes
+            for (i, segment_state, _) in incomplete_segments.iter() {
+                let expected_size = segment_state.end - segment_state.start + 1;
+                let file_size = tokio::fs::metadata(&segment_state.temp_path)
+                    .await
+                    .map(|m| m.len())
+                    .unwrap_or(0);
+                
+                if file_size < expected_size {
+                    // Get current downloaded from file size
+                    still_incomplete.push((*i, segment_state.clone(), file_size));
+                } else {
+                    // Segment completed, update progress
+                    segment_progress.insert(*i as u32, expected_size);
+                }
+            }
+            
+            incomplete_segments = still_incomplete;
+        }
+        
+        // If we still have incomplete segments after retries, fail the download
+        if !incomplete_segments.is_empty() {
+            let incomplete_info: Vec<String> = incomplete_segments
+                .iter()
+                .map(|(i, s, d)| format!("Segment {}: {}/{} bytes", i, d, s.end - s.start + 1))
+                .collect();
             return Err(DlmanError::Unknown(format!(
-                "Segment {} incomplete: downloaded {} of {} bytes", 
-                i, actual_downloaded, expected_size
+                "Failed to complete segments after {} retries: {}",
+                MAX_SEGMENT_RETRIES,
+                incomplete_info.join(", ")
             )));
         }
+    }
+
+    // Final verification - all segments should be complete now
+    for (i, segment_state) in segment_states.iter().enumerate() {
+        let expected_size = segment_state.end - segment_state.start + 1;
         
         // Double-check temp file size
         if let Ok(metadata) = tokio::fs::metadata(&segment_state.temp_path).await {
             let file_size = metadata.len();
             if file_size != expected_size {
                 return Err(DlmanError::Unknown(format!(
-                    "Segment {} temp file size mismatch: {} vs expected {}", 
+                    "Segment {} temp file size mismatch: {} vs expected {} after retries", 
                     i, file_size, expected_size
                 )));
             }
         } else {
-            return Err(DlmanError::Unknown(format!("Segment {} temp file missing", i)));
+            return Err(DlmanError::Unknown(format!("Segment {} temp file missing after retries", i)));
         }
     }
 
@@ -702,7 +862,6 @@ async fn download_segment_task(
 
     let mut downloaded = segment.downloaded;
     let mut last_update = std::time::Instant::now();
-    let mut last_downloaded = downloaded;
 
     // Speed limiting state - use a token bucket approach
     let mut bucket_tokens: f64 = 0.0;
@@ -758,20 +917,15 @@ async fn download_segment_task(
 
         // Send progress update every 100ms
         if last_update.elapsed() >= std::time::Duration::from_millis(100) {
-            let elapsed = last_update.elapsed().as_secs_f64();
-            let speed = ((downloaded - last_downloaded) as f64 / elapsed) as u64;
-
             let progress = SegmentProgress {
                 segment_index: segment.index,
                 downloaded,
-                speed,
             };
 
             // Send progress update (ignore send errors if receiver is dropped)
             let _ = progress_tx.send(progress).await;
 
             last_update = std::time::Instant::now();
-            last_downloaded = downloaded;
         }
     }
 
@@ -780,9 +934,25 @@ async fn download_segment_task(
     // Verify segment is actually complete
     let expected_size = segment.end - segment.start + 1;
     let actual_size = downloaded;
-    if actual_size < expected_size {
-        warn!("Segment {} incomplete: downloaded {} of {} bytes", segment.index, actual_size, expected_size);
-        return Err(DlmanError::Unknown(format!("Segment {} incomplete", segment.index)));
+    
+    // Also check file size on disk
+    let file_size = tokio::fs::metadata(&segment.temp_path)
+        .await
+        .map(|m| m.len())
+        .unwrap_or(0);
+    
+    if actual_size < expected_size || file_size < expected_size {
+        warn!(
+            "Segment {} incomplete: downloaded {} of {} bytes (file: {} bytes)",
+            segment.index, actual_size, expected_size, file_size
+        );
+        // Return error so caller can retry this segment
+        return Err(DlmanError::Unknown(format!(
+            "Segment {} incomplete: {} of {} bytes",
+            segment.index,
+            actual_size.max(file_size),
+            expected_size
+        )));
     }
 
     Ok(())

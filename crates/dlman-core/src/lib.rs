@@ -30,7 +30,7 @@ pub struct DlmanCore {
     /// Application settings
     pub settings: Arc<RwLock<Settings>>,
     /// Database connection
-    pub storage: Storage,
+    pub storage: Arc<Storage>,
     /// Event broadcaster
     event_tx: broadcast::Sender<CoreEvent>,
     /// Download manager
@@ -72,7 +72,7 @@ impl DlmanCore {
             )),
             queues: Arc::new(RwLock::new(queues_map)),
             settings: Arc::new(RwLock::new(settings)),
-            storage,
+            storage: Arc::new(storage),
             event_tx,
             download_manager,
             queue_scheduler,
@@ -164,7 +164,7 @@ impl DlmanCore {
         
         if let Some(queue) = queues.get(&queue_id) {
             // Check if queue is running
-            if !self.queue_scheduler.is_queue_running(queue_id) {
+            if !self.queue_scheduler.is_queue_running(queue_id).await {
                 return Ok(()); // Queue not running, don't start download
             }
 
@@ -323,7 +323,10 @@ impl DlmanCore {
                 download.error = error.clone();
                 if status == dlman_types::DownloadStatus::Completed {
                     download.completed_at = Some(chrono::Utc::now());
+                    // Reset retry count on success
+                    download.retry_count = 0;
                 }
+                // Note: retry_count is updated in the download task, not here
             }
         }
 
@@ -368,12 +371,13 @@ impl DlmanCore {
     }
 
     /// Try to start the next queued download in a queue
-    async fn try_start_next_queued_download(&self, queue_id: Uuid) -> Result<(), DlmanError> {
+    /// Called automatically when a download completes to start the next queued download
+    pub(crate) async fn try_start_next_queued_download(&self, queue_id: Uuid) -> Result<(), DlmanError> {
         let queues = self.queues.read().await;
         
         if let Some(queue) = queues.get(&queue_id) {
             // Check if queue is running
-            if !self.queue_scheduler.is_queue_running(queue_id) {
+            if !self.queue_scheduler.is_queue_running(queue_id).await {
                 return Ok(()); // Queue not running
             }
 
@@ -696,10 +700,11 @@ impl Clone for DlmanCore {
             downloads: Arc::clone(&self.downloads),
             queues: Arc::clone(&self.queues),
             settings: Arc::clone(&self.settings),
-            storage: self.storage.clone(),
+            storage: Arc::clone(&self.storage),
             event_tx: self.event_tx.clone(),
             download_manager: Arc::clone(&self.download_manager),
             queue_scheduler: Arc::clone(&self.queue_scheduler),
         }
     }
 }
+

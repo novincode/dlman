@@ -13,6 +13,7 @@ import {
   Power,
   Info,
   Loader2,
+  RotateCcw,
 } from 'lucide-react';
 
 import {
@@ -245,6 +246,59 @@ export function SettingsDialog() {
                   </div>
                   <p className="text-xs text-muted-foreground">
                     Set to 0 for unlimited speed. Current: {localSettings.globalSpeedLimit ? `${Math.round(localSettings.globalSpeedLimit / 1024)} KB/s` : 'Unlimited'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <h3 className="text-sm font-medium flex items-center gap-2">
+                <RotateCcw className="h-4 w-4" />
+                Retry Settings
+              </h3>
+              <div className="pl-6 space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="maxRetries">
+                    Maximum retry attempts
+                  </Label>
+                  <Input
+                    id="maxRetries"
+                    type="number"
+                    min={0}
+                    max={20}
+                    value={localSettings.maxRetries}
+                    onChange={(e) =>
+                      handleChange(
+                        'maxRetries',
+                        parseInt(e.target.value) || 0
+                      )
+                    }
+                    className="w-24"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Number of times to automatically retry a failed download. Set to 0 to disable automatic retries.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="retryDelay">
+                    Retry delay (seconds)
+                  </Label>
+                  <Input
+                    id="retryDelay"
+                    type="number"
+                    min={1}
+                    max={300}
+                    value={localSettings.retryDelaySeconds}
+                    onChange={(e) =>
+                      handleChange(
+                        'retryDelaySeconds',
+                        parseInt(e.target.value) || 30
+                      )
+                    }
+                    className="w-24"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Time to wait between retry attempts. Default: 30 seconds.
                   </p>
                 </div>
               </div>

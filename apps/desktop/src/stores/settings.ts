@@ -30,6 +30,8 @@ const defaultSettings: Settings = {
   startOnBoot: false,
   browserIntegrationPort: 7899,
   rememberLastPath: true,
+  maxRetries: 5,
+  retryDelaySeconds: 30,
 };
 
 export const useSettingsStore = create<SettingsState>()(

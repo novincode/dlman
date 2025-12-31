@@ -31,6 +31,9 @@ pub struct Download {
     pub speed_limit: Option<u64>,
     pub created_at: DateTime<Utc>,
     pub completed_at: Option<DateTime<Utc>>,
+    /// Number of retry attempts made for this download
+    #[serde(default)]
+    pub retry_count: u32,
 }
 
 impl Download {
@@ -58,6 +61,7 @@ impl Download {
             speed_limit: None,
             created_at: Utc::now(),
             completed_at: None,
+            retry_count: 0,
         }
     }
 
@@ -213,6 +217,10 @@ pub struct Settings {
     pub start_on_boot: bool,
     pub browser_integration_port: u16,
     pub remember_last_path: bool,
+    /// Maximum number of automatic retries for failed downloads
+    pub max_retries: u32,
+    /// Delay in seconds between retry attempts
+    pub retry_delay_seconds: u32,
 }
 
 impl Default for Settings {
@@ -228,6 +236,8 @@ impl Default for Settings {
             start_on_boot: false,
             browser_integration_port: 7899,
             remember_last_path: true,
+            max_retries: 5,
+            retry_delay_seconds: 30,
         }
     }
 }

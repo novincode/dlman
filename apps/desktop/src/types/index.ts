@@ -17,6 +17,7 @@ export interface Download {
   speed_limit: number | null;
   created_at: string;
   completed_at: string | null;
+  retry_count?: number;
 }
 
 export type DownloadStatus =
@@ -89,6 +90,8 @@ export interface Settings {
   startOnBoot: boolean;
   browserIntegrationPort: number;
   rememberLastPath: boolean;
+  maxRetries: number;
+  retryDelaySeconds: number;
 }
 
 // Settings as returned from Rust (snake_case)
@@ -103,6 +106,8 @@ export interface RustSettings {
   start_on_boot: boolean;
   browser_integration_port: number;
   remember_last_path: boolean;
+  max_retries: number;
+  retry_delay_seconds: number;
 }
 
 export type Theme = "light" | "dark" | "system";
