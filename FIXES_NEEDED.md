@@ -1,0 +1,71 @@
+# DLMan Fixes and Improvements Needed
+
+## Overview
+Since the latest commit, we identified and attempted to fix several critical issues with the download manager's queue and pause functionality. The main problems were around queue management, moving downloads between queues, and the global pause feature.
+
+## Issues Identified
+
+### 1. Pause All Functionality
+**Problem**: The "Pause All" button was not pausing all active downloads. It only paused downloads that were currently in "Downloading" status, missing:
+- Downloads that were "Queued" (waiting to start)
+- Downloads that were "Pending" 
+- Downloads started manually outside of queue management
+
+**What we wanted**: Pause All should pause ALL active downloads regardless of how they were started or their current status (Downloading, Queued, Pending).
+
+**Attempted fix**: Updated `pause_all_downloads` command in `apps/desktop/src-tauri/src/commands.rs` to pause downloads with status: Downloading, Queued, or Pending.
+
+### 2. Start Queue Functionality  
+**Problem**: When starting a queue, it wasn't starting all eligible downloads in that queue. The logic excluded downloads that were already "Downloading", but we wanted it to start:
+- Paused downloads
+- Failed downloads (reset and retry)
+- Pending downloads
+- Queued downloads
+- Cancelled downloads (potentially)
+
+**What we wanted**: Start Queue should attempt to start/resume ALL non-completed downloads in the queue, up to the queue's `max_concurrent` limit, respecting queue speed limits.
+
+**Attempted fix**: Updated the filter in `crates/dlman-core/src/queue.rs` in the `start_queue` method to include all downloads except Completed, Downloading, and Deleted. Added logic to reset failed downloads for retry.
+
+### 3. Moving Downloads Between Queues
+**Problem**: When dragging downloads from one queue (e.g., Default) to another custom queue:
+- The `queue_id` wasn't being updated in the backend
+- Starting the destination queue wouldn't start the moved downloads
+- Queue assignments weren't persisting properly
+
+**What we wanted**: 
+- Drag and drop should update the download's `queue_id` 
+- Changes should persist to storage
+- Starting any queue should start all its downloads
+- Queue speed limits should be applied correctly when moving
+
+**Attempted fix**:
+- Added `move_downloads` Tauri command in `apps/desktop/src-tauri/src/commands.rs`
+- Registered it in `apps/desktop/src-tauri/src/lib.rs`
+- Updated frontend `DndProvider.tsx` to call the backend command when dropping downloads on queues
+- The core `move_downloads` method already existed and updates storage
+
+### 4. Queue State Management
+**Problem**: Queues weren't updating their state properly when downloads were moved between them. Starting a queue only affected downloads originally in that queue.
+
+**What we wanted**: Queue operations should be based on current `queue_id` assignments, not historical ones.
+
+**Attempted fix**: Ensured `move_downloads` updates the `queue_id` and persists it, so subsequent queue operations work correctly.
+
+## Additional Issues Noted
+- Build warnings for unused code (dead code, unused variables)
+- Error handling for resume operations (file not found errors)
+- UI feedback for failed operations (reverting local state on backend errors)
+
+## Files Modified
+- `apps/desktop/src-tauri/src/commands.rs`: Added `move_downloads`, updated `pause_all_downloads`
+- `apps/desktop/src-tauri/src/lib.rs`: Registered `move_downloads` command
+- `apps/desktop/src/components/dnd/DndProvider.tsx`: Added backend call for queue moves
+- `crates/dlman-core/src/queue.rs`: Updated `start_queue` filter
+
+## Testing Needed
+- Test Pause All with various download states
+- Test Start Queue after moving downloads between queues
+- Test drag and drop persistence across app restarts
+- Test queue speed limit application after moves</content>
+<parameter name="filePath">/Users/shayanmoradi/Desktop/Work/opendm/FIXES_NEEDED.md
