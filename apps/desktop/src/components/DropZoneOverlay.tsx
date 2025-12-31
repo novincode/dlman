@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Download, Link } from 'lucide-react';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
@@ -19,30 +19,66 @@ interface TauriFileDrop {
 export function DropZoneOverlay({ onDrop }: DropZoneOverlayProps) {
   const [isExternalDrag, setIsExternalDrag] = useState(false);
   const isInternalDrag = useUIStore((s) => s.isDragging);
+  const dragCounter = useRef(0);
 
   const resetOverlay = useCallback(() => {
     setIsExternalDrag(false);
+    dragCounter.current = 0;
   }, []);
+
+  // Handle Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        resetOverlay();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [resetOverlay]);
 
   // Handle web drag events (for links from browser)
   useEffect(() => {
-    const handleDragOver = (e: DragEvent) => {
+    const handleDragEnter = (e: DragEvent) => {
       if (isInternalDrag) return;
       
-      // Check if it's a file or a link
       const isFile = e.dataTransfer?.types.includes('Files');
       const isLink = e.dataTransfer?.types.includes('text/uri-list');
       
       if (isFile || isLink) {
         e.preventDefault();
         e.stopPropagation();
-        setIsExternalDrag(true);
+        dragCounter.current++;
+        if (dragCounter.current === 1) {
+          setIsExternalDrag(true);
+        }
+      }
+    };
+
+    const handleDragOver = (e: DragEvent) => {
+      if (isInternalDrag) return;
+      
+      const isFile = e.dataTransfer?.types.includes('Files');
+      const isLink = e.dataTransfer?.types.includes('text/uri-list');
+      
+      if (isFile || isLink) {
+        e.preventDefault();
+        e.stopPropagation();
+        // Ensure overlay is shown if we missed dragenter
+        if (dragCounter.current === 0) {
+          dragCounter.current = 1;
+          setIsExternalDrag(true);
+        }
       }
     };
 
     const handleDragLeave = (e: DragEvent) => {
-      // Only reset if we're leaving the window
-      if (e.relatedTarget === null) {
+      if (isInternalDrag) return;
+      
+      e.preventDefault();
+      e.stopPropagation();
+      dragCounter.current--;
+      if (dragCounter.current <= 0) {
         resetOverlay();
       }
     };
@@ -74,11 +110,13 @@ export function DropZoneOverlay({ onDrop }: DropZoneOverlayProps) {
       }
     };
 
+    window.addEventListener('dragenter', handleDragEnter);
     window.addEventListener('dragover', handleDragOver);
     window.addEventListener('dragleave', handleDragLeave);
     window.addEventListener('drop', handleDrop);
 
     return () => {
+      window.removeEventListener('dragenter', handleDragEnter);
       window.removeEventListener('dragover', handleDragOver);
       window.removeEventListener('dragleave', handleDragLeave);
       window.removeEventListener('drop', handleDrop);

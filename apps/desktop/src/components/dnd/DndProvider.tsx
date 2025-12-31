@@ -24,7 +24,7 @@ interface DndProviderProps {
 
 export function DndProvider({ children }: DndProviderProps) {
   const { setIsDragging } = useUIStore();
-  const { moveToQueue } = useDownloadStore();
+  const { moveToQueue, selectedIds } = useDownloadStore();
   
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -47,14 +47,21 @@ export function DndProvider({ children }: DndProviderProps) {
       const destinationId = over.data.current.id as string;
 
       if (sourceType === "download") {
-        const downloadId = active.id.toString().replace('download-', '');
+        // Use the raw ID from the data object
+        const downloadId = active.data.current.id as string;
+        
+        // If the dragged item is part of the selection, move all selected items
+        // Otherwise, just move the dragged item
+        const idsToMove = selectedIds.has(downloadId)
+          ? Array.from(selectedIds)
+          : [downloadId];
         
         if (destinationType === "queue") {
-          moveToQueue([downloadId], destinationId);
-          toast.success("Moved to queue");
+          moveToQueue(idsToMove, destinationId);
+          toast.success(`Moved ${idsToMove.length} item${idsToMove.length > 1 ? 's' : ''} to queue`);
         } else if (destinationType === "category") {
           // TODO: Implement move to category if needed
-          console.log(`Move download ${downloadId} to category ${destinationId}`);
+          console.log(`Move ${idsToMove.length} items to category ${destinationId}`);
         }
       }
     }
