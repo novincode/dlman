@@ -275,7 +275,7 @@ impl SimpleDownloadTask {
     }
 
     /// Download a single segment (used by both single and multi-segment downloads)
-    async fn download_segment_with_progress(self: Arc<Self>, client: &Client, url: &str, start: u64, end: u64, _segment_index: u32) -> Result<(), DlmanError> {
+    async fn download_segment_with_progress(self: Arc<Self>, client: &Client, url: &str, start: u64, end: u64, segment_index: u32) -> Result<(), DlmanError> {
         let id = self.download.id;
 
         // Build range request
@@ -286,6 +286,7 @@ impl SimpleDownloadTask {
         let mut last_progress_time = Instant::now();
         let mut last_chunk_time = Instant::now();
         let mut segment_pos = start;
+        let mut segment_downloaded = 0u64;
 
         while let Some(chunk_result) = stream.next().await {
             // Check cancel first
@@ -336,11 +337,13 @@ impl SimpleDownloadTask {
 
             // Update progress
             segment_pos += chunk_len;
+            segment_downloaded += chunk_len;
             let new_downloaded = self.downloaded_bytes.fetch_add(chunk_len, Ordering::AcqRel) + chunk_len;
             last_chunk_time = Instant::now();
 
-            // Emit progress event (throttled to ~4x per second)
+            // Emit progress events (throttled to ~4x per second)
             if last_progress_time.elapsed() >= Duration::from_millis(250) {
+                // Emit download progress
                 let _ = self.event_tx.send(CoreEvent::DownloadProgress {
                     id,
                     downloaded: new_downloaded,
@@ -348,6 +351,14 @@ impl SimpleDownloadTask {
                     speed: self.calculate_speed(),
                     eta: self.calculate_eta(),
                 });
+
+                // Emit segment progress for multi-segment downloads
+                let _ = self.event_tx.send(CoreEvent::SegmentProgress {
+                    download_id: id,
+                    segment_index,
+                    downloaded: segment_downloaded,
+                });
+
                 last_progress_time = Instant::now();
             }
         }

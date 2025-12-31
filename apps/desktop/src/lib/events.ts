@@ -88,6 +88,14 @@ export function setupEventListeners(): () => void {
     }
   }).then((fn) => unlisten.push(fn)).catch(console.error);
 
+  // Listen for updated downloads
+  listen<CoreEvent>("download-updated", (event) => {
+    const data = event.payload;
+    if (data.type === "DownloadUpdated") {
+      useDownloadStore.getState().updateDownload(data.payload.download.id, data.payload.download);
+    }
+  }).then((fn) => unlisten.push(fn)).catch(console.error);
+
   // Listen for removed downloads
   listen<CoreEvent>("download-removed", (event) => {
     const data = event.payload;

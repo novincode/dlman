@@ -43,6 +43,7 @@ impl AppState {
                                 CoreEvent::SegmentProgress { .. } => "segment-progress",
                                 CoreEvent::DownloadStatusChanged { .. } => "download-status",
                                 CoreEvent::DownloadAdded { .. } => "download-added",
+                                CoreEvent::DownloadUpdated { .. } => "download-updated",
                                 CoreEvent::DownloadRemoved { .. } => "download-removed",
                                 CoreEvent::QueueStarted { .. } => "queue-started",
                                 CoreEvent::QueueCompleted { .. } => "queue-completed",
@@ -86,6 +87,14 @@ impl AppState {
                                 CoreEvent::DownloadAdded { download } => {
                                     serde_json::json!({
                                         "type": "DownloadAdded",
+                                        "payload": {
+                                            "download": download
+                                        }
+                                    })
+                                }
+                                CoreEvent::DownloadUpdated { download } => {
+                                    serde_json::json!({
+                                        "type": "DownloadUpdated",
                                         "payload": {
                                             "download": download
                                         }

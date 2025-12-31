@@ -276,10 +276,12 @@ impl DlmanCore {
             .cloned()
             .ok_or(DlmanError::NotFound(id))?;
 
-        // Check if it's in a retryable state
-        if !matches!(download.status, DownloadStatus::Failed | DownloadStatus::Cancelled) {
-            return Err(DlmanError::InvalidOperation("Download is not in a retryable state".to_string()));
+        // Check if it's in a retryable state (allow more states)
+        if matches!(download.status, DownloadStatus::Downloading | DownloadStatus::Completed) {
+            return Err(DlmanError::InvalidOperation("Download is still active or completed".to_string()));
         }
+
+        info!("Core: resetting download {} from status {:?}", id, download.status);
 
         // Reset download state for fresh start
         download.downloaded = 0;
@@ -288,9 +290,36 @@ impl DlmanCore {
         download.error = None;
         download.retry_count += 1;
 
+        // Re-probe the URL to get fresh metadata and re-initialize segments if needed
+        if let Ok(parsed_url) = url::Url::parse(&download.url) {
+            if let Ok(probed) = self.download_manager.probe_url(&parsed_url).await {
+                download.filename = probed.filename;
+                download.size = probed.size;
+                download.final_url = probed.final_url;
+
+                // Re-initialize segments if the server supports range requests and file is large enough
+                if probed.resumable && probed.size.map(|s| s > 1024 * 1024).unwrap_or(false) {
+                    let num_segments = 4; // Default to 4 segments
+                    download.segments = download::calculate_segments_public(probed.size.unwrap(), num_segments);
+                    info!("Core: reinitialized {} segments for download {}", download.segments.len(), id);
+                } else {
+                    info!("Core: download {} not eligible for segments (resumable: {}, size: {:?})", id, probed.resumable, probed.size);
+                }
+            } else {
+                info!("Core: failed to probe URL for download {}", id);
+            }
+        } else {
+            info!("Core: failed to parse URL for download {}", id);
+        }
+
         // Save the reset download
         self.downloads.write().await.insert(id, download.clone());
         self.storage.save_download(&download).await?;
+
+        // Emit update event to notify frontend of segment changes
+        self.emit(CoreEvent::DownloadUpdated {
+            download: download.clone(),
+        });
 
         // Start the download fresh
         self.start_download(id).await?;

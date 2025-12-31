@@ -148,6 +148,12 @@ export type CoreEvent =
       };
     }
   | {
+      type: "DownloadUpdated";
+      payload: {
+        download: Download;
+      };
+    }
+  | {
       type: "DownloadRemoved";
       payload: {
         id: string;

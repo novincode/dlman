@@ -280,6 +280,9 @@ pub enum CoreEvent {
     DownloadAdded {
         download: Download,
     },
+    DownloadUpdated {
+        download: Download,
+    },
     DownloadRemoved {
         id: Uuid,
     },
