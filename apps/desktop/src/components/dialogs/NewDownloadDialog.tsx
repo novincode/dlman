@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
+import { homeDir } from '@tauri-apps/api/path';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { 
@@ -35,6 +36,7 @@ import { useUIStore } from '@/stores/ui';
 import { useQueuesArray } from '@/stores/queues';
 import { useSettingsStore } from '@/stores/settings';
 import { useDownloadStore } from '@/stores/downloads';
+import { getPendingClipboardUrls, getPendingDropUrls } from '@/lib/events';
 import type { LinkInfo, Download as DownloadType } from '@/types';
 
 // Check if we're in Tauri context
@@ -47,7 +49,7 @@ export function NewDownloadDialog() {
   const addDownload = useDownloadStore((s) => s.addDownload);
 
   const [url, setUrl] = useState('');
-  const [destination, setDestination] = useState(defaultPath);
+  const [destination, setDestination] = useState('');
   const [queueId, setQueueId] = useState('00000000-0000-0000-0000-000000000000');
   const [filename, setFilename] = useState('');
   const [fileSize, setFileSize] = useState<number | null>(null);
@@ -55,18 +57,45 @@ export function NewDownloadDialog() {
   const [probeError, setProbeError] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
 
-  // Reset state when dialog opens
+  // Reset state and check for pending URLs when dialog opens
   useEffect(() => {
     if (showNewDownloadDialog) {
-      setUrl('');
+      // Check for pending clipboard/drop URLs
+      const clipboardUrls = getPendingClipboardUrls();
+      const dropUrls = getPendingDropUrls();
+      const pendingUrls = clipboardUrls.length > 0 ? clipboardUrls : dropUrls;
+      
+      if (pendingUrls.length > 0) {
+        setUrl(pendingUrls[0]);
+      } else {
+        setUrl('');
+      }
+      
       setFilename('');
       setFileSize(null);
       setProbeError(null);
-      // Get the current default path at the time dialog opens
-      const currentDefaultPath = useSettingsStore.getState().settings.defaultDownloadPath;
-      setDestination(currentDefaultPath);
+      
+      // Resolve default path
+      resolveDefaultPath();
     }
   }, [showNewDownloadDialog]);
+
+  const resolveDefaultPath = async () => {
+    let resolvedPath = defaultPath;
+    
+    // Resolve ~ to home directory
+    if (isTauri() && resolvedPath.startsWith('~')) {
+      try {
+        const home = await homeDir();
+        resolvedPath = resolvedPath.replace('~', home);
+      } catch (err) {
+        console.error('Failed to resolve home dir:', err);
+        resolvedPath = defaultPath;
+      }
+    }
+    
+    setDestination(resolvedPath);
+  };
 
   // Probe URL when it changes (debounced)
   useEffect(() => {

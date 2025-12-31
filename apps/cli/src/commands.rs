@@ -1,6 +1,6 @@
 //! CLI command implementations
 
-use crate::{output::print_output, progress::DownloadProgress, ConfigAction, OutputFormat, QueueAction};
+use crate::{ConfigAction, OutputFormat, QueueAction};
 use anyhow::{anyhow, Result};
 use console::style;
 use dlman_core::DlmanCore;
@@ -57,7 +57,7 @@ pub async fn list_downloads(
     show_all: bool,
     format: OutputFormat,
 ) -> Result<()> {
-    let downloads: Vec<Download> = core.downloads.read().values().cloned().collect();
+    let downloads: Vec<Download> = core.downloads.read().await.values().cloned().collect();
 
     // Apply filters
     let filtered: Vec<_> = downloads
@@ -178,6 +178,7 @@ pub async fn show_info(core: &DlmanCore, id: &str, format: OutputFormat) -> Resu
     let download = core
         .downloads
         .read()
+        .await
         .get(&uuid)
         .cloned()
         .ok_or_else(|| anyhow!("Download not found"))?;
@@ -238,7 +239,7 @@ pub async fn queue_action(
 ) -> Result<()> {
     match action {
         QueueAction::List => {
-            let queues: Vec<Queue> = core.queues.read().values().cloned().collect();
+            let queues: Vec<Queue> = core.queues.read().await.values().cloned().collect();
 
             match format {
                 OutputFormat::Json => {
@@ -452,7 +453,7 @@ pub async fn config_action(
 ) -> Result<()> {
     match action {
         None | Some(ConfigAction::Show) => {
-            let settings = core.get_settings();
+            let settings = core.get_settings().await;
 
             match format {
                 OutputFormat::Json => {
@@ -484,7 +485,7 @@ pub async fn config_action(
         }
 
         Some(ConfigAction::Get { key }) => {
-            let settings = core.get_settings();
+            let settings = core.get_settings().await;
             let value = match key.as_str() {
                 "default_download_path" => settings.default_download_path.display().to_string(),
                 "max_concurrent_downloads" => settings.max_concurrent_downloads.to_string(),
@@ -497,7 +498,7 @@ pub async fn config_action(
         }
 
         Some(ConfigAction::Set { key, value }) => {
-            let mut settings = core.get_settings();
+            let mut settings = core.get_settings().await;
 
             match key.as_str() {
                 "default_download_path" => settings.default_download_path = PathBuf::from(value),

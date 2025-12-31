@@ -116,6 +116,9 @@ impl DlmanCore {
         download.size = probed.size;
         download.final_url = probed.final_url;
 
+        // Set status to downloading
+        download.status = dlman_types::DownloadStatus::Downloading;
+
         // Save to storage
         self.storage.save_download(&download).await?;
 
@@ -127,12 +130,17 @@ impl DlmanCore {
             download: download.clone(),
         });
 
+        // Actually start the download
+        self.download_manager.start(download.clone(), self.clone()).await?;
+
         Ok(download)
     }
 
     /// Pause a download
     pub async fn pause_download(&self, id: Uuid) -> Result<(), DlmanError> {
-        self.download_manager.pause(id).await?;
+        // Try to cancel the active download task (if running)
+        let _ = self.download_manager.pause(id).await;
+        // Always update the status
         self.update_download_status(id, dlman_types::DownloadStatus::Paused, None)
             .await
     }

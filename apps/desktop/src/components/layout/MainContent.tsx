@@ -7,10 +7,12 @@ import { useDownloadStore, selectFilteredDownloads } from "@/stores/downloads";
 import { useQueueStore } from "@/stores/queues";
 import { useCategoryStore } from "@/stores/categories";
 import { useShallow } from "zustand/react/shallow";
+import { useGlobalContextMenu } from "@/components/ContextMenu";
 
 export function MainContent() {
   const hasDownloads = useDownloadStore((s) => s.downloads.size > 0);
   const baseFilteredDownloads = useDownloadStore(useShallow(selectFilteredDownloads));
+  const handleContextMenu = useGlobalContextMenu();
   
   // Get selected queue and category
   const selectedQueueId = useQueueStore((s) => s.selectedQueueId);
@@ -41,7 +43,11 @@ export function MainContent() {
   }, [baseFilteredDownloads, selectedQueueId, selectedCategoryId, categories]);
 
   return (
-    <div className="flex flex-col h-full" data-global-context-area>
+    <div 
+      className="flex flex-col h-full" 
+      data-global-context-area
+      onContextMenu={handleContextMenu}
+    >
       {/* Filter Bar */}
       <FilterBar />
 

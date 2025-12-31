@@ -7,6 +7,8 @@ import {
   MoreHorizontal,
   ClipboardPaste,
 } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -19,6 +21,9 @@ import { useUIStore } from "@/stores/ui";
 import { useDownloadStore } from "@/stores/downloads";
 import { parseUrls } from "@/lib/utils";
 
+// Check if we're in Tauri context
+const isTauri = () => typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
+
 export function MenuBar() {
   const {
     setShowNewDownloadDialog,
@@ -27,7 +32,7 @@ export function MenuBar() {
     setShowSettingsDialog,
     openConfirmDialog,
   } = useUIStore();
-  const { selectedIds, clearSelection } = useDownloadStore();
+  const { selectedIds, clearSelection, removeDownload } = useDownloadStore();
 
   const handleAddFromClipboard = async () => {
     try {
@@ -55,9 +60,23 @@ export function MenuBar() {
       description: `Are you sure you want to remove ${selectedIds.size} download(s) from the list?`,
       confirmLabel: "Delete",
       variant: "destructive",
-      onConfirm: () => {
-        // TODO: Call Tauri command to delete downloads
+      onConfirm: async () => {
+        const ids = Array.from(selectedIds);
+        for (const id of ids) {
+          // Remove from local store
+          removeDownload(id);
+          
+          // Delete from backend
+          if (isTauri()) {
+            try {
+              await invoke('delete_download', { id, deleteFile: false });
+            } catch (err) {
+              console.error(`Failed to delete download ${id}:`, err);
+            }
+          }
+        }
         clearSelection();
+        toast.success(`Removed ${ids.length} download(s)`);
       },
     });
   };

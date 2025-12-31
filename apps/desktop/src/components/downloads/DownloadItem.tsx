@@ -120,9 +120,17 @@ export function DownloadItem({ download }: DownloadItemProps) {
     }
   }, [download.id, updateStatus]);
 
-  const handleRemove = useCallback((e?: React.MouseEvent) => {
+  const handleRemove = useCallback(async (e?: React.MouseEvent) => {
     e?.stopPropagation();
     removeDownload(download.id);
+    
+    if (isTauri()) {
+      try {
+        await invoke("delete_download", { id: download.id, deleteFile: false });
+      } catch (err) {
+        console.error("Failed to delete download:", err);
+      }
+    }
     toast.success("Download removed");
   }, [download.id, removeDownload]);
 
@@ -172,6 +180,29 @@ export function DownloadItem({ download }: DownloadItemProps) {
     setShowInfoDialog(true);
   }, []);
 
+  const handleRedownload = useCallback(async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    
+    if (isTauri()) {
+      try {
+        // Add a new download with the same URL
+        const newDownload = await invoke<Download>("add_download", {
+          url: download.url,
+          destination: download.destination,
+          queueId: download.queue_id,
+        });
+        toast.success("Download restarted");
+      } catch (err) {
+        console.error("Failed to redownload:", err);
+        toast.error("Failed to restart download");
+      }
+    } else {
+      // Fallback: just update status to pending
+      updateStatus(download.id, "pending", null);
+      toast.info("Download queued for retry");
+    }
+  }, [download.url, download.destination, download.queue_id, download.id, updateStatus]);
+
   const handleMoveToQueue = useCallback((queueId: string) => {
     moveToQueue([download.id], queueId);
     toast.success("Moved to queue");
@@ -210,8 +241,20 @@ export function DownloadItem({ download }: DownloadItemProps) {
             variant="ghost"
             size="icon"
             className="h-8 w-8 shrink-0 text-primary hover:bg-primary/10"
-            onClick={handleResume}
+            onClick={handleRedownload}
             title="Retry"
+          >
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+        );
+      case "cancelled":
+        return (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0 text-primary hover:bg-primary/10"
+            onClick={handleRedownload}
+            title="Re-download"
           >
             <RefreshCw className="h-4 w-4" />
           </Button>
@@ -286,9 +329,16 @@ export function DownloadItem({ download }: DownloadItemProps) {
         )}
 
         {download.status === "failed" && (
-          <MenuItem onClick={handleResume}>
+          <MenuItem onClick={handleRedownload}>
             <RefreshCw className="h-4 w-4 mr-2" />
             Retry Download
+          </MenuItem>
+        )}
+
+        {download.status === "cancelled" && (
+          <MenuItem onClick={handleRedownload}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Re-download
           </MenuItem>
         )}
 

@@ -10,14 +10,12 @@ interface SettingsState {
   setTheme: (theme: Theme) => void;
   setDevMode: (devMode: boolean) => void;
   updateSettings: (settings: Partial<Settings>) => void;
+  setDefaultDownloadPath: (path: string) => void;
 }
 
 const getDefaultDownloadPath = (): string => {
-  // Try to get home directory and construct path
-  if (typeof window !== 'undefined') {
-    // In browser/Tauri, we'll use a placeholder that gets resolved
-    return '~/Downloads/dlman';
-  }
+  // Use a placeholder that will be resolved when needed
+  // The actual home directory will be resolved in components using @tauri-apps/api/path
   return '~/Downloads/dlman';
 };
 
@@ -52,6 +50,10 @@ export const useSettingsStore = create<SettingsState>()(
       updateSettings: (newSettings) =>
         set((state) => ({
           settings: { ...state.settings, ...newSettings },
+        })),
+      setDefaultDownloadPath: (path) =>
+        set((state) => ({
+          settings: { ...state.settings, defaultDownloadPath: path },
         })),
     }),
     {

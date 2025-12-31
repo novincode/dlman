@@ -1,5 +1,6 @@
 import { useEffect, useCallback } from "react";
 import { Toaster } from "sonner";
+import { homeDir } from "@tauri-apps/api/path";
 import { Layout } from "@/components/layout/Layout";
 import {
   NewDownloadDialog,
@@ -11,13 +12,39 @@ import { DropZoneOverlay } from "@/components/DropZoneOverlay";
 import { ContextMenuProvider } from "@/components/ContextMenu";
 import { useSettingsStore } from "@/stores/settings";
 import { useUIStore } from "@/stores/ui";
-import { setupEventListeners } from "@/lib/events";
+import { setupEventListeners, setPendingClipboardUrls } from "@/lib/events";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { parseUrls } from "@/lib/utils";
+
+// Check if we're in Tauri context
+const isTauri = () => typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
 
 function AppContent() {
   const theme = useSettingsStore((s) => s.settings.theme);
   const devMode = useSettingsStore((s) => s.settings.devMode);
+  const defaultDownloadPath = useSettingsStore((s) => s.settings.defaultDownloadPath);
+  const setDefaultDownloadPath = useSettingsStore((s) => s.setDefaultDownloadPath);
   const { setShowNewDownloadDialog, setShowBatchImportDialog, showDevConsole } = useUIStore();
+
+  // Enable keyboard shortcuts
+  useKeyboardShortcuts();
+
+  // Resolve default download path on startup
+  useEffect(() => {
+    const resolveDefaultPath = async () => {
+      if (isTauri() && defaultDownloadPath.startsWith('~')) {
+        try {
+          const home = await homeDir();
+          const resolvedPath = defaultDownloadPath.replace('~', home);
+          setDefaultDownloadPath(resolvedPath);
+        } catch (err) {
+          console.error('Failed to resolve home directory:', err);
+        }
+      }
+    };
+    
+    resolveDefaultPath();
+  }, []);
 
   // Enable keyboard shortcuts
   useKeyboardShortcuts();
@@ -49,16 +76,36 @@ function AppContent() {
   // Handle paste for links
   useEffect(() => {
     const handlePaste = async (e: ClipboardEvent) => {
+      // Don't intercept if pasting into an input or textarea
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+      
       const text = e.clipboardData?.getData("text");
-      if (text && (text.startsWith("http://") || text.startsWith("https://"))) {
-        // Open new download dialog with pasted URL
+      if (!text) return;
+      
+      const urls = parseUrls(text);
+      if (urls.length === 0) return;
+      
+      // Prevent default paste behavior
+      e.preventDefault();
+      
+      // Store URLs for dialogs to use
+      setPendingClipboardUrls(urls);
+      
+      if (urls.length === 1) {
+        // Single URL - open new download dialog
         setShowNewDownloadDialog(true);
+      } else {
+        // Multiple URLs - open batch import dialog
+        setShowBatchImportDialog(true);
       }
     };
 
     window.addEventListener("paste", handlePaste);
     return () => window.removeEventListener("paste", handlePaste);
-  }, [setShowNewDownloadDialog]);
+  }, [setShowNewDownloadDialog, setShowBatchImportDialog]);
 
   // Handle dropped URLs from DropZoneOverlay
   const handleDrop = useCallback((urls: string[]) => {

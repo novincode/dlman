@@ -42,3 +42,4 @@ thiserror = "1"
 dirs = "5"
 url = "2"
 human_bytes = "0.4"
+uuid = { version = "1", features = ["v4", "serde"] }

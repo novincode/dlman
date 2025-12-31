@@ -161,6 +161,7 @@ export type CoreEvent =
 
 export interface LinkInfo {
   url: string;
+  final_url: string | null;
   filename: string;
   size: number | null;
   content_type: string | null;

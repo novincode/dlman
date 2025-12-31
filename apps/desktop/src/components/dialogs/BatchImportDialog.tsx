@@ -1,6 +1,8 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { homeDir } from '@tauri-apps/api/path';
 import { motion, AnimatePresence } from 'framer-motion';
+import { toast } from 'sonner';
 import {
   ListPlus,
   Loader2,
@@ -35,7 +37,12 @@ import {
 import { useUIStore } from '@/stores/ui';
 import { useQueuesArray } from '@/stores/queues';
 import { useSettingsStore } from '@/stores/settings';
-import type { LinkInfo } from '@/types';
+import { useDownloadStore } from '@/stores/downloads';
+import { getPendingClipboardUrls, getPendingDropUrls } from '@/lib/events';
+import type { LinkInfo, Download as DownloadType } from '@/types';
+
+// Check if we're in Tauri context
+const isTauri = () => typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
 
 interface ParsedLink {
   url: string;
@@ -49,14 +56,54 @@ export function BatchImportDialog() {
   const { showBatchImportDialog, setShowBatchImportDialog } = useUIStore();
   const queues = useQueuesArray();
   const defaultPath = useSettingsStore((s) => s.settings.defaultDownloadPath);
+  const addDownload = useDownloadStore((s) => s.addDownload);
 
   const [rawLinks, setRawLinks] = useState('');
   const [parsedLinks, setParsedLinks] = useState<ParsedLink[]>([]);
-  const [destination, setDestination] = useState(defaultPath);
+  const [destination, setDestination] = useState('');
   const [queueId, setQueueId] = useState('00000000-0000-0000-0000-000000000000');
   const [isProbing, setIsProbing] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [step, setStep] = useState<'input' | 'review'>('input');
+
+  // Reset state and check for pending URLs when dialog opens
+  useEffect(() => {
+    if (showBatchImportDialog) {
+      // Check for pending clipboard/drop URLs
+      const clipboardUrls = getPendingClipboardUrls();
+      const dropUrls = getPendingDropUrls();
+      const pendingUrls = clipboardUrls.length > 0 ? clipboardUrls : dropUrls;
+      
+      if (pendingUrls.length > 0) {
+        setRawLinks(pendingUrls.join('\n'));
+      } else {
+        setRawLinks('');
+      }
+      
+      setParsedLinks([]);
+      setStep('input');
+      
+      // Resolve default path
+      resolveDefaultPath();
+    }
+  }, [showBatchImportDialog]);
+
+  const resolveDefaultPath = async () => {
+    let resolvedPath = defaultPath;
+    
+    // Resolve ~ to home directory
+    if (isTauri() && resolvedPath.startsWith('~')) {
+      try {
+        const home = await homeDir();
+        resolvedPath = resolvedPath.replace('~', home);
+      } catch (err) {
+        console.error('Failed to resolve home dir:', err);
+        resolvedPath = defaultPath;
+      }
+    }
+    
+    setDestination(resolvedPath);
+  };
 
   const parseLinks = useCallback((text: string): string[] => {
     const urlPattern = /https?:\/\/[^\s<>"{}|\\^\[\]`]+/gi;
@@ -131,25 +178,64 @@ export function BatchImportDialog() {
     if (selectedLinks.length === 0) return;
 
     setIsAdding(true);
+    let successCount = 0;
+    let failCount = 0;
 
     try {
       for (const link of selectedLinks) {
-        await invoke('add_download', {
-          url: link.url,
-          destination,
-          queueId,
-        });
+        try {
+          if (isTauri()) {
+            const download = await invoke<DownloadType>('add_download', {
+              url: link.url,
+              destination,
+              queueId,
+            });
+            addDownload(download);
+            successCount++;
+          } else {
+            // Fallback for non-Tauri environment
+            const localDownload: DownloadType = {
+              id: crypto.randomUUID(),
+              url: link.url,
+              final_url: link.info?.final_url || null,
+              filename: link.info?.filename || link.url.split('/').pop() || 'unknown',
+              destination,
+              size: link.info?.size || null,
+              downloaded: 0,
+              status: 'pending',
+              segments: [],
+              queue_id: queueId,
+              color: null,
+              error: null,
+              created_at: new Date().toISOString(),
+              completed_at: null,
+            };
+            addDownload(localDownload);
+            successCount++;
+          }
+        } catch (err) {
+          console.error(`Failed to add download for ${link.url}:`, err);
+          failCount++;
+        }
       }
+      
+      if (successCount > 0) {
+        toast.success(`Added ${successCount} download(s)${failCount > 0 ? `, ${failCount} failed` : ''}`);
+      } else {
+        toast.error('Failed to add downloads');
+      }
+      
       setShowBatchImportDialog(false);
       setStep('input');
       setRawLinks('');
       setParsedLinks([]);
     } catch (err) {
       console.error('Failed to add downloads:', err);
+      toast.error('Failed to add downloads');
     } finally {
       setIsAdding(false);
     }
-  }, [parsedLinks, destination, queueId, setShowBatchImportDialog]);
+  }, [parsedLinks, destination, queueId, addDownload, setShowBatchImportDialog]);
 
   const selectedCount = useMemo(
     () => parsedLinks.filter((l) => l.selected && !l.error).length,

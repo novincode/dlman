@@ -10,6 +10,8 @@ const isTauri = () => typeof window !== 'undefined' && window.__TAURI_INTERNALS_
 
 // Store for drag-drop URLs to pass to dialog
 let pendingDropUrls: string[] = [];
+// Store for clipboard URLs to pass to dialog
+let pendingClipboardUrls: string[] = [];
 
 export function getPendingDropUrls(): string[] {
   const urls = [...pendingDropUrls];
@@ -19,6 +21,16 @@ export function getPendingDropUrls(): string[] {
 
 export function setPendingDropUrls(urls: string[]) {
   pendingDropUrls = urls;
+}
+
+export function getPendingClipboardUrls(): string[] {
+  const urls = [...pendingClipboardUrls];
+  pendingClipboardUrls = [];
+  return urls;
+}
+
+export function setPendingClipboardUrls(urls: string[]) {
+  pendingClipboardUrls = urls;
 }
 
 export function setupEventListeners(): () => void {
