@@ -525,9 +525,17 @@ export function DownloadItem({ download }: DownloadItemProps) {
             )}
           >
             {/* Main Row */}
-            <div 
-              className="flex items-center gap-3 p-3"
-              onClick={(e) => toggleSelected(download.id, e.shiftKey)}
+            <div
+              className="flex items-center gap-3 p-3 cursor-pointer"
+              onClick={(e) => {
+                // Don't toggle expand if clicking on checkbox
+                const target = e.target as HTMLElement;
+                const isCheckbox = target.closest('.checkbox') || target.querySelector('.checkbox');
+
+                if (!isCheckbox) {
+                  handleToggleExpand(e);
+                }
+              }}
             >
               {/* Expand/Collapse Button */}
               <Button
@@ -545,6 +553,7 @@ export function DownloadItem({ download }: DownloadItemProps) {
 
               {/* Checkbox */}
               <Checkbox
+                className="checkbox"
                 checked={isSelected}
                 onCheckedChange={() => toggleSelected(download.id)}
                 onClick={(e) => e.stopPropagation()}
@@ -741,6 +750,7 @@ export function DownloadItem({ download }: DownloadItemProps) {
                         </Label>
                         <div className="flex items-center gap-2">
                           <Checkbox
+                            className="checkbox"
                             id={`speed-override-${download.id}`}
                             checked={isOverrideEnabled}
                             onCheckedChange={(checked) => {
