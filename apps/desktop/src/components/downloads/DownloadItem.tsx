@@ -120,9 +120,6 @@ export function DownloadItem({ download }: DownloadItemProps) {
 
   const handleCancel = useCallback(async (e?: React.MouseEvent) => {
     e?.stopPropagation();
-    // Update local state immediately
-    updateStatus(download.id, "cancelled", null);
-    
     if (isTauri()) {
       try {
         await invoke("cancel_download", { id: download.id });
@@ -132,6 +129,7 @@ export function DownloadItem({ download }: DownloadItemProps) {
         toast.error("Failed to cancel download");
       }
     }
+    updateStatus(download.id, "cancelled", null);
   }, [download.id, updateStatus]);
 
   const handleRemove = useCallback(async (e?: React.MouseEvent) => {
@@ -687,17 +685,15 @@ export function DownloadItem({ download }: DownloadItemProps) {
                           >
                             Apply
                           </Button>
-                          {download.speed_limit && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-8 text-xs"
-                              onClick={() => handleSpeedLimitChange(null)}
-                            >
-                              <Zap className="h-3 w-3 mr-1" />
-                              Unlimited
-                            </Button>
-                          )}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 text-xs"
+                            onClick={() => handleSpeedLimitChange(null)}
+                          >
+                            <Zap className="h-3 w-3 mr-1" />
+                            Unlimited
+                          </Button>
                         </div>
                       ) : (
                         <div className="text-xs text-muted-foreground">

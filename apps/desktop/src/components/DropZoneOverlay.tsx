@@ -77,14 +77,42 @@ export function DropZoneOverlay({ onDrop }: DropZoneOverlayProps) {
       }
     };
 
+    const handleDrop = (e: DragEvent) => {
+      if (isInternalDrag) return;
+      e.preventDefault();
+      e.stopPropagation();
+      resetOverlay();
+
+      const urls: string[] = [];
+      
+      // Try to get URL from text/uri-list
+      const uriList = e.dataTransfer?.getData('text/uri-list');
+      if (uriList) {
+        const lines = uriList.split('\n').filter(line => line.trim() && !line.startsWith('#'));
+        urls.push(...lines);
+      }
+      
+      // Also check for plain text that looks like a URL
+      const text = e.dataTransfer?.getData('text/plain');
+      if (text && text.match(/^https?:\/\//) && !urls.includes(text)) {
+        urls.push(text);
+      }
+
+      if (urls.length > 0) {
+        onDrop(urls);
+      }
+    };
+
     window.addEventListener('dragenter', handleDragEnter);
     window.addEventListener('dragover', handleDragOver);
     window.addEventListener('dragleave', handleDragLeave);
+    window.addEventListener('drop', handleDrop);
 
     return () => {
       window.removeEventListener('dragenter', handleDragEnter);
       window.removeEventListener('dragover', handleDragOver);
       window.removeEventListener('dragleave', handleDragLeave);
+      window.removeEventListener('drop', handleDrop);
     };
   }, [isInternalDrag, resetOverlay]);
 
@@ -137,33 +165,6 @@ export function DropZoneOverlay({ onDrop }: DropZoneOverlayProps) {
     };
   }, [onDrop, resetOverlay, isInternalDrag]);
 
-  const handleOverlayDrop = (e: React.DragEvent) => {
-    if (isInternalDrag) return;
-    
-    e.preventDefault();
-    e.stopPropagation();
-    resetOverlay();
-
-    const urls: string[] = [];
-    
-    // Try to get URL from text/uri-list
-    const uriList = e.dataTransfer?.getData('text/uri-list');
-    if (uriList) {
-      const lines = uriList.split('\n').filter(line => line.trim() && !line.startsWith('#'));
-      urls.push(...lines);
-    }
-    
-    // Also check for plain text that looks like a URL
-    const text = e.dataTransfer?.getData('text/plain');
-    if (text && text.match(/^https?:\/\//) && !urls.includes(text)) {
-      urls.push(text);
-    }
-
-    if (urls.length > 0) {
-      onDrop(urls);
-    }
-  };
-
   const shouldShow = isExternalDrag && !isInternalDrag;
 
   return (
@@ -177,7 +178,6 @@ export function DropZoneOverlay({ onDrop }: DropZoneOverlayProps) {
             e.preventDefault();
             e.stopPropagation();
           }}
-          onDrop={handleOverlayDrop}
           className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm border-2 border-dashed border-primary m-4 rounded-xl pointer-events-auto cursor-copy"
         >
           <div className="flex flex-col items-center gap-4 text-center pointer-events-none">

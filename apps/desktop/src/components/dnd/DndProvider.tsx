@@ -72,21 +72,11 @@ export function DndProvider({ children }: DndProviderProps) {
         } else if (destinationType === "category") {
           const category = categories.get(destinationId);
           if (category) {
-            // If category has a custom path, update the destination for all items
-            if (category.customPath) {
-              idsToMove.forEach(id => {
-                const download = downloads.get(id);
-                if (download) {
-                  // We keep the filename but change the directory
-                  const filename = download.filename;
-                  const newDestination = category.customPath;
-                  updateDownload(id, { destination: newDestination });
-                }
-              });
-              toast.success(`Moved ${idsToMove.length} item${idsToMove.length > 1 ? 's' : ''} to ${category.name} folder`);
-            } else {
-              toast.info(`Category ${category.name} has no custom path set`);
-            }
+            // Move downloads to this category
+            idsToMove.forEach(id => {
+              updateDownload(id, { category_id: destinationId });
+            });
+            toast.success(`Moved ${idsToMove.length} item${idsToMove.length > 1 ? 's' : ''} to ${category.name} category`);
           }
         }
       }
