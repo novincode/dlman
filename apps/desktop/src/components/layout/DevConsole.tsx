@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Terminal, Trash2, AlertCircle, AlertTriangle, Bug, MessageSquare } from "lucide-react";
+import { Terminal, Trash2, AlertCircle, AlertTriangle, Bug, MessageSquare, ChevronUp, ChevronDown, X } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -8,8 +8,13 @@ import { cn } from "@/lib/utils";
 
 type LogLevel = "info" | "warn" | "error" | "debug" | "all";
 
-export function DevConsole() {
-  const { consoleLogs, clearConsoleLogs } = useUIStore();
+interface DevConsoleProps {
+  isCollapsed?: boolean;
+  onToggleCollapse?: () => void;
+}
+
+export function DevConsole({ isCollapsed = false, onToggleCollapse }: DevConsoleProps) {
+  const { consoleLogs, clearConsoleLogs, setShowDevConsole } = useUIStore();
   const [filter, setFilter] = useState<LogLevel>("all");
 
   const getLevelColor = (level: string) => {
@@ -45,10 +50,52 @@ export function DevConsole() {
   const errorCount = consoleLogs.filter(l => l.level === "error").length;
   const warnCount = consoleLogs.filter(l => l.level === "warn").length;
 
+  // Collapsed view - just show a thin bar with expand button
+  if (isCollapsed) {
+    return (
+      <div className="flex items-center justify-between px-3 py-1 bg-card border-t gap-2">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Terminal className="h-3 w-3" />
+          <span>Console</span>
+          {errorCount > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-500 font-medium">
+              {errorCount}
+            </span>
+          )}
+          {warnCount > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-500 font-medium">
+              {warnCount}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-5 w-5 p-0"
+            onClick={onToggleCollapse}
+            title="Expand console"
+          >
+            <ChevronUp className="h-3 w-3" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-5 w-5 p-0"
+            onClick={() => setShowDevConsole(false)}
+            title="Close console"
+          >
+            <X className="h-3 w-3" />
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full bg-card border-t">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-b gap-2">
+      <div className="flex items-center justify-between px-3 py-1.5 border-b gap-2 shrink-0">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Terminal className="h-4 w-4" />
           <span>Dev Console</span>
@@ -80,7 +127,7 @@ export function DevConsole() {
           </ToggleGroupItem>
           <ToggleGroupItem value="warn" size="sm" className="text-xs h-6 px-2 data-[state=on]:text-yellow-500">
             <AlertTriangle className="h-3 w-3 mr-1" />
-            Warnings
+            Warns
           </ToggleGroupItem>
           <ToggleGroupItem value="debug" size="sm" className="text-xs h-6 px-2 data-[state=on]:text-blue-500">
             <Bug className="h-3 w-3 mr-1" />
@@ -92,19 +139,39 @@ export function DevConsole() {
           </ToggleGroupItem>
         </ToggleGroup>
 
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 px-2 text-xs gap-1"
-          onClick={clearConsoleLogs}
-        >
-          <Trash2 className="h-3 w-3" />
-          Clear
-        </Button>
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-2 text-xs gap-1"
+            onClick={clearConsoleLogs}
+          >
+            <Trash2 className="h-3 w-3" />
+            Clear
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 w-6 p-0"
+            onClick={onToggleCollapse}
+            title="Collapse console"
+          >
+            <ChevronDown className="h-3 w-3" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 w-6 p-0"
+            onClick={() => setShowDevConsole(false)}
+            title="Close console"
+          >
+            <X className="h-3 w-3" />
+          </Button>
+        </div>
       </div>
 
       {/* Logs */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="p-2 font-mono text-xs space-y-0.5">
           {filteredLogs.length === 0 ? (
             <div className="text-muted-foreground italic py-4 text-center">

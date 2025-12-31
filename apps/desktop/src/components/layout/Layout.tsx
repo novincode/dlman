@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { PanelGroup, Panel, PanelResizeHandle } from "react-resizable-panels";
 import { MenuBar } from "./MenuBar";
 import { Sidebar } from "@/components/sidebar/Sidebar";
@@ -9,7 +10,8 @@ import { cn } from "@/lib/utils";
 
 export function Layout() {
   const devMode = useSettingsStore((s) => s.settings.devMode);
-  const { sidebarCollapsed, setSidebarCollapsed } = useUIStore();
+  const { sidebarCollapsed, setSidebarCollapsed, showDevConsole } = useUIStore();
+  const [consoleCollapsed, setConsoleCollapsed] = useState(false);
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-background">
@@ -41,16 +43,26 @@ export function Layout() {
           {/* Main Content */}
           <Panel defaultSize={80} minSize={50}>
             <PanelGroup direction="vertical" className="h-full">
-              <Panel defaultSize={devMode ? 70 : 100} minSize={30}>
+              <Panel defaultSize={devMode && showDevConsole ? 70 : 100} minSize={30}>
                 <MainContent />
               </Panel>
 
-              {/* Dev Console */}
-              {devMode && (
+              {/* Dev Console - resizable, collapsible */}
+              {devMode && showDevConsole && (
                 <>
-                  <PanelResizeHandle className="h-1 bg-border hover:bg-primary/50 transition-colors" />
-                  <Panel defaultSize={30} minSize={15} maxSize={50}>
-                    <DevConsole />
+                  <PanelResizeHandle className="h-1.5 bg-border hover:bg-primary/50 transition-colors cursor-row-resize flex items-center justify-center">
+                    <div className="w-8 h-0.5 rounded-full bg-muted-foreground/30" />
+                  </PanelResizeHandle>
+                  <Panel 
+                    defaultSize={30} 
+                    minSize={consoleCollapsed ? 3 : 10} 
+                    maxSize={consoleCollapsed ? 3 : 60}
+                    collapsible
+                  >
+                    <DevConsole 
+                      isCollapsed={consoleCollapsed} 
+                      onToggleCollapse={() => setConsoleCollapsed(!consoleCollapsed)} 
+                    />
                   </Panel>
                 </>
               )}

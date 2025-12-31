@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
@@ -22,6 +22,7 @@ import {
   ChevronRight,
   Gauge,
   Zap,
+  GripVertical,
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
@@ -71,6 +72,8 @@ export function DownloadItem({ download }: DownloadItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [speedLimitInput, setSpeedLimitInput] = useState<string>("");
   const [isOverrideEnabled, setIsOverrideEnabled] = useState(download.speed_limit !== null);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragRef = useRef<HTMLDivElement>(null);
 
   const progress = download.size
     ? (download.downloaded / download.size) * 100
@@ -79,6 +82,43 @@ export function DownloadItem({ download }: DownloadItemProps) {
   // Get effective speed limit (from download or queue)
   const effectiveSpeedLimit = download.speed_limit ?? queue?.speed_limit ?? null;
   const isUsingQueueLimit = download.speed_limit === null && queue?.speed_limit !== null;
+
+  // Drag handlers
+  const handleDragStart = useCallback((e: React.DragEvent) => {
+    e.stopPropagation();
+    setIsDragging(true);
+    
+    // Get all selected download IDs, or just this one if not selected
+    const idsToMove = isSelected ? Array.from(selectedIds) : [download.id];
+    
+    // Set drag data
+    e.dataTransfer.setData("application/x-download-ids", JSON.stringify(idsToMove));
+    e.dataTransfer.effectAllowed = "move";
+    
+    // Create a custom drag image
+    const count = idsToMove.length;
+    const dragImage = document.createElement("div");
+    dragImage.className = "fixed bg-primary text-primary-foreground px-3 py-2 rounded-lg shadow-lg flex items-center gap-2 font-medium text-sm";
+    dragImage.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+      <span>${count} download${count > 1 ? "s" : ""}</span>
+    `;
+    dragImage.style.position = "fixed";
+    dragImage.style.top = "-100px";
+    dragImage.style.left = "-100px";
+    document.body.appendChild(dragImage);
+    
+    e.dataTransfer.setDragImage(dragImage, 50, 25);
+    
+    // Clean up drag image after a frame
+    requestAnimationFrame(() => {
+      document.body.removeChild(dragImage);
+    });
+  }, [download.id, isSelected, selectedIds]);
+
+  const handleDragEnd = useCallback(() => {
+    setIsDragging(false);
+  }, []);
 
   const handlePause = useCallback(async (e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -471,15 +511,16 @@ export function DownloadItem({ download }: DownloadItemProps) {
     <>
       <ContextMenu>
         <ContextMenuTrigger asChild>
-          <motion.div
-            layout
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
+          <div
+            ref={dragRef}
+            draggable
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
             data-download-item="true"
             className={cn(
-              "rounded-lg border bg-card transition-colors group",
-              isSelected && "border-primary bg-primary/5"
+              "rounded-lg border bg-card transition-all group",
+              isSelected && "border-primary bg-primary/5",
+              isDragging && "ring-2 ring-primary cursor-grabbing opacity-50"
             )}
           >
             {/* Main Row */}
@@ -487,6 +528,14 @@ export function DownloadItem({ download }: DownloadItemProps) {
               className="flex items-center gap-3 p-3 cursor-pointer"
               onClick={(e) => toggleSelected(download.id, e.shiftKey)}
             >
+              {/* Drag Handle */}
+              <div 
+                className="cursor-grab active:cursor-grabbing shrink-0 text-muted-foreground/50 hover:text-muted-foreground"
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <GripVertical className="h-4 w-4" />
+              </div>
+
               {/* Expand/Collapse Button */}
               <Button
                 variant="ghost"
@@ -731,7 +780,7 @@ export function DownloadItem({ download }: DownloadItemProps) {
                 </motion.div>
               )}
             </AnimatePresence>
-          </motion.div>
+          </div>
         </ContextMenuTrigger>
 
         {/* Context Menu */}

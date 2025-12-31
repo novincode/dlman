@@ -1,27 +1,43 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Download, Link, FileText } from 'lucide-react';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+
+// Check if we're in Tauri context
+const isTauri = () => typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
 
 interface DropZoneOverlayProps {
   onDrop: (urls: string[]) => void;
+}
+
+interface TauriFileDrop {
+  paths: string[];
+  position: { x: number; y: number };
 }
 
 export function DropZoneOverlay({ onDrop }: DropZoneOverlayProps) {
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const dragCountRef = useRef(0);
 
+  // Standard browser drag/drop handlers
   const handleDragEnter = useCallback((e: DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
     dragCountRef.current += 1;
     
-    // Check if dragging text/url/link
+    // Check if dragging internal downloads - don't show overlay for those
     const types = e.dataTransfer?.types || [];
+    if (types.includes('application/x-download-ids')) {
+      return; // Internal drag, don't show overlay
+    }
+    
+    // Check if dragging text/url/link or files
     const hasText = types.includes('text/plain') || 
                    types.includes('text/uri-list') || 
                    types.includes('text/html');
+    const hasFiles = types.includes('Files');
     
-    if (hasText) {
+    if (hasText || hasFiles) {
       setIsDraggingOver(true);
     }
   }, []);
@@ -45,6 +61,12 @@ export function DropZoneOverlay({ onDrop }: DropZoneOverlayProps) {
     e.stopPropagation();
     setIsDraggingOver(false);
     dragCountRef.current = 0;
+
+    // Check if this is an internal download drag - ignore it here
+    const types = e.dataTransfer?.types || [];
+    if (types.includes('application/x-download-ids')) {
+      return;
+    }
 
     const urls: string[] = [];
 
@@ -85,6 +107,62 @@ export function DropZoneOverlay({ onDrop }: DropZoneOverlayProps) {
     }
   }, [onDrop]);
 
+  // Tauri-specific file drop handling
+  useEffect(() => {
+    if (!isTauri()) return;
+
+    let unlistenHover: UnlistenFn | undefined;
+    let unlistenDrop: UnlistenFn | undefined;
+    let unlistenCancel: UnlistenFn | undefined;
+
+    const setupTauriListeners = async () => {
+      try {
+        // Handle drag hover
+        unlistenHover = await listen('tauri://drag-over', () => {
+          setIsDraggingOver(true);
+        });
+
+        // Handle drag leave / cancel
+        unlistenCancel = await listen('tauri://drag-leave', () => {
+          setIsDraggingOver(false);
+        });
+
+        // Handle file drop
+        unlistenDrop = await listen<TauriFileDrop>('tauri://drop', (event) => {
+          setIsDraggingOver(false);
+          
+          const paths = event.payload.paths || [];
+          const urls: string[] = [];
+          
+          // Check if any paths look like URLs (from text files or .url files)
+          paths.forEach((path: string) => {
+            // Check if it's already a URL
+            if (path.match(/^https?:\/\//)) {
+              urls.push(path);
+            }
+            // .url files or .webloc files could be processed here
+            // but for now we just ignore file drops that aren't URLs
+          });
+          
+          if (urls.length > 0) {
+            onDrop(urls);
+          }
+        });
+      } catch (err) {
+        console.error('Failed to set up Tauri drag-drop listeners:', err);
+      }
+    };
+
+    setupTauriListeners();
+
+    return () => {
+      unlistenHover?.();
+      unlistenDrop?.();
+      unlistenCancel?.();
+    };
+  }, [onDrop]);
+
+  // Browser drag/drop listeners
   useEffect(() => {
     document.addEventListener('dragenter', handleDragEnter);
     document.addEventListener('dragleave', handleDragLeave);

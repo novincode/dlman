@@ -23,10 +23,9 @@ const isTauri = () => typeof window !== 'undefined' && (window as any).__TAURI_I
 
 function AppContent() {
   const theme = useSettingsStore((s) => s.settings.theme);
-  const devMode = useSettingsStore((s) => s.settings.devMode);
   const defaultDownloadPath = useSettingsStore((s) => s.settings.defaultDownloadPath);
   const setDefaultDownloadPath = useSettingsStore((s) => s.setDefaultDownloadPath);
-  const { setShowNewDownloadDialog, setShowBatchImportDialog, showDevConsole } = useUIStore();
+  const { setShowNewDownloadDialog, setShowBatchImportDialog } = useUIStore();
 
   // Enable keyboard shortcuts
   useKeyboardShortcuts();
@@ -46,10 +45,7 @@ function AppContent() {
     };
     
     resolveDefaultPath();
-  }, []);
-
-  // Enable keyboard shortcuts
-  useKeyboardShortcuts();
+  }, [defaultDownloadPath, setDefaultDownloadPath]);
 
   // Apply theme
   useEffect(() => {
@@ -141,12 +137,6 @@ function AppContent() {
         richColors
         closeButton
       />
-      {devMode && showDevConsole && (
-        <div className="fixed bottom-0 left-0 right-0 h-48 bg-card border-t border-border overflow-auto font-mono text-xs p-2">
-          <div className="text-muted-foreground">Dev Console</div>
-          {/* Console logs will be rendered here */}
-        </div>
-      )}
     </div>
   );
 }

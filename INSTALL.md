@@ -2,7 +2,7 @@
 
 ## Downloads
 
-Get the latest version from the [Releases](https://github.com/YOUR_USERNAME/opendm/releases) page.
+Get the latest version from the [Releases](https://github.com/novincode/dlman/releases) page.
 
 ---
 
@@ -150,8 +150,8 @@ xcode-select --install
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/opendm.git
-cd opendm
+git clone https://github.com/novincode/dlman.git
+cd dlman
 
 # Install dependencies
 pnpm install
