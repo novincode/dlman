@@ -9,7 +9,6 @@ import {
   Square,
   Trash2,
   X,
-  FolderOpen,
   RefreshCw,
   ListTodo,
   CheckSquare,
@@ -172,9 +171,10 @@ export function SelectionToolbar({ className }: SelectionToolbarProps) {
 
   const handleOpenFolders = useCallback(async () => {
     const openedFolders = new Set<string>();
+    const downloadsMap = new Map(downloads.map(d => [d.id, d]));
     
     for (const id of selectedIds) {
-      const download = downloads.get(id);
+      const download = downloadsMap.get(id);
       if (download && download.status === 'completed') {
         const folder = download.destination;
         if (!openedFolders.has(folder)) {
@@ -276,19 +276,6 @@ export function SelectionToolbar({ className }: SelectionToolbarProps) {
               >
                 <RefreshCw className="h-4 w-4" />
                 <span className="hidden sm:inline">Retry</span>
-              </Button>
-            )}
-
-            {/* Open folder for completed */}
-            {hasCompleted && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleOpenFolders}
-                className="gap-1.5"
-              >
-                <FolderOpen className="h-4 w-4" />
-                <span className="hidden sm:inline">Open Folder</span>
               </Button>
             )}
 

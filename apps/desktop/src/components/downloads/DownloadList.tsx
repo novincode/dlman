@@ -13,12 +13,12 @@ export function DownloadList({ downloads }: DownloadListProps) {
   const virtualizer = useVirtualizer({
     count: downloads.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 72,
+    estimateSize: () => 80,
     overscan: 5,
   });
 
   return (
-    <div ref={parentRef} className="h-full overflow-auto">
+    <div ref={parentRef} className="h-full overflow-auto pt-2">
       <div
         className="relative w-full"
         style={{ height: `${virtualizer.getTotalSize()}px` }}
@@ -28,7 +28,7 @@ export function DownloadList({ downloads }: DownloadListProps) {
           return (
             <div
               key={download.id}
-              className="absolute top-0 left-0 w-full px-4"
+              className="absolute top-0 left-0 w-full px-4 py-2"
               style={{
                 height: `${virtualRow.size}px`,
                 transform: `translateY(${virtualRow.start}px)`,
