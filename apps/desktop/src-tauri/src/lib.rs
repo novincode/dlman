@@ -35,6 +35,9 @@ pub fn run() {
 
             match state {
                 Ok(state) => {
+                    // Start forwarding core events to frontend
+                    state.start_event_forwarding(app.handle().clone());
+                    
                     app.manage(state);
                     tracing::info!("DLMan initialized successfully");
                 }

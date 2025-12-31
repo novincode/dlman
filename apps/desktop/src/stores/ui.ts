@@ -11,6 +11,7 @@ interface UIState {
   showQueueManagerDialog: boolean;
   showCategoryDialog: boolean;
   showSettingsDialog: boolean;
+  showAboutDialog: boolean;
   showDevConsole: boolean;
   confirmDialogOpen: boolean;
   confirmDialogConfig: ConfirmDialogConfig | null;
@@ -33,6 +34,7 @@ interface UIState {
   setShowQueueManagerDialog: (open: boolean) => void;
   setShowCategoryDialog: (open: boolean) => void;
   setShowSettingsDialog: (open: boolean) => void;
+  setShowAboutDialog: (open: boolean) => void;
   setShowDevConsole: (open: boolean) => void;
 
   openConfirmDialog: (config: ConfirmDialogConfig) => void;
@@ -73,6 +75,7 @@ export const useUIStore = create<UIState>((set) => ({
   showQueueManagerDialog: false,
   showCategoryDialog: false,
   showSettingsDialog: false,
+  showAboutDialog: false,
   showDevConsole: true,
   confirmDialogOpen: false,
   confirmDialogConfig: null,
@@ -92,6 +95,7 @@ export const useUIStore = create<UIState>((set) => ({
   setShowQueueManagerDialog: (open) => set({ showQueueManagerDialog: open }),
   setShowCategoryDialog: (open) => set({ showCategoryDialog: open }),
   setShowSettingsDialog: (open) => set({ showSettingsDialog: open }),
+  setShowAboutDialog: (open) => set({ showAboutDialog: open }),
   setShowDevConsole: (open) => set({ showDevConsole: open }),
 
   openConfirmDialog: (config) =>

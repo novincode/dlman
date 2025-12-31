@@ -6,8 +6,13 @@ import {
   FolderDown,
   MoreHorizontal,
   ClipboardPaste,
+  Download as DownloadIcon,
+  Upload,
+  Info,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
+import { save, open } from "@tauri-apps/plugin-dialog";
+import { writeTextFile, readTextFile } from "@tauri-apps/plugin-fs";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,8 +23,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useUIStore } from "@/stores/ui";
-import { useDownloadStore } from "@/stores/downloads";
+import { useDownloadStore, useFilteredDownloads } from "@/stores/downloads";
+import { useQueuesArray } from "@/stores/queues";
 import { parseUrls } from "@/lib/utils";
+import type { Download } from "@/types";
 
 // Check if we're in Tauri context
 const isTauri = () => typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
@@ -30,9 +37,12 @@ export function MenuBar() {
     setShowBatchImportDialog,
     setShowQueueManagerDialog,
     setShowSettingsDialog,
+    setShowAboutDialog,
     openConfirmDialog,
   } = useUIStore();
   const { selectedIds, clearSelection, removeDownload } = useDownloadStore();
+  const downloads = useFilteredDownloads();
+  const queues = useQueuesArray();
 
   const handleAddFromClipboard = async () => {
     try {
@@ -49,6 +59,84 @@ export function MenuBar() {
       }
     } catch (error) {
       console.error("Failed to read clipboard:", error);
+    }
+  };
+
+  const handleExportData = async () => {
+    if (!isTauri()) {
+      toast.error("Export is only available in the desktop app");
+      return;
+    }
+
+    try {
+      const filePath = await save({
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+        defaultPath: 'dlman-export.json',
+      });
+
+      if (!filePath) return;
+
+      const exportData = {
+        version: "1.0",
+        exportedAt: new Date().toISOString(),
+        downloads: downloads.map((d: Download) => ({
+          url: d.url,
+          filename: d.filename,
+          destination: d.destination,
+          status: d.status,
+          size: d.size,
+          queue_id: d.queue_id,
+        })),
+        queues: queues,
+      };
+
+      await writeTextFile(filePath, JSON.stringify(exportData, null, 2));
+      toast.success("Data exported successfully");
+    } catch (error) {
+      console.error("Failed to export data:", error);
+      toast.error("Failed to export data");
+    }
+  };
+
+  const handleImportData = async () => {
+    if (!isTauri()) {
+      toast.error("Import is only available in the desktop app");
+      return;
+    }
+
+    try {
+      const filePath = await open({
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+        multiple: false,
+      });
+
+      if (!filePath) return;
+
+      const content = await readTextFile(filePath as string);
+      const importData = JSON.parse(content);
+
+      if (!importData.version || !importData.downloads) {
+        toast.error("Invalid export file format");
+        return;
+      }
+
+      // Import downloads
+      for (const dl of importData.downloads) {
+        try {
+          await invoke('add_download', {
+            url: dl.url,
+            destination: dl.destination,
+            queueId: dl.queue_id,
+          });
+        } catch (err) {
+          console.error("Failed to import download:", err);
+        }
+      }
+
+      toast.success(`Imported ${importData.downloads.length} download(s)`);
+    } catch (error) {
+      console.error("Failed to import data:", error);
+      toast.error("Failed to import data");
     }
   };
 
@@ -142,10 +230,19 @@ export function MenuBar() {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem>Export Data</DropdownMenuItem>
-          <DropdownMenuItem>Import Data</DropdownMenuItem>
+          <DropdownMenuItem onClick={handleExportData}>
+            <DownloadIcon className="h-4 w-4 mr-2" />
+            Export Data
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={handleImportData}>
+            <Upload className="h-4 w-4 mr-2" />
+            Import Data
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem>About DLMan</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setShowAboutDialog(true)}>
+            <Info className="h-4 w-4 mr-2" />
+            About DLMan
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 

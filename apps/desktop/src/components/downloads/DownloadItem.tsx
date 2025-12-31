@@ -417,6 +417,7 @@ export function DownloadItem({ download }: DownloadItemProps) {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
+            data-download-item="true"
             className={cn(
               "flex items-center gap-3 p-3 rounded-lg border bg-card transition-colors group cursor-pointer",
               isSelected && "border-primary bg-primary/5"

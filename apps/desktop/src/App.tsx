@@ -7,6 +7,7 @@ import {
   BatchImportDialog,
   SettingsDialog,
   QueueManagerDialog,
+  AboutDialog,
 } from "@/components/dialogs";
 import { DropZoneOverlay } from "@/components/DropZoneOverlay";
 import { ContextMenuProvider } from "@/components/ContextMenu";
@@ -130,6 +131,7 @@ function AppContent() {
       <BatchImportDialog />
       <SettingsDialog />
       <QueueManagerDialog />
+      <AboutDialog />
       
       <Toaster
         theme={theme === "system" ? undefined : theme}

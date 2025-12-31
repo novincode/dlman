@@ -7,7 +7,7 @@ use futures::StreamExt;
 use parking_lot::RwLock;
 use reqwest::Client;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::fs::{File, OpenOptions};
 use tokio::io::AsyncWriteExt;
@@ -15,6 +15,37 @@ use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
 use uuid::Uuid;
+
+/// Get a unique filename by appending (1), (2), etc. if file exists
+async fn get_unique_path(base_path: &Path) -> PathBuf {
+    if !base_path.exists() {
+        return base_path.to_path_buf();
+    }
+
+    let parent = base_path.parent().unwrap_or(Path::new("."));
+    let stem = base_path.file_stem().and_then(|s| s.to_str()).unwrap_or("file");
+    let extension = base_path.extension().and_then(|e| e.to_str());
+
+    let mut counter = 1;
+    loop {
+        let new_name = if let Some(ext) = extension {
+            format!("{} ({}).{}", stem, counter, ext)
+        } else {
+            format!("{} ({})", stem, counter)
+        };
+        
+        let new_path = parent.join(&new_name);
+        if !new_path.exists() {
+            return new_path;
+        }
+        counter += 1;
+        
+        // Safety limit to prevent infinite loop
+        if counter > 10000 {
+            return new_path;
+        }
+    }
+}
 
 /// Manages all download operations
 pub struct DownloadManager {
@@ -176,14 +207,17 @@ async fn download_file(
     event_tx: broadcast::Sender<CoreEvent>,
 ) -> Result<(), DlmanError> {
     let url = download.final_url.as_ref().unwrap_or(&download.url);
-    let dest_path = download.destination.join(&download.filename);
-
-    info!("Starting download: {} -> {:?}", url, dest_path);
+    let base_dest_path = download.destination.join(&download.filename);
 
     // Create destination directory
-    if let Some(parent) = dest_path.parent() {
+    if let Some(parent) = base_dest_path.parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
+
+    // Handle file collision - get unique path if file exists
+    let dest_path = get_unique_path(&base_dest_path).await;
+    
+    info!("Starting download: {} -> {:?}", url, dest_path);
 
     // Check if we should use segments
     let use_segments = download.size.map(|s| s > 1024 * 1024).unwrap_or(false);

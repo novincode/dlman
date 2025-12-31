@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { homeDir } from '@tauri-apps/api/path';
+import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import {
@@ -11,6 +12,7 @@ import {
   FileText,
   Trash2,
   Download,
+  Folder,
 } from 'lucide-react';
 
 import {
@@ -104,6 +106,31 @@ export function BatchImportDialog() {
     
     setDestination(resolvedPath);
   };
+
+  const handleBrowseDestination = useCallback(async () => {
+    // Check if we're in Tauri context
+    if (!isTauri()) {
+      toast.error('Browse is only available in the desktop app');
+      return;
+    }
+    
+    try {
+      const selected = await openDialog({
+        directory: true,
+        multiple: false,
+        defaultPath: destination.startsWith('~') 
+          ? undefined // Let Tauri use default
+          : destination,
+      });
+
+      if (selected) {
+        setDestination(selected as string);
+      }
+    } catch (err) {
+      console.error('Failed to open directory picker:', err);
+      toast.error('Failed to open directory picker');
+    }
+  }, [destination]);
 
   const parseLinks = useCallback((text: string): string[] => {
     const urlPattern = /https?:\/\/[^\s<>"{}|\\^\[\]`]+/gi;
@@ -397,12 +424,25 @@ export function BatchImportDialog() {
             <div className="grid grid-cols-2 gap-4 mt-4">
               <div className="space-y-2">
                 <Label htmlFor="destination">Save to</Label>
-                <Input
-                  id="destination"
-                  value={destination}
-                  onChange={(e) => setDestination(e.target.value)}
-                  placeholder="/path/to/downloads"
-                />
+                <div className="flex gap-2">
+                  <Input
+                    id="destination"
+                    value={destination}
+                    onChange={(e) => setDestination(e.target.value)}
+                    placeholder="/path/to/downloads"
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={handleBrowseDestination}
+                    className="shrink-0"
+                    title="Browse..."
+                  >
+                    <Folder className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
 
               <div className="space-y-2">

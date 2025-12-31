@@ -143,14 +143,22 @@ export function useGlobalContextMenu() {
     // Check if this is a right-click on a specific context-menu component
     const target = e.target as HTMLElement;
     
-    // Don't intercept if there's a radix context menu trigger nearby
-    const hasRadixContextMenu = target.closest('[data-radix-context-menu-trigger], [data-state="open"]');
+    // Don't intercept if there's a radix context menu trigger nearby or any element with context menu
+    const hasRadixContextMenu = target.closest('[data-radix-context-menu-trigger], [data-state], [data-radix-collection-item]');
     if (hasRadixContextMenu) {
+      hideContextMenu();
       return; // Let Radix handle it
     }
     
+    // Don't intercept if clicking on download items (they have their own context menu)
+    const isDownloadItem = target.closest('[data-download-item]');
+    if (isDownloadItem) {
+      hideContextMenu();
+      return;
+    }
+    
     // Don't intercept if clicking on interactive elements that have their own menus
-    const isInteractive = target.closest('button, a, input, textarea, [role="button"], [role="menuitem"]');
+    const isInteractive = target.closest('button, a, input, textarea, [role="button"], [role="menuitem"], [role="listbox"]');
     
     // Check if we're in the main content area (for global menu)
     const isInMainContent = target.closest('[data-global-context-area]');
