@@ -104,6 +104,11 @@ impl DlmanCore {
         // Validate URL
         let parsed_url = url::Url::parse(url).map_err(|_| DlmanError::InvalidUrl(url.to_string()))?;
 
+        // Validate destination
+        if destination.as_os_str().is_empty() {
+            return Err(DlmanError::InvalidOperation("Destination path is empty".to_string()));
+        }
+
         // Create download
         let mut download = Download::new(url.to_string(), destination, queue_id);
         download.category_id = category_id;
@@ -126,8 +131,8 @@ impl DlmanCore {
             }
         }
 
-        // Set status to downloading
-        download.status = dlman_types::DownloadStatus::Downloading;
+        // Set status to queued (will be started by queue manager if queue is running)
+        download.status = dlman_types::DownloadStatus::Queued;
 
         // Save to storage
         self.storage.save_download(&download).await?;
@@ -140,10 +145,60 @@ impl DlmanCore {
             download: download.clone(),
         });
 
-        // Actually start the download
-        self.download_manager.start(download.clone(), self.clone()).await?;
+        // Try to start the download if the queue has available slots
+        self.try_start_download(download.clone()).await?;
 
         Ok(download)
+    }
+
+    /// Try to start a download if the queue has available slots
+    async fn try_start_download(&self, download: Download) -> Result<(), DlmanError> {
+        let queue_id = download.queue_id;
+        let queues = self.queues.read().await;
+        
+        if let Some(queue) = queues.get(&queue_id) {
+            // Check if queue is running
+            if !self.queue_scheduler.is_queue_running(queue_id) {
+                return Ok(()); // Queue not running, don't start download
+            }
+
+            // Count currently downloading downloads in this queue
+            let downloads = self.downloads.read().await;
+            let downloading_count = downloads
+                .values()
+                .filter(|d| d.queue_id == queue_id && d.status == dlman_types::DownloadStatus::Downloading)
+                .count();
+
+            // If we have available slots, start the download
+            if downloading_count < queue.max_concurrent as usize {
+                drop(queues);
+                drop(downloads);
+                self.start_download(download.id).await?;
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Start a download (set status to Downloading and begin download)
+    async fn start_download(&self, id: Uuid) -> Result<(), DlmanError> {
+        // Get the download
+        let download = self
+            .downloads
+            .read()
+            .await
+            .get(&id)
+            .cloned()
+            .ok_or(DlmanError::NotFound(id))?;
+
+        // Update status to downloading
+        self.update_download_status(id, dlman_types::DownloadStatus::Downloading, None)
+            .await?;
+
+        // Start the actual download
+        self.download_manager.start(download, self.clone()).await?;
+
+        Ok(())
     }
 
     /// Pause a download
@@ -219,6 +274,9 @@ impl DlmanCore {
         status: dlman_types::DownloadStatus,
         error: Option<String>,
     ) -> Result<(), DlmanError> {
+        // Get the download before updating to know its queue
+        let download_copy = self.downloads.read().await.get(&id).cloned();
+
         // Update in memory
         {
             let mut downloads = self.downloads.write().await;
@@ -232,13 +290,48 @@ impl DlmanCore {
         }
 
         // Save to storage
-        let download_copy = self.downloads.read().await.get(&id).cloned();
         if let Some(download) = download_copy.as_ref() {
             self.storage.save_download(download).await?;
         }
 
         // Emit event
         self.emit(CoreEvent::DownloadStatusChanged { id, status, error });
+
+        Ok(())
+    }
+
+    /// Try to start the next queued download in a queue
+    async fn try_start_next_queued_download(&self, queue_id: Uuid) -> Result<(), DlmanError> {
+        let queues = self.queues.read().await;
+        
+        if let Some(queue) = queues.get(&queue_id) {
+            // Check if queue is running
+            if !self.queue_scheduler.is_queue_running(queue_id) {
+                return Ok(()); // Queue not running
+            }
+
+            // Count currently downloading downloads in this queue
+            let downloads = self.downloads.read().await;
+            let downloading_count = downloads
+                .values()
+                .filter(|d| d.queue_id == queue_id && d.status == dlman_types::DownloadStatus::Downloading)
+                .count();
+
+            // If we have available slots, find and start the next queued download
+            if downloading_count < queue.max_concurrent as usize {
+                // Find the next queued download
+                let next_download = downloads
+                    .values()
+                    .find(|d| d.queue_id == queue_id && d.status == dlman_types::DownloadStatus::Queued)
+                    .cloned();
+
+                if let Some(download) = next_download {
+                    drop(queues);
+                    drop(downloads);
+                    self.start_download(download.id).await?;
+                }
+            }
+        }
 
         Ok(())
     }
@@ -426,17 +519,18 @@ impl DlmanCore {
                     // Get the old queue's speed limit
                     let old_queue_speed_limit = queues
                         .get(&download.queue_id)
-                        .and_then(|q| Some(q.speed_limit));
+                        .map(|q| q.speed_limit)
+                        .flatten();
                     
                     // Get the new queue's speed limit
                     let new_queue_speed_limit = queues
                         .get(&queue_id)
-                        .and_then(|q| Some(q.speed_limit))
+                        .map(|q| q.speed_limit)
                         .flatten();
                     
                     // Only update speed_limit if it was matching the old queue's limit
                     // (meaning it wasn't a custom override)
-                    if download.speed_limit == old_queue_speed_limit.flatten() {
+                    if download.speed_limit == old_queue_speed_limit {
                         download.speed_limit = new_queue_speed_limit;
                     }
                     

@@ -56,6 +56,18 @@ export function setupEventListeners(): () => void {
     }
   }).then((fn) => unlisten.push(fn)).catch(console.error);
 
+  // Listen for segment progress
+  listen<CoreEvent>("segment-progress", (event) => {
+    const data = event.payload;
+    if (data.type === "SegmentProgress") {
+      useDownloadStore.getState().updateSegmentProgress(
+        data.payload.downloadId,
+        data.payload.segmentIndex,
+        data.payload.downloaded
+      );
+    }
+  }).then((fn) => unlisten.push(fn)).catch(console.error);
+
   // Listen for status changes
   listen<CoreEvent>("download-status", (event) => {
     const data = event.payload;

@@ -29,6 +29,11 @@ interface DownloadState {
     speed: number,
     eta: number | null
   ) => void;
+  updateSegmentProgress: (
+    id: string,
+    segmentIndex: number,
+    downloaded: number
+  ) => void;
   updateStatus: (
     id: string,
     status: DownloadStatus,
@@ -109,6 +114,18 @@ export const useDownloadStore = create<DownloadState>()(
               // Update size from total if we got a value and don't have one yet (or it's different)
               size: total ?? download.size,
             });
+          }
+          return { downloads };
+        }),
+
+      updateSegmentProgress: (id, segmentIndex, downloaded) =>
+        set((state) => {
+          const downloads = new Map(state.downloads);
+          const download = downloads.get(id);
+          if (download && download.segments[segmentIndex]) {
+            const segments = [...download.segments];
+            segments[segmentIndex] = { ...segments[segmentIndex], downloaded };
+            downloads.set(id, { ...download, segments });
           }
           return { downloads };
         }),
@@ -279,6 +296,7 @@ export const useDownloadStore = create<DownloadState>()(
         removeDownload: state.removeDownload,
         updateDownload: state.updateDownload,
         updateProgress: state.updateProgress,
+        updateSegmentProgress: state.updateSegmentProgress,
         updateStatus: state.updateStatus,
         setSelected: state.setSelected,
         toggleSelected: state.toggleSelected,

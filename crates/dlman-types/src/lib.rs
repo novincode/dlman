@@ -257,6 +257,11 @@ pub enum CoreEvent {
         speed: u64,
         eta: Option<u64>, // seconds
     },
+    SegmentProgress {
+        download_id: Uuid,
+        segment_index: u32,
+        downloaded: u64,
+    },
     DownloadStatusChanged {
         id: Uuid,
         status: DownloadStatus,

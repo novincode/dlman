@@ -40,6 +40,7 @@ impl AppState {
                             // Forward event to frontend based on type
                             let event_name = match &event {
                                 CoreEvent::DownloadProgress { .. } => "download-progress",
+                                CoreEvent::SegmentProgress { .. } => "segment-progress",
                                 CoreEvent::DownloadStatusChanged { .. } => "download-status",
                                 CoreEvent::DownloadAdded { .. } => "download-added",
                                 CoreEvent::DownloadRemoved { .. } => "download-removed",
@@ -59,6 +60,16 @@ impl AppState {
                                             "total": total,
                                             "speed": speed,
                                             "eta": eta
+                                        }
+                                    })
+                                }
+                                CoreEvent::SegmentProgress { download_id, segment_index, downloaded } => {
+                                    serde_json::json!({
+                                        "type": "SegmentProgress",
+                                        "payload": {
+                                            "downloadId": download_id.to_string(),
+                                            "segmentIndex": segment_index,
+                                            "downloaded": downloaded
                                         }
                                     })
                                 }

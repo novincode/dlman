@@ -121,6 +121,14 @@ export type CoreEvent =
       };
     }
   | {
+      type: "SegmentProgress";
+      payload: {
+        downloadId: string;
+        segmentIndex: number;
+        downloaded: number;
+      };
+    }
+  | {
       type: "DownloadStatusChanged";
       payload: {
         id: string;

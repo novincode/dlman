@@ -17,12 +17,12 @@ export async function getDefaultBasePath(): Promise<string> {
   
   try {
     const downloads = await downloadDir();
-    return `${downloads}DLMan`;
+    return `${downloads}/DLMan`;
   } catch (err) {
     console.error('Failed to get download dir:', err);
     try {
       const home = await homeDir();
-      return `${home}Downloads/DLMan`;
+      return `${home}/Downloads/DLMan`;
     } catch (err2) {
       console.error('Failed to get home dir:', err2);
       return '~/Downloads/DLMan';

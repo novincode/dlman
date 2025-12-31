@@ -25,6 +25,11 @@ impl QueueScheduler {
         }
     }
 
+    /// Check if a queue is currently running
+    pub fn is_queue_running(&self, queue_id: Uuid) -> bool {
+        self.running.read().contains(&queue_id)
+    }
+
     /// Start processing a queue
     pub async fn start_queue(&self, queue_id: Uuid, core: DlmanCore) -> Result<(), DlmanError> {
         // Check if queue exists

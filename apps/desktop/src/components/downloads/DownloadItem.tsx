@@ -643,30 +643,75 @@ export function DownloadItem({ download }: DownloadItemProps) {
                     {download.segments && download.segments.length > 0 && (
                       <div className="space-y-2">
                         <Label className="text-xs font-medium">Download Segments</Label>
-                        <div className="flex gap-1 h-4">
-                          {download.segments.map((segment, idx) => {
-                            const segmentProgress = segment.end > segment.start 
-                              ? (segment.downloaded / (segment.end - segment.start + 1)) * 100 
-                              : 0;
-                            return (
-                              <div
-                                key={idx}
-                                className="flex-1 bg-muted rounded-sm overflow-hidden relative"
-                                title={`Segment ${idx + 1}: ${Math.round(segmentProgress)}%`}
-                              >
+                        <div className="space-y-2">
+                          {/* IDM-style single progress bar with segments */}
+                          <div className="relative h-3 bg-muted rounded-full overflow-hidden">
+                            {download.segments.map((segment, idx) => {
+                              const segmentSize = segment.end - segment.start + 1;
+                              const segmentProgress = segmentSize > 0 
+                                ? (segment.downloaded / segmentSize) * 100 
+                                : 0;
+                              const segmentWidth = download.size && download.size > 0 
+                                ? (segmentSize / download.size) * 100 
+                                : 0;
+                              
+                              return (
                                 <div
-                                  className={cn(
-                                    "h-full transition-all",
-                                    segment.complete ? "bg-green-500" : "bg-primary"
-                                  )}
-                                  style={{ width: `${segmentProgress}%` }}
-                                />
-                                <span className="absolute inset-0 flex items-center justify-center text-[9px] font-medium">
-                                  {idx + 1}
-                                </span>
-                              </div>
-                            );
-                          })}
+                                  key={idx}
+                                  className="absolute top-0 h-full"
+                                  style={{
+                                    left: `${download.segments.slice(0, idx).reduce((acc, s) => acc + ((s.end - s.start + 1) / (download.size || 1)) * 100, 0)}%`,
+                                    width: `${segmentWidth}%`,
+                                  }}
+                                  title={`Segment ${idx + 1}: ${Math.round(segmentProgress)}%`}
+                                >
+                                  <div
+                                    className={cn(
+                                      "h-full transition-all duration-300",
+                                      segment.complete 
+                                        ? "bg-green-500" 
+                                        : segment.downloaded > 0 
+                                          ? "bg-blue-500" 
+                                          : "bg-muted-foreground/20"
+                                    )}
+                                    style={{ 
+                                      width: segment.complete ? '100%' : `${segmentProgress}%`,
+                                      backgroundColor: segment.complete 
+                                        ? undefined 
+                                        : segment.downloaded > 0 
+                                          ? undefined 
+                                          : 'transparent'
+                                    }}
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+                          
+                          {/* Segment details */}
+                          <div className="grid grid-cols-2 gap-1 text-[10px] text-muted-foreground">
+                            {download.segments.map((segment, idx) => {
+                              const segmentSize = segment.end - segment.start + 1;
+                              const segmentProgress = segmentSize > 0 
+                                ? (segment.downloaded / segmentSize) * 100 
+                                : 0;
+                              
+                              return (
+                                <div key={idx} className="space-y-1">
+                                  <div className="flex justify-between">
+                                    <span>Seg {idx + 1}:</span>
+                                    <span>
+                                      {segment.complete 
+                                        ? "Complete" 
+                                        : `${formatBytes(segment.downloaded)}/${formatBytes(segmentSize)}`
+                                      }
+                                    </span>
+                                  </div>
+                                  <Progress value={segmentProgress} className="h-1" />
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       </div>
                     )}
