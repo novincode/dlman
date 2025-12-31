@@ -22,7 +22,6 @@ import {
   ChevronRight,
   Gauge,
   Zap,
-  GripVertical,
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
@@ -54,6 +53,7 @@ import { useQueueStore, useQueuesArray } from "@/stores/queues";
 import { formatBytes, formatSpeed, formatDuration } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { DownloadInfoDialog } from "@/components/dialogs/DownloadInfoDialog";
+import { useUIStore } from "@/stores/ui";
 import type { Download, DownloadStatus } from "@/types";
 
 // Check if we're in Tauri context
@@ -68,6 +68,7 @@ export function DownloadItem({ download }: DownloadItemProps) {
   const isSelected = selectedIds.has(download.id);
   const queue = useQueueStore((s) => s.queues.get(download.queue_id));
   const queues = useQueuesArray();
+  const { setIsDragging: setGlobalDragging } = useUIStore();
   const [showInfoDialog, setShowInfoDialog] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [speedLimitInput, setSpeedLimitInput] = useState<string>("");
@@ -87,6 +88,7 @@ export function DownloadItem({ download }: DownloadItemProps) {
   const handleDragStart = useCallback((e: React.DragEvent) => {
     e.stopPropagation();
     setIsDragging(true);
+    setGlobalDragging(true); // Set global state to prevent overlay
     
     // Get all selected download IDs, or just this one if not selected
     const idsToMove = isSelected ? Array.from(selectedIds) : [download.id];
@@ -114,11 +116,12 @@ export function DownloadItem({ download }: DownloadItemProps) {
     requestAnimationFrame(() => {
       document.body.removeChild(dragImage);
     });
-  }, [download.id, isSelected, selectedIds]);
+  }, [download.id, isSelected, selectedIds, setGlobalDragging]);
 
   const handleDragEnd = useCallback(() => {
     setIsDragging(false);
-  }, []);
+    setGlobalDragging(false); // Clear global state
+  }, [setGlobalDragging]);
 
   const handlePause = useCallback(async (e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -525,17 +528,9 @@ export function DownloadItem({ download }: DownloadItemProps) {
           >
             {/* Main Row */}
             <div 
-              className="flex items-center gap-3 p-3 cursor-pointer"
+              className="flex items-center gap-3 p-3 cursor-grab active:cursor-grabbing"
               onClick={(e) => toggleSelected(download.id, e.shiftKey)}
             >
-              {/* Drag Handle */}
-              <div 
-                className="cursor-grab active:cursor-grabbing shrink-0 text-muted-foreground/50 hover:text-muted-foreground"
-                onMouseDown={(e) => e.stopPropagation()}
-              >
-                <GripVertical className="h-4 w-4" />
-              </div>
-
               {/* Expand/Collapse Button */}
               <Button
                 variant="ghost"

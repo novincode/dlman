@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Download, Link, FileText } from 'lucide-react';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { useUIStore } from '@/stores/ui';
 
 // Check if we're in Tauri context
 const isTauri = () => typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
@@ -18,6 +19,8 @@ interface TauriFileDrop {
 export function DropZoneOverlay({ onDrop }: DropZoneOverlayProps) {
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const dragCountRef = useRef(0);
+  const isInternalDragRef = useRef(false);
+  const { isDragging: isInternalDragging } = useUIStore();
 
   // Standard browser drag/drop handlers
   const handleDragEnter = useCallback((e: DragEvent) => {
@@ -25,22 +28,26 @@ export function DropZoneOverlay({ onDrop }: DropZoneOverlayProps) {
     e.stopPropagation();
     dragCountRef.current += 1;
     
-    // Check if dragging internal downloads - don't show overlay for those
+    // Check if this is an internal download drag using multiple methods
     const types = e.dataTransfer?.types || [];
-    if (types.includes('application/x-download-ids')) {
+    const isInternalDrag = types.includes('application/x-download-ids') || isInternalDragging;
+    
+    if (isInternalDrag) {
+      isInternalDragRef.current = true;
       return; // Internal drag, don't show overlay
     }
     
-    // Check if dragging text/url/link or files
-    const hasText = types.includes('text/plain') || 
+    // Check if dragging text/url/link or files (including Firefox-specific types)
+    const hasUrl = types.includes('text/plain') || 
                    types.includes('text/uri-list') || 
-                   types.includes('text/html');
+                   types.includes('text/html') ||
+                   types.includes('text/x-moz-url'); // Firefox specific
     const hasFiles = types.includes('Files');
     
-    if (hasText || hasFiles) {
+    if (hasUrl || hasFiles) {
       setIsDraggingOver(true);
     }
-  }, []);
+  }, [isInternalDragging]);
 
   const handleDragLeave = useCallback((e: DragEvent) => {
     e.preventDefault();
@@ -48,13 +55,19 @@ export function DropZoneOverlay({ onDrop }: DropZoneOverlayProps) {
     dragCountRef.current -= 1;
     if (dragCountRef.current === 0) {
       setIsDraggingOver(false);
+      isInternalDragRef.current = false;
     }
   }, []);
 
   const handleDragOver = useCallback((e: DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-  }, []);
+    
+    // Keep checking for internal drag
+    if (isInternalDragRef.current || isInternalDragging) {
+      return;
+    }
+  }, [isInternalDragging]);
 
   const handleDrop = useCallback((e: DragEvent) => {
     e.preventDefault();
@@ -64,9 +77,11 @@ export function DropZoneOverlay({ onDrop }: DropZoneOverlayProps) {
 
     // Check if this is an internal download drag - ignore it here
     const types = e.dataTransfer?.types || [];
-    if (types.includes('application/x-download-ids')) {
+    if (types.includes('application/x-download-ids') || isInternalDragRef.current) {
+      isInternalDragRef.current = false;
       return;
     }
+    isInternalDragRef.current = false;
 
     const urls: string[] = [];
 
@@ -74,12 +89,29 @@ export function DropZoneOverlay({ onDrop }: DropZoneOverlayProps) {
     const text = e.dataTransfer?.getData('text/plain') || '';
     const uriList = e.dataTransfer?.getData('text/uri-list') || '';
     const html = e.dataTransfer?.getData('text/html') || '';
+    // Firefox uses text/x-moz-url format: URL\nTitle
+    const mozUrl = e.dataTransfer?.getData('text/x-moz-url') || '';
+
+    // Extract URLs from Firefox's text/x-moz-url (format: URL\nTitle\nURL\nTitle...)
+    if (mozUrl) {
+      const lines = mozUrl.split('\n');
+      for (let i = 0; i < lines.length; i += 2) {
+        const url = lines[i]?.trim();
+        if (url && url.match(/^https?:\/\//)) {
+          if (!urls.includes(url)) {
+            urls.push(url);
+          }
+        }
+      }
+    }
 
     // Extract URLs from plain text (can be multiple lines)
     text.split('\n').forEach((line) => {
       const trimmed = line.trim();
       if (trimmed.match(/^https?:\/\//)) {
-        urls.push(trimmed);
+        if (!urls.includes(trimmed)) {
+          urls.push(trimmed);
+        }
       }
     });
 

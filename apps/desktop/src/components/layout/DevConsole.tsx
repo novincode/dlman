@@ -4,6 +4,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useUIStore } from "@/stores/ui";
+import { useSettingsStore } from "@/stores/settings";
 import { cn } from "@/lib/utils";
 
 type LogLevel = "info" | "warn" | "error" | "debug" | "all";
@@ -14,8 +15,14 @@ interface DevConsoleProps {
 }
 
 export function DevConsole({ isCollapsed = false, onToggleCollapse }: DevConsoleProps) {
-  const { consoleLogs, clearConsoleLogs, setShowDevConsole } = useUIStore();
+  const { consoleLogs, clearConsoleLogs } = useUIStore();
+  const { setDevMode } = useSettingsStore();
   const [filter, setFilter] = useState<LogLevel>("all");
+
+  // Close console by disabling dev mode in settings
+  const handleClose = () => {
+    setDevMode(false);
+  };
 
   const getLevelColor = (level: string) => {
     switch (level) {
@@ -82,8 +89,8 @@ export function DevConsole({ isCollapsed = false, onToggleCollapse }: DevConsole
             variant="ghost"
             size="sm"
             className="h-5 w-5 p-0"
-            onClick={() => setShowDevConsole(false)}
-            title="Close console"
+            onClick={handleClose}
+            title="Disable Dev Mode"
           >
             <X className="h-3 w-3" />
           </Button>
@@ -162,8 +169,8 @@ export function DevConsole({ isCollapsed = false, onToggleCollapse }: DevConsole
             variant="ghost"
             size="sm"
             className="h-6 w-6 p-0"
-            onClick={() => setShowDevConsole(false)}
-            title="Close console"
+            onClick={handleClose}
+            title="Disable Dev Mode"
           >
             <X className="h-3 w-3" />
           </Button>
