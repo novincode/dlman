@@ -307,3 +307,12 @@ pub async fn open_file(path: String) -> Result<(), String> {
     
     Ok(())
 }
+
+#[tauri::command]
+pub async fn delete_file_only(path: String) -> Result<(), String> {
+    let path = PathBuf::from(&path);
+    if path.exists() {
+        std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}

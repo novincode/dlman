@@ -1,6 +1,5 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { homeDir } from '@tauri-apps/api/path';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -38,9 +37,10 @@ import {
 
 import { useUIStore } from '@/stores/ui';
 import { useQueuesArray } from '@/stores/queues';
-import { useSettingsStore } from '@/stores/settings';
 import { useDownloadStore } from '@/stores/downloads';
+import { useCategoryStore } from '@/stores/categories';
 import { getPendingClipboardUrls, getPendingDropUrls } from '@/lib/events';
+import { getDefaultBasePath, getCategoryDownloadPath } from '@/lib/download-path';
 import type { LinkInfo, Download as DownloadType } from '@/types';
 
 // Check if we're in Tauri context
@@ -57,16 +57,19 @@ interface ParsedLink {
 export function BatchImportDialog() {
   const { showBatchImportDialog, setShowBatchImportDialog } = useUIStore();
   const queues = useQueuesArray();
-  const defaultPath = useSettingsStore((s) => s.settings.defaultDownloadPath);
+  const categoriesArray = useCategoryStore((s) => Array.from(s.categories.values()));
   const addDownload = useDownloadStore((s) => s.addDownload);
 
   const [rawLinks, setRawLinks] = useState('');
   const [parsedLinks, setParsedLinks] = useState<ParsedLink[]>([]);
   const [destination, setDestination] = useState('');
   const [queueId, setQueueId] = useState('00000000-0000-0000-0000-000000000000');
+  const [categoryId, setCategoryId] = useState<string | null>(null);
   const [isProbing, setIsProbing] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [step, setStep] = useState<'input' | 'review'>('input');
+  // Track if user has manually customized the path
+  const pathCustomizedRef = useRef(false);
 
   // Reset state and check for pending URLs when dialog opens
   useEffect(() => {
@@ -84,27 +87,34 @@ export function BatchImportDialog() {
       
       setParsedLinks([]);
       setStep('input');
+      setCategoryId(null);
+      pathCustomizedRef.current = false;
       
-      // Resolve default path
-      resolveDefaultPath();
+      // Set default path
+      initializeDefaultPath();
     }
   }, [showBatchImportDialog]);
 
-  const resolveDefaultPath = async () => {
-    let resolvedPath = defaultPath;
-    
-    // Resolve ~ to home directory
-    if (isTauri() && resolvedPath.startsWith('~')) {
-      try {
-        const home = await homeDir();
-        resolvedPath = resolvedPath.replace('~', home);
-      } catch (err) {
-        console.error('Failed to resolve home dir:', err);
-        resolvedPath = defaultPath;
-      }
+  const initializeDefaultPath = async () => {
+    const basePath = await getDefaultBasePath();
+    setDestination(basePath);
+  };
+
+  // Handle manual category change
+  const handleCategoryChange = async (newCategoryId: string) => {
+    const id = newCategoryId === 'none' ? null : newCategoryId;
+    setCategoryId(id);
+    // Only update path if user hasn't customized it
+    if (!pathCustomizedRef.current) {
+      const newPath = await getCategoryDownloadPath(id);
+      setDestination(newPath);
     }
-    
-    setDestination(resolvedPath);
+  };
+
+  // Handle manual path change (marks as customized)
+  const handleDestinationChange = (newPath: string) => {
+    pathCustomizedRef.current = true;
+    setDestination(newPath);
   };
 
   const handleBrowseDestination = useCallback(async () => {
@@ -421,15 +431,15 @@ export function BatchImportDialog() {
               </div>
             </ScrollArea>
 
-            {/* Destination & Queue - fixed at bottom */}
-            <div className="grid grid-cols-2 gap-4 shrink-0">
+            {/* Destination, Category & Queue - fixed at bottom */}
+            <div className="grid grid-cols-3 gap-4 shrink-0">
               <div className="space-y-2">
                 <Label htmlFor="destination">Save to</Label>
                 <div className="flex gap-2">
                   <Input
                     id="destination"
                     value={destination}
-                    onChange={(e) => setDestination(e.target.value)}
+                    onChange={(e) => handleDestinationChange(e.target.value)}
                     placeholder="/path/to/downloads"
                     className="flex-1"
                   />
@@ -444,6 +454,33 @@ export function BatchImportDialog() {
                     <Folder className="h-4 w-4" />
                   </Button>
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="category" className="flex items-center gap-2">
+                  Category
+                </Label>
+                <Select value={categoryId || 'none'} onValueChange={handleCategoryChange}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">
+                      <span className="text-muted-foreground">None</span>
+                    </SelectItem>
+                    {categoriesArray.map((category) => (
+                      <SelectItem key={category.id} value={category.id}>
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="h-3 w-3 rounded-full"
+                            style={{ backgroundColor: category.color }}
+                          />
+                          {category.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">

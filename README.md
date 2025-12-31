@@ -21,7 +21,7 @@
 
 ### Desktop App
 
-Download from [Releases](https://github.com/yourusername/dlman/releases) (coming soon)
+Download from [Releases](https://github.com/novincode/dlman/releases) (coming soon)
 
 ### CLI
 
@@ -41,7 +41,7 @@ cargo install dlman-cli
 
 ```bash
 # Clone the repo
-git clone https://github.com/yourusername/dlman.git
+git clone https://github.com/novincode/dlman.git
 cd dlman
 
 # Install dependencies
@@ -84,4 +84,4 @@ Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md)
 
 ## 📄 License
 
-MIT © [Your Name](https://github.com/yourusername)
+MIT © [Novin Code](https://github.com/novincode)

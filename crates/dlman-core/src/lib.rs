@@ -116,6 +116,14 @@ impl DlmanCore {
         download.size = probed.size;
         download.final_url = probed.final_url;
 
+        // Get queue's speed limit if the download doesn't have its own
+        if download.speed_limit.is_none() {
+            let queues = self.queues.read().await;
+            if let Some(queue) = queues.get(&queue_id) {
+                download.speed_limit = queue.speed_limit;
+            }
+        }
+
         // Set status to downloading
         download.status = dlman_types::DownloadStatus::Downloading;
 

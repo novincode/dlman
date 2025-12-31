@@ -1,6 +1,8 @@
 import { useEffect, useCallback } from "react";
 import { useUIStore } from "@/stores/ui";
-import { useDownloadStore } from "@/stores/downloads";
+import { useDownloadStore, useFilteredDownloads } from "@/stores/downloads";
+import { parseUrls } from "@/lib/utils";
+import { setPendingClipboardUrls } from "@/lib/events";
 
 interface KeyboardShortcut {
   key: string;
@@ -21,6 +23,7 @@ export function useKeyboardShortcuts() {
   } = useUIStore();
 
   const { selectAll, clearSelection } = useDownloadStore();
+  const filteredDownloads = useFilteredDownloads();
 
   const shortcuts: KeyboardShortcut[] = [
     // New download
@@ -52,11 +55,11 @@ export function useKeyboardShortcuts() {
       action: () => setShowQueueManagerDialog(true),
       description: "Queue Manager",
     },
-    // Select all
+    // Select all (only filtered downloads)
     {
       key: "a",
       metaKey: true,
-      action: () => selectAll(),
+      action: () => selectAll(filteredDownloads.map(d => d.id)),
       description: "Select All",
     },
     // Deselect all
@@ -72,8 +75,14 @@ export function useKeyboardShortcuts() {
       action: async () => {
         try {
           const text = await navigator.clipboard.readText();
-          if (text && (text.startsWith("http://") || text.startsWith("https://"))) {
+          const urls = parseUrls(text);
+          if (urls.length === 0) return;
+          
+          setPendingClipboardUrls(urls);
+          if (urls.length === 1) {
             setShowNewDownloadDialog(true);
+          } else {
+            setShowBatchImportDialog(true);
           }
         } catch (err) {
           console.error("Clipboard read failed:", err);

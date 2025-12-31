@@ -133,6 +133,27 @@ export function DownloadItem({ download }: DownloadItemProps) {
     toast.success("Download removed");
   }, [download.id, removeDownload]);
 
+  const handleDeleteFile = useCallback(async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    
+    if (isTauri()) {
+      try {
+        const filePath = `${download.destination}/${download.filename}`;
+        await invoke("delete_file_only", { path: filePath });
+        // Update status to "deleted" instead of removing from list
+        updateStatus(download.id, "deleted", null);
+        toast.success("File deleted");
+      } catch (err) {
+        console.error("Failed to delete file:", err);
+        toast.error("Failed to delete file");
+      }
+    } else {
+      // In non-Tauri mode, just update the status
+      updateStatus(download.id, "deleted", null);
+      toast.success("File marked as deleted");
+    }
+  }, [download.id, download.destination, download.filename, updateStatus]);
+
   const handleCopyUrl = useCallback(async (e?: React.MouseEvent) => {
     e?.stopPropagation();
     try {
@@ -399,7 +420,7 @@ export function DownloadItem({ download }: DownloadItemProps) {
           <Trash2 className="h-4 w-4 mr-2" />
           Remove from List
         </MenuItem>
-        <MenuItem className="text-destructive focus:text-destructive">
+        <MenuItem onClick={handleDeleteFile} className="text-destructive focus:text-destructive">
           <Trash2 className="h-4 w-4 mr-2" />
           Delete File
         </MenuItem>
@@ -567,6 +588,7 @@ function StatusBadge({ status }: { status: DownloadStatus }) {
     failed: "bg-destructive/10 text-destructive",
     queued: "bg-muted text-muted-foreground",
     cancelled: "bg-muted text-muted-foreground",
+    deleted: "bg-destructive/10 text-destructive",
   };
 
   const labels: Record<DownloadStatus, string> = {
@@ -577,6 +599,7 @@ function StatusBadge({ status }: { status: DownloadStatus }) {
     failed: "Failed",
     queued: "Queued",
     cancelled: "Cancelled",
+    deleted: "Deleted",
   };
 
   return (

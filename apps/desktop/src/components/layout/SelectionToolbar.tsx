@@ -22,7 +22,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useDownloadStore } from '@/stores/downloads';
+import { useDownloadStore, useFilteredDownloads } from '@/stores/downloads';
 import { useQueuesArray } from '@/stores/queues';
 import { useUIStore } from '@/stores/ui';
 import { cn } from '@/lib/utils';
@@ -36,6 +36,7 @@ interface SelectionToolbarProps {
 
 export function SelectionToolbar({ className }: SelectionToolbarProps) {
   const { selectedIds, downloads, clearSelection, selectAll, removeDownload, updateStatus, moveToQueue } = useDownloadStore();
+  const filteredDownloads = useFilteredDownloads();
   const queues = useQueuesArray();
   const { openConfirmDialog } = useUIStore();
 
@@ -197,7 +198,9 @@ export function SelectionToolbar({ className }: SelectionToolbarProps) {
   }, [selectedIds, moveToQueue]);
 
   const handleSelectAll = () => {
-    selectAll();
+    // Select only the currently filtered/visible downloads
+    const filteredIds = filteredDownloads.map(d => d.id);
+    selectAll(filteredIds);
   };
 
   return (

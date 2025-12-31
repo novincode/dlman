@@ -8,7 +8,8 @@ import {
   Import,
 } from 'lucide-react';
 import { useUIStore } from '@/stores/ui';
-import { cn } from '@/lib/utils';
+import { cn, parseUrls } from '@/lib/utils';
+import { setPendingClipboardUrls } from '@/lib/events';
 
 interface ContextMenuItem {
   label: string;
@@ -186,8 +187,14 @@ export function useGlobalContextMenu() {
           onClick: async () => {
             try {
               const text = await navigator.clipboard.readText();
-              if (text && text.match(/https?:\/\//)) {
+              const urls = parseUrls(text);
+              if (urls.length === 0) return;
+              
+              setPendingClipboardUrls(urls);
+              if (urls.length === 1) {
                 setShowNewDownloadDialog(true);
+              } else {
+                setShowBatchImportDialog(true);
               }
             } catch (err) {
               console.error('Clipboard read failed:', err);

@@ -5,7 +5,7 @@ edition = "2021"
 description = "DLMan CLI - Command-line download manager"
 authors = ["DLMan Team"]
 license = "MIT"
-repository = "https://github.com/dlman/dlman"
+repository = "https://github.com/novincode/dlman"
 keywords = ["download", "manager", "cli", "accelerator"]
 categories = ["command-line-utilities"]
 

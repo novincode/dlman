@@ -25,7 +25,8 @@ export type DownloadStatus =
   | "completed"
   | "failed"
   | "queued"
-  | "cancelled";
+  | "cancelled"
+  | "deleted";
 
 export interface Segment {
   index: number;

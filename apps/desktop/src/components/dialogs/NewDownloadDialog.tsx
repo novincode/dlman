@@ -1,7 +1,6 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
-import { homeDir } from '@tauri-apps/api/path';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import { 
@@ -11,7 +10,8 @@ import {
   Loader2, 
   CheckCircle2,
   XCircle,
-  Clipboard
+  Clipboard,
+  Tag
 } from 'lucide-react';
 
 import {
@@ -34,9 +34,10 @@ import {
 } from '@/components/ui/select';
 import { useUIStore } from '@/stores/ui';
 import { useQueuesArray } from '@/stores/queues';
-import { useSettingsStore } from '@/stores/settings';
 import { useDownloadStore } from '@/stores/downloads';
+import { useCategoryStore } from '@/stores/categories';
 import { getPendingClipboardUrls, getPendingDropUrls } from '@/lib/events';
+import { getDefaultBasePath, getCategoryDownloadPath, detectCategoryFromFilename } from '@/lib/download-path';
 import type { LinkInfo, Download as DownloadType } from '@/types';
 
 // Check if we're in Tauri context
@@ -45,17 +46,20 @@ const isTauri = () => typeof window !== 'undefined' && (window as any).__TAURI_I
 export function NewDownloadDialog() {
   const { showNewDownloadDialog, setShowNewDownloadDialog } = useUIStore();
   const queues = useQueuesArray();
-  const defaultPath = useSettingsStore((s) => s.settings.defaultDownloadPath);
+  const categories = useCategoryStore((s) => Array.from(s.categories.values()));
   const addDownload = useDownloadStore((s) => s.addDownload);
 
   const [url, setUrl] = useState('');
   const [destination, setDestination] = useState('');
   const [queueId, setQueueId] = useState('00000000-0000-0000-0000-000000000000');
+  const [categoryId, setCategoryId] = useState<string | null>(null);
   const [filename, setFilename] = useState('');
   const [fileSize, setFileSize] = useState<number | null>(null);
   const [isProbing, setIsProbing] = useState(false);
   const [probeError, setProbeError] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
+  // Track if user has manually customized the path
+  const pathCustomizedRef = useRef(false);
 
   // Reset state and check for pending URLs when dialog opens
   useEffect(() => {
@@ -74,27 +78,47 @@ export function NewDownloadDialog() {
       setFilename('');
       setFileSize(null);
       setProbeError(null);
+      setCategoryId(null);
+      pathCustomizedRef.current = false;
       
-      // Resolve default path
-      resolveDefaultPath();
+      // Set default path
+      initializeDefaultPath();
     }
   }, [showNewDownloadDialog]);
 
-  const resolveDefaultPath = async () => {
-    let resolvedPath = defaultPath;
-    
-    // Resolve ~ to home directory
-    if (isTauri() && resolvedPath.startsWith('~')) {
-      try {
-        const home = await homeDir();
-        resolvedPath = resolvedPath.replace('~', home);
-      } catch (err) {
-        console.error('Failed to resolve home dir:', err);
-        resolvedPath = defaultPath;
+  const initializeDefaultPath = async () => {
+    const basePath = await getDefaultBasePath();
+    setDestination(basePath);
+  };
+
+  // Update category and path when filename changes (auto-detect)
+  const updateCategoryFromFilename = useCallback(async (newFilename: string) => {
+    const detectedCategory = detectCategoryFromFilename(newFilename);
+    if (detectedCategory) {
+      setCategoryId(detectedCategory.id);
+      // Only update path if user hasn't customized it
+      if (!pathCustomizedRef.current) {
+        const newPath = await getCategoryDownloadPath(detectedCategory.id);
+        setDestination(newPath);
       }
     }
-    
-    setDestination(resolvedPath);
+  }, []);
+
+  // Handle manual category change
+  const handleCategoryChange = async (newCategoryId: string) => {
+    const id = newCategoryId === 'none' ? null : newCategoryId;
+    setCategoryId(id);
+    // Only update path if user hasn't customized it
+    if (!pathCustomizedRef.current) {
+      const newPath = await getCategoryDownloadPath(id);
+      setDestination(newPath);
+    }
+  };
+
+  // Handle manual path change (marks as customized)
+  const handleDestinationChange = (newPath: string) => {
+    pathCustomizedRef.current = true;
+    setDestination(newPath);
   };
 
   // Probe URL when it changes (debounced)
@@ -122,6 +146,8 @@ export function NewDownloadDialog() {
           setFilename(info.filename);
           setFileSize(info.size ?? null);
           setProbeError(null);
+          // Auto-detect category from filename
+          updateCategoryFromFilename(info.filename);
         }
       } catch (err) {
         setProbeError(err instanceof Error ? err.message : 'Failed to probe URL');
@@ -131,7 +157,7 @@ export function NewDownloadDialog() {
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [url]);
+  }, [url, updateCategoryFromFilename]);
 
   const handlePasteFromClipboard = useCallback(async () => {
     try {
@@ -364,7 +390,7 @@ export function NewDownloadDialog() {
               <Input
                 id="destination"
                 value={destination}
-                onChange={(e) => setDestination(e.target.value)}
+                onChange={(e) => handleDestinationChange(e.target.value)}
                 placeholder="/path/to/downloads"
                 className="flex-1"
               />
@@ -375,6 +401,40 @@ export function NewDownloadDialog() {
                 Browse
               </Button>
             </div>
+          </div>
+
+          {/* Category Selection */}
+          <div className="space-y-2">
+            <Label htmlFor="category" className="flex items-center gap-2">
+              <Tag className="h-4 w-4" />
+              Category
+              {categoryId && (
+                <span className="text-xs text-muted-foreground">(auto-detected)</span>
+              )}
+            </Label>
+            <Select value={categoryId || 'none'} onValueChange={handleCategoryChange}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a category" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    No category
+                  </div>
+                </SelectItem>
+                {categories.map((category) => (
+                  <SelectItem key={category.id} value={category.id}>
+                    <div className="flex items-center gap-2">
+                      <div
+                        className="h-3 w-3 rounded-full"
+                        style={{ backgroundColor: category.color }}
+                      />
+                      {category.name}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Queue Selection */}

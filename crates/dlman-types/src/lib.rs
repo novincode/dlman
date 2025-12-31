@@ -78,6 +78,7 @@ pub enum DownloadStatus {
     Failed,
     Queued,
     Cancelled,
+    Deleted,
 }
 
 /// A segment of a multi-part download

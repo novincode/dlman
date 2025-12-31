@@ -1,3 +1,4 @@
+import { useEffect, useCallback } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,17 +14,33 @@ import { useUIStore } from '@/stores/ui';
 export function ConfirmDialog() {
   const { confirmDialogOpen, confirmDialogConfig, closeConfirmDialog } = useUIStore();
 
-  if (!confirmDialogConfig) return null;
-
-  const handleConfirm = async () => {
+  const handleConfirm = useCallback(async () => {
+    if (!confirmDialogConfig) return;
     closeConfirmDialog();
     await confirmDialogConfig.onConfirm();
-  };
+  }, [confirmDialogConfig, closeConfirmDialog]);
 
-  const handleCancel = () => {
+  const handleCancel = useCallback(() => {
     closeConfirmDialog();
-    confirmDialogConfig.onCancel?.();
-  };
+    confirmDialogConfig?.onCancel?.();
+  }, [confirmDialogConfig, closeConfirmDialog]);
+
+  // Handle Enter key to confirm
+  useEffect(() => {
+    if (!confirmDialogOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleConfirm();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [confirmDialogOpen, handleConfirm]);
+
+  if (!confirmDialogConfig) return null;
 
   return (
     <AlertDialog open={confirmDialogOpen} onOpenChange={(open: boolean) => !open && handleCancel()}>

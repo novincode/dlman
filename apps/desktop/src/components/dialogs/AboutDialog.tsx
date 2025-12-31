@@ -1,4 +1,7 @@
 import { Download, Github, Heart } from 'lucide-react';
+import { open as openUrl } from '@tauri-apps/plugin-shell';
+
+const GITHUB_URL = 'https://github.com/novincode/dlman';
 import {
   Dialog,
   DialogContent,
@@ -42,7 +45,7 @@ export function AboutDialog() {
               variant="outline"
               size="sm"
               className="gap-2"
-              onClick={() => window.open('https://github.com/your-repo/dlman', '_blank')}
+              onClick={() => openUrl(GITHUB_URL)}
             >
               <Github className="h-4 w-4" />
               View on GitHub

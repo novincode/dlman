@@ -26,6 +26,7 @@ import { useUIStore } from "@/stores/ui";
 import { useDownloadStore, useFilteredDownloads } from "@/stores/downloads";
 import { useQueuesArray } from "@/stores/queues";
 import { parseUrls } from "@/lib/utils";
+import { setPendingClipboardUrls } from "@/lib/events";
 import type { Download } from "@/types";
 
 // Check if we're in Tauri context
@@ -49,9 +50,12 @@ export function MenuBar() {
       const text = await navigator.clipboard.readText();
       const urls = parseUrls(text);
       if (urls.length === 0) {
-        // No URLs found
+        toast.info("No valid URLs found in clipboard");
         return;
       }
+      // Store the URLs so the dialogs can read them
+      setPendingClipboardUrls(urls);
+      
       if (urls.length === 1) {
         setShowNewDownloadDialog(true);
       } else {
@@ -59,6 +63,7 @@ export function MenuBar() {
       }
     } catch (error) {
       console.error("Failed to read clipboard:", error);
+      toast.error("Failed to read clipboard");
     }
   };
 

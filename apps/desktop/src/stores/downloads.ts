@@ -37,7 +37,7 @@ interface DownloadState {
   setSelected: (ids: string[]) => void;
   toggleSelected: (id: string, shiftKey?: boolean) => void;
   selectRange: (fromId: string, toId: string) => void;
-  selectAll: () => void;
+  selectAll: (ids?: string[]) => void;
   clearSelection: () => void;
   setFilter: (filter: DownloadFilter) => void;
   setSearchQuery: (query: string) => void;
@@ -184,9 +184,9 @@ export const useDownloadStore = create<DownloadState>()(
         set({ selectedIds, lastSelectedId: toId });
       },
 
-      selectAll: () =>
+      selectAll: (ids) =>
         set((state) => ({
-          selectedIds: new Set(state.downloads.keys()),
+          selectedIds: new Set(ids ?? state.downloads.keys()),
         })),
 
       clearSelection: () => set({ selectedIds: new Set(), lastSelectedId: null }),
