@@ -28,15 +28,9 @@ export function MainContent() {
       filtered = filtered.filter((d) => d.queue_id === selectedQueueId);
     }
 
-    // Filter by category (based on file extension)
+    // Filter by category (based on assigned category_id)
     if (selectedCategoryId !== null) {
-      const category = categories.get(selectedCategoryId);
-      if (category) {
-        filtered = filtered.filter((d) => {
-          const ext = d.filename.split(".").pop()?.toLowerCase();
-          return ext && category.extensions.includes(ext);
-        });
-      }
+      filtered = filtered.filter((d) => d.category_id === selectedCategoryId);
     }
 
     return filtered;

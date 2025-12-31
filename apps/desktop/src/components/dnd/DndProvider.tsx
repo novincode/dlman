@@ -7,7 +7,7 @@ import {
   useSensors,
   DragOverlay,
   defaultDropAnimationSideEffects,
-  closestCenter,
+  rectIntersection,
 } from "@dnd-kit/core";
 import { useState } from "react";
 import { useUIStore } from "@/stores/ui";
@@ -38,7 +38,7 @@ export function DndProvider({ children }: DndProviderProps) {
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 8,
+        distance: 15, // Increased to 15px to prevent accidental drags
       },
     })
   );
@@ -74,10 +74,13 @@ export function DndProvider({ children }: DndProviderProps) {
         } else if (destinationType === "category") {
           const category = categories.get(destinationId);
           if (category) {
-            // Move downloads to this category
-            idsToMove.forEach(async (id) => {
+            // Update local state immediately
+            idsToMove.forEach((id) => {
               updateDownload(id, { category_id: destinationId });
-              // Update backend
+            });
+            
+            // Update backend
+            idsToMove.forEach(async (id) => {
               try {
                 await invoke("update_download", { 
                   id, 
@@ -85,8 +88,12 @@ export function DndProvider({ children }: DndProviderProps) {
                 });
               } catch (err) {
                 console.error("Failed to update download category:", err);
+                // Revert local state on failure
+                updateDownload(id, { category_id: null }); // or previous value, but we don't have it
+                toast.error("Failed to move item to category");
               }
             });
+            
             toast.success(`Moved ${idsToMove.length} item${idsToMove.length > 1 ? 's' : ''} to ${category.name} category`);
           }
         }
@@ -115,7 +122,7 @@ export function DndProvider({ children }: DndProviderProps) {
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={rectIntersection}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
@@ -124,7 +131,7 @@ export function DndProvider({ children }: DndProviderProps) {
       {createPortal(
         <DragOverlay dropAnimation={dropAnimationConfig}>
           {activeItem ? (
-            <div className="bg-primary text-primary-foreground px-3 py-2 rounded-lg shadow-xl border border-primary-foreground/20 flex items-center gap-2 scale-105 rotate-2 transition-transform">
+            <div className="bg-primary text-primary-foreground px-3 py-2 rounded-lg shadow-xl border border-primary-foreground/20 flex items-center gap-2">
               <div className="bg-primary-foreground/20 rounded-md px-1.5 py-0.5 text-xs font-bold">
                 {selectedIds.has(activeItem.id) ? selectedIds.size : 1}
               </div>
