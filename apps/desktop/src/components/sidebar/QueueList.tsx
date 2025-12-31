@@ -12,6 +12,8 @@ import {
   Play,
   Pause,
 } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -56,14 +58,24 @@ export function QueueList() {
     }
   }, [removeQueue]);
 
-  const handleStartQueue = useCallback((queue: Queue) => {
-    // TODO: Implement start queue
-    console.log("Start queue:", queue.id);
+  const handleStartQueue = useCallback(async (queue: Queue) => {
+    try {
+      await invoke('start_queue', { id: queue.id });
+      toast.success(`Started queue "${queue.name}"`);
+    } catch (error) {
+      console.error('Failed to start queue:', error);
+      toast.error('Failed to start queue');
+    }
   }, []);
 
-  const handlePauseQueue = useCallback((queue: Queue) => {
-    // TODO: Implement pause queue
-    console.log("Pause queue:", queue.id);
+  const handlePauseQueue = useCallback(async (queue: Queue) => {
+    try {
+      await invoke('stop_queue', { id: queue.id });
+      toast.success(`Stopped queue "${queue.name}"`);
+    } catch (error) {
+      console.error('Failed to stop queue:', error);
+      toast.error('Failed to stop queue');
+    }
   }, []);
 
   return (

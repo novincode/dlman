@@ -16,6 +16,7 @@ pub use storage::*;
 use dlman_types::{CoreEvent, Download, DownloadStatus, Queue, Settings};
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::time::Duration;
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use tokio::sync::RwLock;
@@ -23,7 +24,7 @@ use tracing::{error, info};
 use uuid::Uuid;
 
 /// The main DLMan core instance
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DlmanCore {
     /// Active downloads
     pub downloads: Arc<RwLock<HashMap<Uuid, Download>>>,
@@ -432,6 +433,21 @@ impl DlmanCore {
         Ok(())
     }
 
+    /// Handle post-download completion logic (queue progression)
+    pub async fn handle_download_completion(&self, id: Uuid) -> Result<(), DlmanError> {
+        // Get the download
+        let download = self
+            .downloads
+            .read()
+            .await
+            .get(&id)
+            .cloned()
+            .ok_or(DlmanError::NotFound(id))?;
+
+        // Try to start next download in queue
+        Box::pin(self.queue_scheduler.try_start_next_download(self, download.queue_id)).await
+    }
+
     /// Update download progress
     async fn update_download_progress(
         &self,
@@ -778,17 +794,4 @@ impl DlmanCore {
     }
 }
 
-impl Clone for DlmanCore {
-    fn clone(&self) -> Self {
-        Self {
-            downloads: Arc::clone(&self.downloads),
-            queues: Arc::clone(&self.queues),
-            settings: Arc::clone(&self.settings),
-            storage: Arc::clone(&self.storage),
-            event_tx: self.event_tx.clone(),
-            download_manager: Arc::clone(&self.download_manager),
-            queue_scheduler: Arc::clone(&self.queue_scheduler),
-        }
-    }
-}
 

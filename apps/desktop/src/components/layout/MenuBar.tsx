@@ -9,6 +9,9 @@ import {
   Download as DownloadIcon,
   Upload,
   Info,
+  Play,
+  Pause,
+  CheckCircle,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { save, open } from "@tauri-apps/plugin-dialog";
@@ -174,6 +177,55 @@ export function MenuBar() {
     });
   };
 
+  const handleStartQueue = async (queueId: string) => {
+    try {
+      await invoke('start_queue', { id: queueId });
+      toast.success('Queue started');
+    } catch (error) {
+      console.error('Failed to start queue:', error);
+      toast.error('Failed to start queue');
+    }
+  };
+
+  const handlePauseAll = async () => {
+    try {
+      // Stop all running queues
+      for (const queue of queues) {
+        await invoke('stop_queue', { id: queue.id });
+      }
+      toast.success('All queues paused');
+    } catch (error) {
+      console.error('Failed to pause queues:', error);
+      toast.error('Failed to pause queues');
+    }
+  };
+
+  const handleClearCompleted = async () => {
+    try {
+      // Get completed downloads
+      const completedDownloads = downloads.filter((d: Download) => d.status === 'completed');
+      
+      for (const download of completedDownloads) {
+        // Remove from local store
+        removeDownload(download.id);
+        
+        // Delete from backend
+        if (isTauri()) {
+          try {
+            await invoke('delete_download', { id: download.id, deleteFile: false });
+          } catch (err) {
+            console.error(`Failed to delete download ${download.id}:`, err);
+          }
+        }
+      }
+      
+      toast.success(`Cleared ${completedDownloads.length} completed download(s)`);
+    } catch (error) {
+      console.error('Failed to clear completed downloads:', error);
+      toast.error('Failed to clear completed downloads');
+    }
+  };
+
   return (
     <div className="flex items-center gap-1 px-2 py-1.5 border-b bg-card">
       {/* Add Download */}
@@ -222,6 +274,52 @@ export function MenuBar() {
       >
         <ListTodo className="h-4 w-4" />
         Queues
+      </Button>
+
+      {/* Start Queue */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="sm" className="gap-2">
+            <Play className="h-4 w-4" />
+            Start Queue
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          {queues.map((queue) => (
+            <DropdownMenuItem
+              key={queue.id}
+              onClick={() => handleStartQueue(queue.id)}
+            >
+              <div
+                className="w-2.5 h-2.5 rounded-sm shrink-0 mr-2"
+                style={{ backgroundColor: queue.color }}
+              />
+              {queue.name}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      {/* Pause All */}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="gap-2"
+        onClick={handlePauseAll}
+      >
+        <Pause className="h-4 w-4" />
+        Pause All
+      </Button>
+
+      {/* Clear Completed */}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="gap-2"
+        onClick={handleClearCompleted}
+      >
+        <CheckCircle className="h-4 w-4" />
+        Clear Completed
       </Button>
 
       {/* Spacer */}

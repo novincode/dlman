@@ -94,4 +94,50 @@ impl QueueScheduler {
     pub async fn is_running(&self, queue_id: Uuid) -> bool {
         self.running.read().await.contains(&queue_id)
     }
+
+    /// Try to start the next download in a running queue
+    pub async fn try_start_next_download(&self, core: &DlmanCore, queue_id: Uuid) -> Result<(), DlmanError> {
+        // Check if queue is running
+        if !self.is_running(queue_id).await {
+            return Ok(());
+        }
+
+        // Get queue
+        let queue = core
+            .queues
+            .read()
+            .await
+            .get(&queue_id)
+            .cloned()
+            .ok_or(DlmanError::NotFound(queue_id))?;
+
+        // Count currently active downloads in this queue
+        let active_count = core
+            .downloads
+            .read()
+            .await
+            .values()
+            .filter(|d| d.queue_id == queue_id && d.status == DownloadStatus::Downloading)
+            .count();
+
+        // If we have capacity, start the next queued download
+        if active_count < queue.max_concurrent as usize {
+            // Find the next queued download
+            let next_download = core
+                .downloads
+                .read()
+                .await
+                .values()
+                .find(|d| d.queue_id == queue_id && d.status == DownloadStatus::Queued)
+                .cloned();
+
+            if let Some(download) = next_download {
+                if let Err(e) = core.resume_download(download.id).await {
+                    tracing::warn!("Failed to start next download {}: {}", download.id, e);
+                }
+            }
+        }
+
+        Ok(())
+    }
 }

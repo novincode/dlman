@@ -589,7 +589,7 @@ impl DownloadManager {
         let task = Arc::new(SimpleDownloadTask::new(
             download,
             self.event_tx.clone(),
-            core,
+            core.clone(),
         ).await?);
 
         self.active_tasks.write().await.insert(id, Arc::clone(&task));
@@ -597,13 +597,19 @@ impl DownloadManager {
         let client = self.client.clone();
         let active_tasks = Arc::clone(&self.active_tasks);
 
+        let core_clone = core.clone();
+
         tokio::spawn(async move {
             info!("Spawned download task for {}", id);
             let result = task.start(client).await;
 
-            match &result {
+            match result {
                 Ok(_) => info!("Download {} completed successfully", id),
-                Err(e) => error!("Download {} failed: {}", id, e),
+                Err(e) => {
+                    error!("Download {} failed: {}", id, e);
+                    // Update status to failed
+                    let _ = core_clone.update_download_status(id, DownloadStatus::Failed, Some(e.to_string())).await;
+                }
             }
 
             info!("Removing task {} from active tasks", id);
