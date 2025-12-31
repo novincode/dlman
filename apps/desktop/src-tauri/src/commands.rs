@@ -61,6 +61,31 @@ pub async fn delete_download(
         .await
 }
 
+#[derive(serde::Deserialize)]
+pub struct DownloadUpdates {
+    pub speed_limit: Option<Option<u64>>,
+}
+
+#[tauri::command]
+pub async fn update_download(
+    state: State<'_, AppState>,
+    id: String,
+    updates: DownloadUpdates,
+) -> Result<(), String> {
+    let uuid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
+    state
+        .with_core_async(|core| async move {
+            let mut downloads = core.downloads.write().await;
+            if let Some(download) = downloads.get_mut(&uuid) {
+                if let Some(speed_limit) = updates.speed_limit {
+                    download.speed_limit = speed_limit;
+                }
+            }
+            Ok(())
+        })
+        .await
+}
+
 #[tauri::command]
 pub async fn get_downloads(state: State<'_, AppState>) -> Result<Vec<Download>, String> {
     state
@@ -179,4 +204,106 @@ pub async fn import_data(state: State<'_, AppState>, data: String) -> Result<(),
     state
         .with_core_async(|core| async move { core.import_data(&data).await })
         .await
+}
+
+// ============================================================================
+// File System Commands
+// ============================================================================
+
+#[tauri::command]
+pub async fn show_in_folder(path: String) -> Result<(), String> {
+    let path = PathBuf::from(&path);
+    
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg("-R")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg("/select,")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        // Try xdg-open on the parent directory
+        if let Some(parent) = path.parent() {
+            std::process::Command::new("xdg-open")
+                .arg(parent)
+                .spawn()
+                .map_err(|e| e.to_string())?;
+        }
+    }
+    
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn open_folder(path: String) -> Result<(), String> {
+    let path = PathBuf::from(&path);
+    
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn open_file(path: String) -> Result<(), String> {
+    let path = PathBuf::from(&path);
+    
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", &path.to_string_lossy()])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    
+    Ok(())
 }

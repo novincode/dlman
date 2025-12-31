@@ -205,6 +205,7 @@ export function NewDownloadDialog() {
             queue_id: queueId,
             color: null,
             error: null,
+            speed_limit: null,
             created_at: new Date().toISOString(),
             completed_at: null,
           };
@@ -226,6 +227,7 @@ export function NewDownloadDialog() {
           queue_id: queueId,
           color: null,
           error: null,
+          speed_limit: null,
           created_at: new Date().toISOString(),
           completed_at: null,
         };

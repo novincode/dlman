@@ -227,21 +227,25 @@ export function SettingsDialog() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="speedLimit">
-                    Global speed limit (bytes/sec, 0 for unlimited)
+                    Global speed limit (KB/s, 0 for unlimited)
                   </Label>
-                  <Input
-                    id="speedLimit"
-                    type="number"
-                    min={0}
-                    value={localSettings.globalSpeedLimit ?? 0}
-                    onChange={(e) =>
-                      handleChange(
-                        'globalSpeedLimit',
-                        parseInt(e.target.value) || null
-                      )
-                    }
-                    className="w-32"
-                  />
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="speedLimit"
+                      type="number"
+                      min={0}
+                      value={localSettings.globalSpeedLimit ? Math.round(localSettings.globalSpeedLimit / 1024) : 0}
+                      onChange={(e) => {
+                        const kbps = parseInt(e.target.value) || 0;
+                        handleChange('globalSpeedLimit', kbps > 0 ? kbps * 1024 : null);
+                      }}
+                      className="w-32"
+                    />
+                    <span className="text-sm text-muted-foreground">KB/s</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Set to 0 for unlimited speed. Current: {localSettings.globalSpeedLimit ? `${Math.round(localSettings.globalSpeedLimit / 1024)} KB/s` : 'Unlimited'}
+                  </p>
                 </div>
               </div>
             </div>

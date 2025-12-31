@@ -8,6 +8,7 @@ import {
   SettingsDialog,
   QueueManagerDialog,
   AboutDialog,
+  ConfirmDialog,
 } from "@/components/dialogs";
 import { DropZoneOverlay } from "@/components/DropZoneOverlay";
 import { ContextMenuProvider } from "@/components/ContextMenu";
@@ -132,6 +133,7 @@ function AppContent() {
       <SettingsDialog />
       <QueueManagerDialog />
       <AboutDialog />
+      <ConfirmDialog />
       
       <Toaster
         theme={theme === "system" ? undefined : theme}

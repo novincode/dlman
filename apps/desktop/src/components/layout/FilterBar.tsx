@@ -1,4 +1,5 @@
 import { Search, ArrowUpDown, Trash2, SortAsc, SortDesc } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -15,6 +16,9 @@ import {
   type SortField,
 } from "@/stores/downloads";
 import { useUIStore } from "@/stores/ui";
+
+// Check if we're in Tauri context
+const isTauri = () => typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
 
 const FILTERS: { value: DownloadFilter; label: string }[] = [
   { value: "all", label: "All" },
@@ -60,11 +64,24 @@ export function FilterBar() {
       description: `Are you sure you want to remove ${completedCount} completed download(s) from the list? This will not delete the files.`,
       confirmLabel: "Clear",
       variant: "destructive",
-      onConfirm: () => {
+      onConfirm: async () => {
         const completed = Array.from(downloads.values())
           .filter((d) => d.status === "completed")
           .map((d) => d.id);
-        completed.forEach((id) => removeDownload(id));
+        
+        for (const id of completed) {
+          // Remove from local store
+          removeDownload(id);
+          
+          // Delete from backend
+          if (isTauri()) {
+            try {
+              await invoke('delete_download', { id, deleteFile: false });
+            } catch (err) {
+              console.error(`Failed to delete download ${id}:`, err);
+            }
+          }
+        }
       },
     });
   };

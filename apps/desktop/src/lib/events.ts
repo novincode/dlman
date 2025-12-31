@@ -49,6 +49,7 @@ export function setupEventListeners(): () => void {
       useDownloadStore.getState().updateProgress(
         data.payload.id,
         data.payload.downloaded,
+        data.payload.total ?? null,
         data.payload.speed,
         data.payload.eta
       );

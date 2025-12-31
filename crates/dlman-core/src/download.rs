@@ -219,6 +219,9 @@ async fn download_file(
     
     info!("Starting download: {} -> {:?}", url, dest_path);
 
+    // Get speed limit from download or use none
+    let speed_limit = download.speed_limit;
+
     // Check if we should use segments
     let use_segments = download.size.map(|s| s > 1024 * 1024).unwrap_or(false);
     
@@ -227,16 +230,17 @@ async fn download_file(
         download_segmented(client, url, &dest_path, download.clone(), cancel_token, event_tx).await
     } else {
         // Single stream download
-        download_single(client, url, &dest_path, download.id, cancel_token, event_tx).await
+        download_single(client, url, &dest_path, download.id, speed_limit, cancel_token, event_tx).await
     }
 }
 
-/// Download file as a single stream
+/// Download file as a single stream with optional speed limiting
 async fn download_single(
     client: Client,
     url: &str,
     dest_path: &Path,
     id: Uuid,
+    speed_limit: Option<u64>,
     cancel_token: CancellationToken,
     event_tx: broadcast::Sender<CoreEvent>,
 ) -> Result<(), DlmanError> {
@@ -255,6 +259,10 @@ async fn download_single(
     let mut downloaded: u64 = 0;
     let mut last_update = std::time::Instant::now();
     let mut last_downloaded: u64 = 0;
+    
+    // Speed limiting state
+    let mut throttle_start = std::time::Instant::now();
+    let mut throttle_bytes: u64 = 0;
 
     while let Some(chunk_result) = tokio::select! {
         chunk = stream.next() => chunk,
@@ -265,12 +273,30 @@ async fn download_single(
         let chunk = chunk_result?;
         file.write_all(&chunk).await?;
         downloaded += chunk.len() as u64;
+        throttle_bytes += chunk.len() as u64;
+
+        // Speed limiting: if we've exceeded the limit, sleep
+        if let Some(limit) = speed_limit {
+            let elapsed = throttle_start.elapsed().as_secs_f64();
+            let target_time = throttle_bytes as f64 / limit as f64;
+            
+            if target_time > elapsed {
+                let sleep_time = target_time - elapsed;
+                tokio::time::sleep(std::time::Duration::from_secs_f64(sleep_time)).await;
+            }
+            
+            // Reset every second
+            if throttle_start.elapsed() >= std::time::Duration::from_secs(1) {
+                throttle_start = std::time::Instant::now();
+                throttle_bytes = 0;
+            }
+        }
 
         // Throttle progress updates to every 100ms
         if last_update.elapsed() >= std::time::Duration::from_millis(100) {
             let elapsed = last_update.elapsed().as_secs_f64();
             let speed = ((downloaded - last_downloaded) as f64 / elapsed) as u64;
-            let eta = total.map(|t| ((t - downloaded) as f64 / speed as f64) as u64);
+            let eta = total.map(|t| ((t - downloaded) as f64 / speed.max(1) as f64) as u64);
 
             let _ = event_tx.send(CoreEvent::DownloadProgress {
                 id,

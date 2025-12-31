@@ -234,6 +234,7 @@ export function BatchImportDialog() {
               queue_id: queueId,
               color: null,
               error: null,
+              speed_limit: null,
               created_at: new Date().toISOString(),
               completed_at: null,
             };
@@ -331,9 +332,9 @@ export function BatchImportDialog() {
             </div>
           </div>
         ) : (
-          <div className="flex-1 overflow-hidden py-4">
+          <div className="flex flex-col min-h-0 py-4 gap-4">
             {/* Toolbar */}
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
@@ -356,8 +357,8 @@ export function BatchImportDialog() {
               </span>
             </div>
 
-            {/* Links List */}
-            <ScrollArea className="h-[250px] rounded-md border">
+            {/* Links List - flexible height */}
+            <ScrollArea className="flex-1 min-h-[150px] max-h-[300px] rounded-md border">
               <div className="p-2 space-y-2">
                 <AnimatePresence>
                   {parsedLinks.map((link, index) => (
@@ -420,8 +421,8 @@ export function BatchImportDialog() {
               </div>
             </ScrollArea>
 
-            {/* Destination & Queue */}
-            <div className="grid grid-cols-2 gap-4 mt-4">
+            {/* Destination & Queue - fixed at bottom */}
+            <div className="grid grid-cols-2 gap-4 shrink-0">
               <div className="space-y-2">
                 <Label htmlFor="destination">Save to</Label>
                 <div className="flex gap-2">

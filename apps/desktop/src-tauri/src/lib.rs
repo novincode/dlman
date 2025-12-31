@@ -57,6 +57,7 @@ pub fn run() {
             commands::resume_download,
             commands::cancel_download,
             commands::delete_download,
+            commands::update_download,
             commands::get_downloads,
             commands::probe_links,
             // Queue commands
@@ -72,6 +73,10 @@ pub fn run() {
             // Data commands
             commands::export_data,
             commands::import_data,
+            // File system commands
+            commands::show_in_folder,
+            commands::open_folder,
+            commands::open_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

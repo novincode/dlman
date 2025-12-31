@@ -27,6 +27,7 @@ pub struct Download {
     pub queue_id: Uuid,
     pub color: Option<String>,
     pub error: Option<String>,
+    pub speed_limit: Option<u64>,
     pub created_at: DateTime<Utc>,
     pub completed_at: Option<DateTime<Utc>>,
 }
@@ -52,6 +53,7 @@ impl Download {
             queue_id,
             color: None,
             error: None,
+            speed_limit: None,
             created_at: Utc::now(),
             completed_at: None,
         }

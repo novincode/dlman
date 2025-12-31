@@ -1,7 +1,6 @@
 import { useState, useCallback } from "react";
 import { motion } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
-import { open as openPath } from "@tauri-apps/plugin-shell";
 import { toast } from "sonner";
 import {
   FileIcon,
@@ -148,8 +147,8 @@ export function DownloadItem({ download }: DownloadItemProps) {
     e?.stopPropagation();
     if (isTauri()) {
       try {
-        // Open the destination folder
-        await openPath(download.destination);
+        // Open the destination folder using our custom command
+        await invoke("open_folder", { path: download.destination });
       } catch (err) {
         console.error("Failed to open folder:", err);
         toast.error("Failed to open folder");
@@ -163,9 +162,9 @@ export function DownloadItem({ download }: DownloadItemProps) {
     e?.stopPropagation();
     if (isTauri() && download.status === "completed") {
       try {
-        // Open the file
+        // Show the file in folder (highlights it)
         const filePath = `${download.destination}/${download.filename}`;
-        await openPath(filePath);
+        await invoke("show_in_folder", { path: filePath });
       } catch (err) {
         console.error("Failed to open file:", err);
         toast.error("Failed to open file");
@@ -186,7 +185,7 @@ export function DownloadItem({ download }: DownloadItemProps) {
     if (isTauri()) {
       try {
         // Add a new download with the same URL
-        const newDownload = await invoke<Download>("add_download", {
+        await invoke<Download>("add_download", {
           url: download.url,
           destination: download.destination,
           queueId: download.queue_id,
@@ -422,13 +421,16 @@ export function DownloadItem({ download }: DownloadItemProps) {
               "flex items-center gap-3 p-3 rounded-lg border bg-card transition-colors group cursor-pointer",
               isSelected && "border-primary bg-primary/5"
             )}
-            onClick={() => toggleSelected(download.id)}
+            onClick={(e) => toggleSelected(download.id, e.shiftKey)}
           >
             {/* Checkbox */}
             <Checkbox
               checked={isSelected}
               onCheckedChange={() => toggleSelected(download.id)}
-              onClick={(e: React.MouseEvent) => e.stopPropagation()}
+              onClick={(e: React.MouseEvent) => {
+                e.stopPropagation();
+                toggleSelected(download.id, e.shiftKey);
+              }}
             />
 
             {/* Queue Color Indicator */}

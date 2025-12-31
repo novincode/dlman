@@ -12,6 +12,7 @@ interface DownloadState {
   // State
   downloads: Map<string, DownloadWithProgress>;
   selectedIds: Set<string>;
+  lastSelectedId: string | null;
   filter: DownloadFilter;
   searchQuery: string;
   sortBy: SortField;
@@ -20,9 +21,11 @@ interface DownloadState {
   // Actions
   addDownload: (download: Download) => void;
   removeDownload: (id: string) => void;
+  updateDownload: (id: string, updates: Partial<Download>) => void;
   updateProgress: (
     id: string,
     downloaded: number,
+    total: number | null,
     speed: number,
     eta: number | null
   ) => void;
@@ -32,7 +35,8 @@ interface DownloadState {
     error: string | null
   ) => void;
   setSelected: (ids: string[]) => void;
-  toggleSelected: (id: string) => void;
+  toggleSelected: (id: string, shiftKey?: boolean) => void;
+  selectRange: (fromId: string, toId: string) => void;
   selectAll: () => void;
   clearSelection: () => void;
   setFilter: (filter: DownloadFilter) => void;
@@ -55,10 +59,11 @@ export type SortField = "name" | "size" | "progress" | "date" | "status";
 
 export const useDownloadStore = create<DownloadState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       // Initial state
       downloads: new Map(),
       selectedIds: new Set(),
+      lastSelectedId: null,
       filter: "all",
       searchQuery: "",
       sortBy: "date",
@@ -81,12 +86,29 @@ export const useDownloadStore = create<DownloadState>()(
           return { downloads, selectedIds };
         }),
 
-      updateProgress: (id, downloaded, speed, eta) =>
+      updateDownload: (id, updates) =>
         set((state) => {
           const downloads = new Map(state.downloads);
           const download = downloads.get(id);
           if (download) {
-            downloads.set(id, { ...download, downloaded, speed, eta });
+            downloads.set(id, { ...download, ...updates });
+          }
+          return { downloads };
+        }),
+
+      updateProgress: (id, downloaded, total, speed, eta) =>
+        set((state) => {
+          const downloads = new Map(state.downloads);
+          const download = downloads.get(id);
+          if (download) {
+            downloads.set(id, {
+              ...download,
+              downloaded,
+              speed,
+              eta,
+              // Update size from total if we got a value and don't have one yet (or it's different)
+              size: total ?? download.size,
+            });
           }
           return { downloads };
         }),
@@ -100,6 +122,8 @@ export const useDownloadStore = create<DownloadState>()(
               ...download,
               status,
               error,
+              // When completed, set downloaded to size to ensure they match
+              downloaded: status === "completed" ? (download.size ?? download.downloaded) : download.downloaded,
               completed_at:
                 status === "completed" ? new Date().toISOString() : download.completed_at,
             });
@@ -107,25 +131,65 @@ export const useDownloadStore = create<DownloadState>()(
           return { downloads };
         }),
 
-      setSelected: (ids) => set({ selectedIds: new Set(ids) }),
+      setSelected: (ids) => set({ selectedIds: new Set(ids), lastSelectedId: ids[ids.length - 1] ?? null }),
 
-      toggleSelected: (id) =>
-        set((state) => {
-          const selectedIds = new Set(state.selectedIds);
-          if (selectedIds.has(id)) {
-            selectedIds.delete(id);
-          } else {
-            selectedIds.add(id);
+      toggleSelected: (id, shiftKey = false) => {
+        const state = get();
+        
+        // If shift is held and we have a last selected id, select range
+        if (shiftKey && state.lastSelectedId && state.lastSelectedId !== id) {
+          // Get sorted download IDs
+          const sortedIds = selectFilteredDownloads(state).map(d => d.id);
+          const fromIndex = sortedIds.indexOf(state.lastSelectedId);
+          const toIndex = sortedIds.indexOf(id);
+          
+          if (fromIndex !== -1 && toIndex !== -1) {
+            const start = Math.min(fromIndex, toIndex);
+            const end = Math.max(fromIndex, toIndex);
+            const rangeIds = sortedIds.slice(start, end + 1);
+            
+            const selectedIds = new Set(state.selectedIds);
+            rangeIds.forEach(rangeId => selectedIds.add(rangeId));
+            
+            set({ selectedIds, lastSelectedId: id });
+            return;
           }
-          return { selectedIds };
-        }),
+        }
+        
+        // Normal toggle
+        const selectedIds = new Set(state.selectedIds);
+        if (selectedIds.has(id)) {
+          selectedIds.delete(id);
+        } else {
+          selectedIds.add(id);
+        }
+        set({ selectedIds, lastSelectedId: id });
+      },
+
+      selectRange: (fromId, toId) => {
+        const state = get();
+        const sortedIds = selectFilteredDownloads(state).map(d => d.id);
+        const fromIndex = sortedIds.indexOf(fromId);
+        const toIndex = sortedIds.indexOf(toId);
+        
+        if (fromIndex === -1 || toIndex === -1) return;
+        
+        const start = Math.min(fromIndex, toIndex);
+        const end = Math.max(fromIndex, toIndex);
+        const rangeIds = sortedIds.slice(start, end + 1);
+        
+        const selectedIds = new Set(state.selectedIds);
+        rangeIds.forEach(id => selectedIds.add(id));
+        
+        set({ selectedIds, lastSelectedId: toId });
+      },
 
       selectAll: () =>
         set((state) => ({
           selectedIds: new Set(state.downloads.keys()),
         })),
 
-      clearSelection: () => set({ selectedIds: new Set() }),
+      clearSelection: () => set({ selectedIds: new Set(), lastSelectedId: null }),
 
       setFilter: (filter) => set({ filter }),
 
@@ -209,13 +273,16 @@ export const useDownloadStore = create<DownloadState>()(
         sortOrder: state.sortOrder,
         searchQuery: "",
         selectedIds: new Set<string>(),
+        lastSelectedId: null,
         // Actions need to be included for type compatibility but won't be serialized
         addDownload: state.addDownload,
         removeDownload: state.removeDownload,
+        updateDownload: state.updateDownload,
         updateProgress: state.updateProgress,
         updateStatus: state.updateStatus,
         setSelected: state.setSelected,
         toggleSelected: state.toggleSelected,
+        selectRange: state.selectRange,
         selectAll: state.selectAll,
         clearSelection: state.clearSelection,
         setFilter: state.setFilter,

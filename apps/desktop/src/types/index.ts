@@ -13,6 +13,7 @@ export interface Download {
   queue_id: string;
   color: string | null;
   error: string | null;
+  speed_limit: number | null;
   created_at: string;
   completed_at: string | null;
 }
