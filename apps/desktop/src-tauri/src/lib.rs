@@ -22,25 +22,28 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            // Initialize application state
+            // Initialize application state synchronously using block_on
             let data_dir = app
                 .path()
                 .app_data_dir()
                 .expect("Failed to get app data directory");
 
-            // Create state asynchronously
-            let app_handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                match AppState::new(data_dir).await {
-                    Ok(state) => {
-                        app_handle.manage(state);
-                        tracing::info!("DLMan initialized successfully");
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to initialize DLMan: {}", e);
-                    }
-                }
+            // Create state synchronously to ensure it's ready before app starts
+            let state = tauri::async_runtime::block_on(async {
+                AppState::new(data_dir).await
             });
+
+            match state {
+                Ok(state) => {
+                    app.manage(state);
+                    tracing::info!("DLMan initialized successfully");
+                }
+                Err(e) => {
+                    tracing::error!("Failed to initialize DLMan: {}", e);
+                    // Return error to prevent app from starting with broken state
+                    return Err(e.to_string().into());
+                }
+            }
 
             Ok(())
         })

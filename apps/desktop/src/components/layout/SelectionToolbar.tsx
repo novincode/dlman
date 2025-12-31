@@ -1,4 +1,8 @@
+import { useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { invoke } from '@tauri-apps/api/core';
+import { open as openPath } from '@tauri-apps/plugin-shell';
+import { toast } from 'sonner';
 import {
   Play,
   Pause,
@@ -12,16 +16,27 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useDownloadStore } from '@/stores/downloads';
+import { useQueuesArray } from '@/stores/queues';
 import { useUIStore } from '@/stores/ui';
 import { cn } from '@/lib/utils';
+
+// Check if we're in Tauri context
+const isTauri = () => typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
 
 interface SelectionToolbarProps {
   className?: string;
 }
 
 export function SelectionToolbar({ className }: SelectionToolbarProps) {
-  const { selectedIds, downloads, clearSelection, selectAll } = useDownloadStore();
+  const { selectedIds, downloads, clearSelection, selectAll, removeDownload, updateStatus, moveToQueue } = useDownloadStore();
+  const queues = useQueuesArray();
   const { openConfirmDialog } = useUIStore();
 
   const selectedCount = selectedIds.size;
@@ -41,38 +56,145 @@ export function SelectionToolbar({ className }: SelectionToolbarProps) {
   const canPause = hasActive || hasPending;
   const canResume = hasPaused || hasFailed;
 
-  const handlePauseSelected = () => {
-    // TODO: Implement pause for selected downloads
-    console.log('Pause:', Array.from(selectedIds));
-  };
+  const handlePauseSelected = useCallback(async () => {
+    const ids = Array.from(selectedIds);
+    let successCount = 0;
+    
+    for (const id of ids) {
+      const download = downloads.get(id);
+      if (download && (download.status === 'downloading' || download.status === 'pending' || download.status === 'queued')) {
+        // Update local state immediately
+        updateStatus(id, 'paused', null);
+        
+        if (isTauri()) {
+          try {
+            await invoke('pause_download', { id });
+            successCount++;
+          } catch (err) {
+            console.error(`Failed to pause download ${id}:`, err);
+            // Revert on failure
+            updateStatus(id, download.status, null);
+          }
+        } else {
+          successCount++;
+        }
+      }
+    }
+    
+    if (successCount > 0) {
+      toast.success(`Paused ${successCount} download(s)`);
+    }
+  }, [selectedIds, downloads, updateStatus]);
 
-  const handleResumeSelected = () => {
-    // TODO: Implement resume for selected downloads
-    console.log('Resume:', Array.from(selectedIds));
-  };
+  const handleResumeSelected = useCallback(async () => {
+    const ids = Array.from(selectedIds);
+    let successCount = 0;
+    
+    for (const id of ids) {
+      const download = downloads.get(id);
+      if (download && (download.status === 'paused' || download.status === 'failed')) {
+        // Update local state immediately
+        updateStatus(id, 'downloading', null);
+        
+        if (isTauri()) {
+          try {
+            await invoke('resume_download', { id });
+            successCount++;
+          } catch (err) {
+            console.error(`Failed to resume download ${id}:`, err);
+            // Revert on failure
+            updateStatus(id, download.status, null);
+          }
+        } else {
+          successCount++;
+        }
+      }
+    }
+    
+    if (successCount > 0) {
+      toast.success(`Resumed ${successCount} download(s)`);
+    }
+  }, [selectedIds, downloads, updateStatus]);
 
-  const handleStopSelected = () => {
-    // TODO: Implement stop for selected downloads
-    console.log('Stop:', Array.from(selectedIds));
-  };
+  const handleStopSelected = useCallback(async () => {
+    const ids = Array.from(selectedIds);
+    let successCount = 0;
+    
+    for (const id of ids) {
+      const download = downloads.get(id);
+      if (download && (download.status === 'downloading' || download.status === 'paused')) {
+        // Update local state immediately
+        updateStatus(id, 'cancelled', null);
+        
+        if (isTauri()) {
+          try {
+            await invoke('cancel_download', { id });
+            successCount++;
+          } catch (err) {
+            console.error(`Failed to cancel download ${id}:`, err);
+          }
+        } else {
+          successCount++;
+        }
+      }
+    }
+    
+    if (successCount > 0) {
+      toast.success(`Stopped ${successCount} download(s)`);
+    }
+  }, [selectedIds, downloads, updateStatus]);
 
-  const handleDeleteSelected = () => {
+  const handleDeleteSelected = useCallback(() => {
     openConfirmDialog({
       title: 'Delete Downloads',
       description: `Are you sure you want to remove ${selectedCount} download(s) from the list? This will not delete the files.`,
       confirmLabel: 'Remove',
       variant: 'destructive',
-      onConfirm: () => {
-        // TODO: Call backend to delete downloads
+      onConfirm: async () => {
+        const ids = Array.from(selectedIds);
+        for (const id of ids) {
+          removeDownload(id);
+          
+          if (isTauri()) {
+            try {
+              await invoke('delete_download', { id, deleteFile: false });
+            } catch (err) {
+              console.error(`Failed to delete download ${id}:`, err);
+            }
+          }
+        }
         clearSelection();
+        toast.success(`Removed ${ids.length} download(s)`);
       },
     });
-  };
+  }, [selectedIds, selectedCount, removeDownload, clearSelection, openConfirmDialog]);
 
-  const handleOpenFolders = () => {
-    // TODO: Open folders for completed downloads
-    console.log('Open folders for:', Array.from(selectedIds));
-  };
+  const handleOpenFolders = useCallback(async () => {
+    const openedFolders = new Set<string>();
+    
+    for (const id of selectedIds) {
+      const download = downloads.get(id);
+      if (download && download.status === 'completed') {
+        const folder = download.destination;
+        if (!openedFolders.has(folder)) {
+          openedFolders.add(folder);
+          if (isTauri()) {
+            try {
+              await openPath(folder);
+            } catch (err) {
+              console.error(`Failed to open folder ${folder}:`, err);
+            }
+          }
+        }
+      }
+    }
+  }, [selectedIds, downloads]);
+
+  const handleMoveToQueue = useCallback((queueId: string) => {
+    const ids = Array.from(selectedIds);
+    moveToQueue(ids, queueId);
+    toast.success(`Moved ${ids.length} download(s) to queue`);
+  }, [selectedIds, moveToQueue]);
 
   const handleSelectAll = () => {
     selectAll();
@@ -170,10 +292,28 @@ export function SelectionToolbar({ className }: SelectionToolbarProps) {
             <Separator orientation="vertical" className="h-6" />
 
             {/* Move to queue */}
-            <Button variant="ghost" size="sm" className="gap-1.5">
-              <ListTodo className="h-4 w-4" />
-              <span className="hidden sm:inline">Move to Queue</span>
-            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="gap-1.5">
+                  <ListTodo className="h-4 w-4" />
+                  <span className="hidden sm:inline">Move to Queue</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                {queues.map((queue) => (
+                  <DropdownMenuItem
+                    key={queue.id}
+                    onClick={() => handleMoveToQueue(queue.id)}
+                  >
+                    <div
+                      className="w-3 h-3 rounded-full mr-2"
+                      style={{ backgroundColor: queue.color }}
+                    />
+                    {queue.name}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
 
             <Separator orientation="vertical" className="h-6" />
 
