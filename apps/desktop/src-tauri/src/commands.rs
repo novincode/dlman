@@ -44,6 +44,14 @@ pub async fn resume_download(state: State<'_, AppState>, id: String) -> Result<(
 }
 
 #[tauri::command]
+pub async fn retry_download(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    let uuid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
+    state
+        .with_core_async(|core| async move { core.retry_download(uuid).await })
+        .await
+}
+
+#[tauri::command]
 pub async fn cancel_download(state: State<'_, AppState>, id: String) -> Result<(), String> {
     let uuid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
     state

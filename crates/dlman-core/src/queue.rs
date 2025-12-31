@@ -10,6 +10,7 @@ use tokio::sync::broadcast;
 use uuid::Uuid;
 
 /// Manages queue scheduling and execution
+#[derive(Debug)]
 pub struct QueueScheduler {
     /// Currently running queues
     running: Arc<AsyncRwLock<HashSet<Uuid>>>,

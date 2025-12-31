@@ -13,7 +13,7 @@ pub use error::*;
 pub use queue::*;
 pub use storage::*;
 
-use dlman_types::{CoreEvent, Download, Queue, Settings};
+use dlman_types::{CoreEvent, Download, DownloadStatus, Queue, Settings};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -23,6 +23,7 @@ use tracing::{error, info};
 use uuid::Uuid;
 
 /// The main DLMan core instance
+#[derive(Debug)]
 pub struct DlmanCore {
     /// Active downloads
     pub downloads: Arc<RwLock<HashMap<Uuid, Download>>>,
@@ -127,7 +128,7 @@ impl DlmanCore {
         // Initialize segments if the server supports range requests and file is large enough
         if probed.resumable && probed.size.map(|s| s > 1024 * 1024).unwrap_or(false) {
             let num_segments = 4; // Default to 4 segments
-            download.segments = calculate_segments(probed.size.unwrap(), num_segments);
+            download.segments = download::calculate_segments_public(probed.size.unwrap(), num_segments);
         }
 
         // Get queue's speed limit if the download doesn't have its own
@@ -241,6 +242,14 @@ impl DlmanCore {
     /// Resume a download
     pub async fn resume_download(&self, id: Uuid) -> Result<(), DlmanError> {
         info!("Core: resuming download {}", id);
+
+        // Check if download exists in core first
+        let download_exists = self.downloads.read().await.contains_key(&id);
+        if !download_exists {
+            info!("Core: download {} not found in core, skipping resume", id);
+            return Ok(()); // Don't error if download doesn't exist
+        }
+
         match self.download_manager.resume(id, self.clone()).await {
             Ok(_) => {
                 info!("Core: download manager resume successful for {}", id);
@@ -254,6 +263,41 @@ impl DlmanCore {
         }
     }
 
+    /// Retry a failed/cancelled download by resetting it and restarting
+    pub async fn retry_download(&self, id: Uuid) -> Result<(), DlmanError> {
+        info!("Core: retrying download {}", id);
+
+        // Get the download
+        let mut download = self
+            .downloads
+            .read()
+            .await
+            .get(&id)
+            .cloned()
+            .ok_or(DlmanError::NotFound(id))?;
+
+        // Check if it's in a retryable state
+        if !matches!(download.status, DownloadStatus::Failed | DownloadStatus::Cancelled) {
+            return Err(DlmanError::InvalidOperation("Download is not in a retryable state".to_string()));
+        }
+
+        // Reset download state for fresh start
+        download.downloaded = 0;
+        download.status = DownloadStatus::Pending;
+        download.segments.clear();
+        download.error = None;
+        download.retry_count += 1;
+
+        // Save the reset download
+        self.downloads.write().await.insert(id, download.clone());
+        self.storage.save_download(&download).await?;
+
+        // Start the download fresh
+        self.start_download(id).await?;
+
+        Ok(())
+    }
+
     /// Cancel a download
     pub async fn cancel_download(&self, id: Uuid) -> Result<(), DlmanError> {
         self.download_manager.cancel(id).await?;
@@ -261,15 +305,13 @@ impl DlmanCore {
             .await
     }
 
-    /// Retry a failed/cancelled download - starts fresh from beginning
-    pub async fn retry_download(&self, id: Uuid) -> Result<(), DlmanError> {
-        self.download_manager.retry(id, self.clone()).await
-    }
 
     /// Update speed limit for a download
     pub async fn update_download_speed_limit(&self, id: Uuid, speed_limit: Option<u64>) -> Result<(), DlmanError> {
         // Update the download manager (for running downloads)
-        let _ = self.download_manager.update_speed_limit(id, speed_limit).await;
+        if let Some(limit) = speed_limit {
+            let _ = self.download_manager.update_speed_limit(id, limit).await;
+        }
 
         // Update in memory and storage
         {

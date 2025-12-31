@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 /// Storage manager for DLMan data
 #[derive(Clone)]
+#[derive(Debug)]
 pub struct Storage {
     /// Data directory
     data_dir: PathBuf,
