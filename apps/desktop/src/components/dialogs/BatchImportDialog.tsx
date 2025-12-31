@@ -57,7 +57,10 @@ interface ParsedLink {
 export function BatchImportDialog() {
   const { showBatchImportDialog, setShowBatchImportDialog } = useUIStore();
   const queues = useQueuesArray();
-  const categoriesArray = useCategoryStore((s) => Array.from(s.categories.values()));
+  const categoriesArray = useMemo(
+    () => Array.from(useCategoryStore.getState().categories.values()),
+    []
+  );
   const addDownload = useDownloadStore((s) => s.addDownload);
 
   const [rawLinks, setRawLinks] = useState('');
@@ -468,7 +471,7 @@ export function BatchImportDialog() {
                     <SelectItem value="none">
                       <span className="text-muted-foreground">None</span>
                     </SelectItem>
-                    {categoriesArray.map((category) => (
+                    {Array.from(categoriesArray.values()).map((category) => (
                       <SelectItem key={category.id} value={category.id}>
                         <div className="flex items-center gap-2">
                           <div

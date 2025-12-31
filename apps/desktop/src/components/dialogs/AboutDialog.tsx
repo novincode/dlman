@@ -1,7 +1,8 @@
-import { Download, Github, Heart } from 'lucide-react';
+import { Download, Github, Heart, Coffee } from 'lucide-react';
 import { open as openUrl } from '@tauri-apps/plugin-shell';
 
 const GITHUB_URL = 'https://github.com/novincode/dlman';
+const SPONSORS_URL = 'https://github.com/sponsors/novincode';
 import {
   Dialog,
   DialogContent,
@@ -49,6 +50,15 @@ export function AboutDialog() {
             >
               <Github className="h-4 w-4" />
               View on GitHub
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-2"
+              onClick={() => openUrl(SPONSORS_URL)}
+            >
+              <Coffee className="h-4 w-4" />
+              Buy me a coffee
             </Button>
           </div>
 

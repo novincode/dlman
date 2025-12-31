@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -46,7 +46,10 @@ const isTauri = () => typeof window !== 'undefined' && (window as any).__TAURI_I
 export function NewDownloadDialog() {
   const { showNewDownloadDialog, setShowNewDownloadDialog } = useUIStore();
   const queues = useQueuesArray();
-  const categories = useCategoryStore((s) => Array.from(s.categories.values()));
+  const categories = useMemo(
+    () => useCategoryStore.getState().categories,
+    []
+  );
   const addDownload = useDownloadStore((s) => s.addDownload);
 
   const [url, setUrl] = useState('');
@@ -422,7 +425,7 @@ export function NewDownloadDialog() {
                     No category
                   </div>
                 </SelectItem>
-                {categories.map((category) => (
+                {Array.from(categories.values()).map((category) => (
                   <SelectItem key={category.id} value={category.id}>
                     <div className="flex items-center gap-2">
                       <div
