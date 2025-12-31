@@ -338,9 +338,9 @@ impl DlmanCore {
     /// Update speed limit for a download
     pub async fn update_download_speed_limit(&self, id: Uuid, speed_limit: Option<u64>) -> Result<(), DlmanError> {
         // Update the download manager (for running downloads)
-        // Pass 0 for None (unlimited)
-        let limit_value = speed_limit.unwrap_or(0);
-        let _ = self.download_manager.update_speed_limit(id, limit_value).await;
+        if let Some(limit) = speed_limit {
+            let _ = self.download_manager.update_speed_limit(id, limit).await;
+        }
 
         // Update in memory and storage
         {
@@ -356,11 +356,6 @@ impl DlmanCore {
         // Save to storage
         if let Some(download) = download {
             self.storage.save_download(&download).await?;
-
-            // Emit update event to notify frontend
-            self.emit(CoreEvent::DownloadUpdated {
-                download: download.clone(),
-            });
         }
 
         Ok(())

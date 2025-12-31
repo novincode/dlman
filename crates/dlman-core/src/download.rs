@@ -19,10 +19,10 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
-use tokio::sync::{broadcast, Mutex};
+use tokio::sync::broadcast;
 use tokio::sync::RwLock as AsyncRwLock;
-use std::collections::VecDeque;
-use tracing::{debug, error, info, trace, warn};
+use chrono::Utc;
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 /// Simple download task - one per download, owns the file handle
@@ -36,10 +36,8 @@ pub struct SimpleDownloadTask {
     downloaded_bytes: AtomicU64,
     /// Total file size (if known)
     total_size: u64,
-    /// Professional speed calculator (5-second moving window)
-    speed_calculator: std::sync::Arc<Mutex<SpeedCalculator>>,
-    /// Professional speed limiter
-    speed_limiter: std::sync::Arc<Mutex<TokenBucketLimiter>>,
+    /// Speed limit in bytes per second (0 = unlimited)
+    speed_limit: AtomicU64,
     /// Pause flag
     paused: AtomicBool,
     /// Cancel flag
@@ -48,8 +46,6 @@ pub struct SimpleDownloadTask {
     event_tx: broadcast::Sender<CoreEvent>,
     /// Core reference for updates
     core: DlmanCore,
-    /// Start time for overall progress
-    start_time: std::time::Instant,
 }
 
 impl SimpleDownloadTask {
@@ -72,36 +68,28 @@ impl SimpleDownloadTask {
             .await?;
 
         // Check existing file size for resume
-        info!("Download {}: opening file {}", download.id, dest_path.display());
         let existing_size = file.metadata().await?.len();
         info!("Download {}: existing file size = {} bytes, total_size = {:?}", download.id, existing_size, download.size);
 
         let total_size = download.size.unwrap_or(0);
-        let speed_limit = download.speed_limit.unwrap_or(0);
 
         Ok(Self {
             download: download.clone(),
             file: AsyncRwLock::new(file),
             downloaded_bytes: AtomicU64::new(existing_size),
             total_size,
-            speed_calculator: std::sync::Arc::new(Mutex::new(
-                SpeedCalculator::new(std::time::Duration::from_secs(5))
-            )),
-            speed_limiter: std::sync::Arc::new(Mutex::new(
-                TokenBucketLimiter::new(speed_limit)
-            )),
+            speed_limit: AtomicU64::new(download.speed_limit.unwrap_or(0)),
             paused: AtomicBool::new(false),
             cancelled: AtomicBool::new(false),
             event_tx,
             core,
-            start_time: std::time::Instant::now(),
         })
     }
 
     /// Start the download with multi-segment support
     pub async fn start(self: Arc<Self>, client: Client) -> Result<(), DlmanError> {
         let id = self.download.id;
-        info!("=== STARTING DOWNLOAD TASK {}: {} ===", id, self.download.url);
+        info!("Starting simple download {}: {}", id, self.download.url);
 
         // Determine number of segments
         let num_segments = if self.total_size > 1024 * 1024 && self.download.segments.len() > 1 {
@@ -128,7 +116,6 @@ impl SimpleDownloadTask {
     async fn download_single_segment(self: Arc<Self>, client: Client) -> Result<(), DlmanError> {
         let id = self.download.id;
         let url = self.download.url.clone();
-        info!("Download {}: entering download_single_segment", id);
 
         // Check if we need to resume
         let current_pos = self.downloaded_bytes.load(Ordering::Acquire);
@@ -143,13 +130,11 @@ impl SimpleDownloadTask {
             client.get(&url)
         };
 
-        info!("Download {}: sending HTTP request", id);
         let response = request.send().await?;
-        info!("Download {}: got HTTP response, creating stream", id);
         let mut stream = response.bytes_stream();
-        info!("Download {}: stream created, entering download loop", id);
 
         let mut last_progress_time = Instant::now();
+        let mut last_chunk_time = Instant::now();
 
         while let Some(chunk_result) = stream.next().await {
             // Check cancel
@@ -170,8 +155,16 @@ impl SimpleDownloadTask {
             let chunk = chunk_result?;
             let chunk_len = chunk.len() as u64;
 
-            // Apply professional speed limiting
-            self.apply_speed_limit(chunk_len).await;
+            // Apply speed limiting (simple time-based)
+            if let Some(limit) = self.get_speed_limit() {
+                if limit > 0 {
+                    let expected_duration = Duration::from_secs_f64(chunk_len as f64 / limit as f64);
+                    let elapsed = last_chunk_time.elapsed();
+                    if elapsed < expected_duration {
+                        tokio::time::sleep(expected_duration - elapsed).await;
+                    }
+                }
+            }
 
             // Write directly to file
             {
@@ -180,21 +173,16 @@ impl SimpleDownloadTask {
 
             // Update progress
             let new_downloaded = self.downloaded_bytes.fetch_add(chunk_len, Ordering::AcqRel) + chunk_len;
-
-            // Record chunk for speed calculation
-            self.record_chunk(chunk_len);
+            last_chunk_time = Instant::now();
 
             // Emit progress event (throttled to ~4x per second)
             if last_progress_time.elapsed() >= Duration::from_millis(250) {
-                let current_speed = self.calculate_current_speed();
-                let eta = self.calculate_eta();
-
                 let _ = self.event_tx.send(CoreEvent::DownloadProgress {
                     id,
                     downloaded: new_downloaded,
                     total: if self.total_size > 0 { Some(self.total_size) } else { None },
-                    speed: current_speed,
-                    eta,
+                    speed: self.calculate_speed(),
+                    eta: self.calculate_eta(),
                 });
                 last_progress_time = Instant::now();
             }
@@ -282,7 +270,7 @@ impl SimpleDownloadTask {
         let _ = self.event_tx.send(CoreEvent::SegmentProgress {
             download_id: self.download.id,
             segment_index,
-                downloaded,
+            downloaded,
         });
     }
 
@@ -296,12 +284,11 @@ impl SimpleDownloadTask {
         let mut stream = response.bytes_stream();
 
         let mut last_progress_time = Instant::now();
+        let mut last_chunk_time = Instant::now();
         let mut segment_pos = start;
         let mut segment_downloaded = 0u64;
 
-        info!("Download {}: entering download loop", id);
         while let Some(chunk_result) = stream.next().await {
-            info!("Download {}: received chunk from stream", id);
             // Check cancel first
             if self.cancelled.load(Ordering::Acquire) {
                 info!("Download {} cancelled", id);
@@ -324,13 +311,22 @@ impl SimpleDownloadTask {
             // Reset timing after pause to avoid speed limit issues
             if was_paused {
                 info!("Download {} resumed, resetting timing", id);
+                last_chunk_time = Instant::now();
             }
 
             let chunk = chunk_result?;
             let chunk_len = chunk.len() as u64;
 
-            // Apply professional speed limiting
-            self.apply_speed_limit(chunk_len).await;
+            // Apply speed limiting (simple time-based)
+            if let Some(limit) = self.get_speed_limit() {
+                if limit > 0 {
+                    let expected_duration = Duration::from_secs_f64(chunk_len as f64 / limit as f64);
+                    let elapsed = last_chunk_time.elapsed();
+                    if elapsed < expected_duration {
+                        tokio::time::sleep(expected_duration - elapsed).await;
+                    }
+                }
+            }
 
             // Write directly to file at correct position
             {
@@ -343,30 +339,25 @@ impl SimpleDownloadTask {
             segment_pos += chunk_len;
             segment_downloaded += chunk_len;
             let new_downloaded = self.downloaded_bytes.fetch_add(chunk_len, Ordering::AcqRel) + chunk_len;
-
-            // Record chunk for speed calculation
-            self.record_chunk(chunk_len);
+            last_chunk_time = Instant::now();
 
             // Emit progress events (throttled to ~4x per second)
             if last_progress_time.elapsed() >= Duration::from_millis(250) {
-                let current_speed = self.calculate_current_speed();
-                let eta = self.calculate_eta();
-
                 // Emit download progress
-                        let _ = self.event_tx.send(CoreEvent::DownloadProgress {
+                let _ = self.event_tx.send(CoreEvent::DownloadProgress {
                     id,
                     downloaded: new_downloaded,
                     total: if self.total_size > 0 { Some(self.total_size) } else { None },
-                    speed: current_speed,
-                            eta,
-                        });
+                    speed: self.calculate_speed(),
+                    eta: self.calculate_eta(),
+                });
 
                 // Emit segment progress for multi-segment downloads
-                            let _ = self.event_tx.send(CoreEvent::SegmentProgress {
+                let _ = self.event_tx.send(CoreEvent::SegmentProgress {
                     download_id: id,
                     segment_index,
-                                downloaded: segment_downloaded,
-                            });
+                    downloaded: segment_downloaded,
+                });
 
                 last_progress_time = Instant::now();
             }
@@ -375,32 +366,15 @@ impl SimpleDownloadTask {
         Ok(())
     }
 
-    /// Get current speed limit (synchronous access)
-    fn get_speed_limit(&self) -> u64 {
-        // Access limiter rate synchronously - this is safe because
-        // the limiter is only modified by this task
-        if let Ok(limiter) = self.speed_limiter.try_lock() {
-            let rate = limiter.get_rate();
-            if rate >= 1_000_000_000 { // Unlimited marker
-                0 // Return 0 for unlimited
-            } else {
-                rate
-            }
-        } else {
-            // If we can't get the lock, assume unlimited
-            0
-        }
+    /// Get current speed limit
+    fn get_speed_limit(&self) -> Option<u64> {
+        let limit = self.speed_limit.load(Ordering::Acquire);
+        if limit > 0 { Some(limit) } else { None }
     }
 
     /// Update speed limit
     pub fn set_speed_limit(&self, limit: u64) {
-        // Access limiter synchronously - this is safe because
-        // the limiter is only modified by external calls
-        if let Ok(mut limiter) = self.speed_limiter.try_lock() {
-            limiter.set_rate(limit);
-        }
-        // If we can't get the lock, the change will be lost but that's ok
-        // since speed limits are not critical for correctness
+        self.speed_limit.store(limit, Ordering::Release);
     }
 
     /// Pause download
@@ -423,49 +397,34 @@ impl SimpleDownloadTask {
     }
 
     /// Calculate current speed in bytes per second
-    fn calculate_current_speed(&self) -> u64 {
-        // Access speed calculator synchronously
-        if let Ok(calculator) = self.speed_calculator.try_lock() {
-            calculator.current_speed()
-        } else {
-            // If we can't get the lock, return 0
-            0
+    fn calculate_speed(&self) -> u64 {
+        // For now, return a simple estimation
+        // TODO: Implement proper speed tracking with moving averages
+        let downloaded = self.downloaded_bytes.load(Ordering::Acquire);
+        let now = Utc::now();
+        let elapsed_ms = (now - self.download.created_at).num_milliseconds() as u64;
+
+        if downloaded == 0 || elapsed_ms == 0 {
+            return 0;
         }
+
+        // Simple bytes per second calculation
+        (downloaded * 1000) / elapsed_ms
     }
 
     /// Calculate ETA in seconds
     fn calculate_eta(&self) -> Option<u64> {
-        let speed = self.calculate_current_speed();
+        let speed = self.calculate_speed();
         if speed == 0 {
             return None;
         }
 
-        let downloaded = self.downloaded_bytes.load(Ordering::Acquire);
-        let remaining = self.total_size.saturating_sub(downloaded);
+        let remaining = self.total_size.saturating_sub(self.downloaded_bytes.load(Ordering::Acquire));
         if remaining == 0 {
             return Some(0);
         }
 
         Some(remaining / speed)
-    }
-
-    /// Record chunk download for speed calculation
-    fn record_chunk(&self, chunk_size: u64) {
-        if let Ok(mut calculator) = self.speed_calculator.try_lock() {
-            calculator.add_bytes(chunk_size);
-        }
-    }
-
-    /// Apply speed limiting
-    async fn apply_speed_limit(&self, chunk_size: u64) {
-        let speed_limit = self.get_speed_limit();
-        if speed_limit > 0 {
-            debug!("Applying speed limit: {} bytes at {} bytes/sec", chunk_size, speed_limit);
-            self.speed_limiter.lock().await.consume(chunk_size).await;
-            debug!("Speed limit applied for {} bytes", chunk_size);
-        } else {
-            trace!("No speed limit applied (unlimited)");
-        }
     }
 
     /// Emit status change event
@@ -492,177 +451,13 @@ pub fn calculate_segments(total_size: u64, num_segments: usize) -> Vec<(u64, u64
         let start = i as u64 * segment_size;
         let end = if i == num_segments - 1 {
             total_size.saturating_sub(1)
-            } else {
+        } else {
             (i as u64 + 1) * segment_size - 1
         };
         segments.push((start, end));
     }
 
     segments
-}
-
-/// Professional speed calculator using a 5-second moving window
-#[derive(Debug)]
-pub struct SpeedCalculator {
-    /// (timestamp, bytes_added)
-    history: VecDeque<(std::time::Instant, u64)>,
-    window_size: std::time::Duration,
-    total_bytes: u64,
-}
-
-impl SpeedCalculator {
-    pub fn new(window_size: std::time::Duration) -> Self {
-        Self {
-            history: VecDeque::new(),
-            window_size,
-            total_bytes: 0,
-        }
-    }
-
-    /// Add bytes downloaded at this moment
-    pub fn add_bytes(&mut self, bytes: u64) {
-        let now = std::time::Instant::now();
-        self.history.push_back((now, bytes));
-        self.total_bytes += bytes;
-
-        // Clean old entries outside the window
-        while let Some(&(time, _)) = self.history.front() {
-            if now.duration_since(time) > self.window_size {
-                if let Some((_, old_bytes)) = self.history.pop_front() {
-                    self.total_bytes -= old_bytes;
-                }
-            } else {
-                break;
-            }
-        }
-    }
-
-    /// Get current speed in bytes per second
-    pub fn current_speed(&self) -> u64 {
-        if self.history.len() < 2 {
-            return 0;
-        }
-
-        let now = std::time::Instant::now();
-        let window_start = now - self.window_size;
-
-        // Calculate bytes in the moving window
-        let bytes_in_window: u64 = self.history
-            .iter()
-            .filter(|&&(time, _)| time >= window_start)
-            .map(|&(_, bytes)| bytes)
-            .sum();
-
-        // Convert to bytes per second
-        (bytes_in_window as f64 / self.window_size.as_secs_f64()) as u64
-    }
-
-    /// Get average speed over entire download
-    pub fn average_speed(&self, total_elapsed: std::time::Duration) -> u64 {
-        if total_elapsed.as_secs() == 0 {
-            return 0;
-        }
-        (self.total_bytes as f64 / total_elapsed.as_secs_f64()) as u64
-    }
-}
-
-/// Professional token bucket limiter (perfect accuracy)
-#[derive(Debug)]
-pub struct TokenBucketLimiter {
-    capacity: u64,           // Max tokens (usually = rate limit)
-    tokens: f64,             // Current tokens (use f64 for precision)
-    fill_rate: f64,          // Tokens per second
-    last_refill: std::time::Instant,
-}
-
-impl TokenBucketLimiter {
-    pub fn new(bytes_per_second: u64) -> Self {
-        if bytes_per_second == 0 {
-            // Unlimited
-            Self {
-                capacity: 1_000_000, // Large capacity
-                tokens: 1_000_000.0,
-                fill_rate: 1_000_000_000.0, // 1 GB/s - effectively unlimited
-                last_refill: std::time::Instant::now(),
-            }
-        } else {
-            Self {
-                capacity: bytes_per_second,
-                tokens: bytes_per_second as f64, // Start full
-                fill_rate: bytes_per_second as f64,
-                last_refill: std::time::Instant::now(),
-            }
-        }
-    }
-
-    /// Consume bytes, sleeping if necessary to respect rate limit
-    pub async fn consume(&mut self, bytes: u64) {
-        // If unlimited (rate >= 1 GB/s), don't limit
-        if self.fill_rate >= 1_000_000_000.0 {
-            return;
-        }
-
-        let bytes_f64 = bytes as f64;
-
-        // Safety check: if requesting more bytes than capacity, wait for full refill
-        if bytes_f64 > self.capacity as f64 {
-            tokio::time::sleep(std::time::Duration::from_secs_f64(bytes_f64 / self.fill_rate)).await;
-            return;
-        }
-
-        for _ in 0..100 { // Prevent infinite loops
-            self.refill();
-
-            if self.tokens >= bytes_f64 {
-                // We have enough tokens, consume them
-                self.tokens -= bytes_f64;
-                return;
-            } else {
-                // Not enough tokens, calculate wait time
-                let deficit = bytes_f64 - self.tokens;
-                let wait_seconds = deficit / self.fill_rate;
-                let wait_time = std::time::Duration::from_secs_f64(wait_seconds.min(1.0)); // Max 1 second wait
-
-                if wait_time > std::time::Duration::from_millis(1) {
-                    tokio::time::sleep(wait_time).await;
-                } else {
-                    // Very short wait, just yield
-                    tokio::task::yield_now().await;
-                }
-            }
-        }
-
-        // If we get here, something is wrong - just allow the bytes
-        warn!("TokenBucketLimiter: exceeded loop limit, allowing bytes");
-    }
-
-    fn refill(&mut self) {
-        let now = std::time::Instant::now();
-        let elapsed = now.duration_since(self.last_refill).as_secs_f64();
-
-        if elapsed > 0.0 {
-            let new_tokens = elapsed * self.fill_rate;
-            self.tokens = (self.tokens + new_tokens).min(self.capacity as f64);
-            self.last_refill = now;
-        }
-    }
-
-    pub fn set_rate(&mut self, bytes_per_second: u64) {
-        if bytes_per_second == 0 {
-            // Unlimited
-            self.fill_rate = 1_000_000_000.0; // 1 GB/s
-            self.capacity = 1_000_000;
-            self.tokens = 1_000_000.0;
-        } else {
-            self.fill_rate = bytes_per_second as f64;
-            self.capacity = bytes_per_second;
-            self.tokens = self.tokens.min(bytes_per_second as f64);
-        }
-    }
-
-    pub fn get_rate(&self) -> u64 {
-        self.fill_rate as u64
-    }
 }
 
 /// Get unique path (avoid conflicts)
@@ -704,7 +499,7 @@ impl DownloadManager {
         let client = Client::builder()
             .user_agent("DLMan/1.0.0")
             .connect_timeout(Duration::from_secs(30))
-            .timeout(Duration::from_secs(120)) // 2 minute read timeout
+            .timeout(Duration::from_secs(60)) // Read timeout
             .build()
             .expect("Failed to create HTTP client");
 
@@ -786,17 +581,16 @@ impl DownloadManager {
         let client = self.client.clone();
         let active_tasks = Arc::clone(&self.active_tasks);
 
-        info!("DownloadManager: spawning task for {}", id);
         tokio::spawn(async move {
-            info!("=== DOWNLOAD TASK STARTED FOR {} ===", id);
+            info!("Spawned download task for {}", id);
             let result = task.start(client).await;
 
             match &result {
-                Ok(_) => info!("=== DOWNLOAD {} COMPLETED SUCCESSFULLY ===", id),
-                Err(e) => error!("=== DOWNLOAD {} FAILED: {} ===", id, e),
+                Ok(_) => info!("Download {} completed successfully", id),
+                Err(e) => error!("Download {} failed: {}", id, e),
             }
 
-            info!("=== REMOVING TASK {} FROM ACTIVE TASKS ===", id);
+            info!("Removing task {} from active tasks", id);
             active_tasks.write().await.remove(&id);
         });
 
@@ -847,7 +641,7 @@ impl DownloadManager {
     /// Update speed limit
     pub async fn update_speed_limit(&self, id: Uuid, limit: u64) -> Result<(), DlmanError> {
         if let Some(task) = self.active_tasks.read().await.get(&id) {
-            task.set_speed_limit(if limit > 0 { limit } else { u64::MAX });
+            task.set_speed_limit(limit);
             Ok(())
         } else {
             Err(DlmanError::NotFound(id))
