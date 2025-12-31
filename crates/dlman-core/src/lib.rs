@@ -19,6 +19,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::broadcast;
 use tokio::sync::RwLock;
+use tracing::{error, info};
 use uuid::Uuid;
 
 /// The main DLMan core instance
@@ -207,6 +208,27 @@ impl DlmanCore {
         Ok(())
     }
 
+    /// Get a download by ID
+    pub async fn get_download(&self, id: Uuid) -> Result<Download, DlmanError> {
+        self.downloads
+            .read()
+            .await
+            .get(&id)
+            .cloned()
+            .ok_or(DlmanError::NotFound(id))
+    }
+
+    /// Update a download in memory and storage
+    pub async fn update_download(&self, download: &Download) -> Result<(), DlmanError> {
+        // Update in memory
+        self.downloads.write().await.insert(download.id, download.clone());
+
+        // Save to storage
+        self.storage.save_download(download).await?;
+
+        Ok(())
+    }
+
     /// Pause a download
     pub async fn pause_download(&self, id: Uuid) -> Result<(), DlmanError> {
         // Try to pause the download (if running)
@@ -218,25 +240,18 @@ impl DlmanCore {
 
     /// Resume a download
     pub async fn resume_download(&self, id: Uuid) -> Result<(), DlmanError> {
-        let download = self
-            .downloads
-            .read()
-            .await
-            .get(&id)
-            .cloned()
-            .ok_or(DlmanError::NotFound(id))?;
-
-        // Check if download is already running (paused)
-        if self.download_manager.is_paused(id).await {
-            // Just unpause it
-            self.download_manager.resume(id).await?;
-        } else {
-            // Start the download
-            self.download_manager.start(download, self.clone()).await?;
+        info!("Core: resuming download {}", id);
+        match self.download_manager.resume(id, self.clone()).await {
+            Ok(_) => {
+                info!("Core: download manager resume successful for {}", id);
+                self.update_download_status(id, dlman_types::DownloadStatus::Downloading, None)
+                    .await
+            }
+            Err(e) => {
+                error!("Core: download manager resume failed for {}: {}", id, e);
+                Err(e)
+            }
         }
-
-        self.update_download_status(id, dlman_types::DownloadStatus::Downloading, None)
-            .await
     }
 
     /// Cancel a download
@@ -244,6 +259,11 @@ impl DlmanCore {
         self.download_manager.cancel(id).await?;
         self.update_download_status(id, dlman_types::DownloadStatus::Cancelled, None)
             .await
+    }
+
+    /// Retry a failed/cancelled download - starts fresh from beginning
+    pub async fn retry_download(&self, id: Uuid) -> Result<(), DlmanError> {
+        self.download_manager.retry(id, self.clone()).await
     }
 
     /// Update speed limit for a download
