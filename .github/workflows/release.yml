@@ -11,6 +11,9 @@ on:
         required: true
         default: 'v1.0.0'
 
+permissions:
+  contents: write
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -35,7 +38,7 @@ jobs:
 
       - name: Create Release
         id: create-release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -150,16 +153,3 @@ jobs:
           releaseId: ${{ needs.create-release.outputs.release_id }}
           projectPath: apps/desktop
           tauriScript: pnpm tauri
-          args: ${{ matrix.args }}
-
-  update-release:
-    needs: [create-release, build-tauri]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Publish release
-        uses: softprops/action-gh-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref_name }}
-          draft: false
