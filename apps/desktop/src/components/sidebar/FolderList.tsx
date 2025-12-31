@@ -35,6 +35,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useCategoryStore, useCategoriesArray, Category } from "@/stores/categories";
 import { CategoryDialog } from "@/components/dialogs/CategoryDialog";
+import { DroppableSidebarItem } from "@/components/dnd/DroppableSidebarItem";
 
 // Map category IDs to icons
 const CATEGORY_ICON_MAP: Record<string, LucideIcon> = {
@@ -118,84 +119,87 @@ export function FolderList() {
                   const IconComponent = getCategoryIcon(category.id);
                   
                   return (
-                    <ContextMenu key={category.id}>
-                      <ContextMenuTrigger asChild>
-                        <div
-                          onClick={() => setSelectedCategory(category.id)}
-                          className={cn(
-                            "flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors group",
-                            selectedCategoryId === category.id
-                              ? "bg-primary/10 text-foreground"
-                              : "hover:bg-accent text-muted-foreground hover:text-foreground"
-                          )}
-                        >
+                    <DroppableSidebarItem key={category.id} id={category.id} type="category">
+                      <ContextMenu>
+                        <ContextMenuTrigger asChild>
                           <div
-                            className="flex items-center justify-center w-5 h-5 rounded"
-                            style={{ backgroundColor: `${category.color}20` }}
+                            onClick={() => setSelectedCategory(category.id)}
+                            className={cn(
+                              "flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-colors group",
+                              selectedCategoryId === category.id
+                                ? "bg-primary/10 text-foreground"
+                                : "hover:bg-accent text-muted-foreground hover:text-foreground"
+                            )}
                           >
-                            <IconComponent
-                              className="h-3.5 w-3.5"
-                              style={{ color: category.color }}
-                            />
-                          </div>
-                          <span className="text-sm truncate flex-1">
-                            {category.name}
-                          </span>
+                            <div
+                              className="flex items-center justify-center w-5 h-5 rounded"
+                              style={{ backgroundColor: `${category.color}20` }}
+                            >
+                              <IconComponent
+                                className="h-3.5 w-3.5"
+                                style={{ color: category.color }}
+                              />
+                            </div>
+                            <span className="text-sm truncate flex-1">
+                              {category.name}
+                            </span>
 
-                          {/* More menu */}
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <MoreHorizontal className="h-3 w-3" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEditCategory(category); }}>
-                                <Edit className="h-4 w-4 mr-2" />
-                                Edit Category
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEditCategory(category); }}>
-                                <Palette className="h-4 w-4 mr-2" />
-                                Change Color
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem 
-                                className="text-destructive focus:text-destructive"
-                                onClick={(e) => { e.stopPropagation(); handleDeleteCategory(category.id); }}
-                              >
-                                <Trash2 className="h-4 w-4 mr-2" />
-                                Delete Category
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </ContextMenuTrigger>
-                      <ContextMenuContent>
-                        <ContextMenuItem onClick={() => handleEditCategory(category)}>
-                          <Edit className="h-4 w-4 mr-2" />
-                          Edit Category
-                        </ContextMenuItem>
-                        <ContextMenuItem onClick={() => handleEditCategory(category)}>
-                          <Palette className="h-4 w-4 mr-2" />
-                          Change Color
-                        </ContextMenuItem>
-                        <ContextMenuSeparator />
-                        <ContextMenuItem 
-                          className="text-destructive focus:text-destructive"
-                          onClick={() => handleDeleteCategory(category.id)}
-                        >
-                          <Trash2 className="h-4 w-4 mr-2" />
-                          Delete Category
-                        </ContextMenuItem>
-                      </ContextMenuContent>
-                    </ContextMenu>
+                            {/* More menu */}
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <MoreHorizontal className="h-3 w-3" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEditCategory(category); }}>
+                                  <Edit className="h-4 w-4 mr-2" />
+                                  Edit Category
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEditCategory(category); }}>
+                                  <Palette className="h-4 w-4 mr-2" />
+                                  Change Color
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem 
+                                  className="text-destructive focus:text-destructive"
+                                  onClick={(e) => { e.stopPropagation(); handleDeleteCategory(category.id); }}
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Delete Category
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </ContextMenuTrigger>
+                        <ContextMenuContent>
+                          <ContextMenuItem onClick={() => handleEditCategory(category)}>
+                            <Edit className="h-4 w-4 mr-2" />
+                            Edit Category
+                          </ContextMenuItem>
+                          <ContextMenuItem onClick={() => handleEditCategory(category)}>
+                            <Palette className="h-4 w-4 mr-2" />
+                            Change Color
+                          </ContextMenuItem>
+                          <ContextMenuSeparator />
+                          <ContextMenuItem 
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => handleDeleteCategory(category.id)}
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete Category
+                          </ContextMenuItem>
+                        </ContextMenuContent>
+                      </ContextMenu>
+                    </DroppableSidebarItem>
                   );
                 })}
+
 
                 {/* Add Category Button */}
                 <Button

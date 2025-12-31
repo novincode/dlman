@@ -12,6 +12,7 @@ import {
 } from "@/components/dialogs";
 import { DropZoneOverlay } from "@/components/DropZoneOverlay";
 import { ContextMenuProvider } from "@/components/ContextMenu";
+import { DndProvider } from "@/components/dnd/DndProvider";
 import { useSettingsStore } from "@/stores/settings";
 import { useUIStore } from "@/stores/ui";
 import { setupEventListeners, setPendingClipboardUrls } from "@/lib/events";
@@ -107,6 +108,11 @@ function AppContent() {
 
   // Handle dropped URLs from DropZoneOverlay
   const handleDrop = useCallback((urls: string[]) => {
+    if (urls.length === 0) return;
+
+    // Store URLs for dialogs to pick up (same as paste handler)
+    setPendingClipboardUrls(urls);
+
     if (urls.length === 1) {
       // Single URL - open new download dialog
       setShowNewDownloadDialog(true);
@@ -144,7 +150,9 @@ function AppContent() {
 function App() {
   return (
     <ContextMenuProvider>
-      <AppContent />
+      <DndProvider>
+        <AppContent />
+      </DndProvider>
     </ContextMenuProvider>
   );
 }

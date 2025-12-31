@@ -11,7 +11,6 @@ import {
   Trash2,
   Play,
   Pause,
-  Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -29,11 +28,9 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { useQueueStore, useQueuesArray, DEFAULT_QUEUE_ID } from "@/stores/queues";
-import { useDownloadStore } from "@/stores/downloads";
-import { useUIStore } from "@/stores/ui";
 import { cn } from "@/lib/utils";
 import { QueueDialog } from "@/components/dialogs/QueueDialog";
-import { toast } from "sonner";
+import { DroppableSidebarItem } from "@/components/dnd/DroppableSidebarItem";
 import type { Queue } from "@/types";
 
 export function QueueList() {
@@ -117,17 +114,18 @@ export function QueueList() {
 
                 {/* Individual Queues */}
                 {queues.map((queue) => (
-                  <QueueItem
-                    key={queue.id}
-                    queue={queue}
-                    isSelected={selectedQueueId === queue.id}
-                    isDefault={queue.id === DEFAULT_QUEUE_ID}
-                    onClick={() => setSelectedQueue(queue.id)}
-                    onEdit={() => handleEditQueue(queue)}
-                    onDelete={() => handleDeleteQueue(queue)}
-                    onStart={() => handleStartQueue(queue)}
-                    onPause={() => handlePauseQueue(queue)}
-                  />
+                  <DroppableSidebarItem key={queue.id} id={queue.id} type="queue">
+                    <QueueItem
+                      queue={queue}
+                      isSelected={selectedQueueId === queue.id}
+                      isDefault={queue.id === DEFAULT_QUEUE_ID}
+                      onClick={() => setSelectedQueue(queue.id)}
+                      onEdit={() => handleEditQueue(queue)}
+                      onDelete={() => handleDeleteQueue(queue)}
+                      onStart={() => handleStartQueue(queue)}
+                      onPause={() => handlePauseQueue(queue)}
+                    />
+                  </DroppableSidebarItem>
                 ))}
 
                 {/* Add Queue Button */}
@@ -177,42 +175,6 @@ function QueueItem({
   onStart,
   onPause,
 }: QueueItemProps) {
-  const [isDragOver, setIsDragOver] = useState(false);
-  const { moveToQueue } = useDownloadStore();
-  const { setDragOverTarget } = useUIStore();
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    // Check if dragging downloads
-    if (e.dataTransfer.types.includes("application/x-download-ids")) {
-      e.dataTransfer.dropEffect = "move";
-      setIsDragOver(true);
-      setDragOverTarget(queue.id);
-    }
-  }, [queue.id, setDragOverTarget]);
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(false);
-    setDragOverTarget(null);
-  }, [setDragOverTarget]);
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragOver(false);
-    setDragOverTarget(null);
-    
-    const downloadIds = e.dataTransfer.getData("application/x-download-ids");
-    if (downloadIds) {
-      const ids = JSON.parse(downloadIds) as string[];
-      moveToQueue(ids, queue.id);
-      toast.success(`Moved ${ids.length} download${ids.length > 1 ? "s" : ""} to ${queue.name}`);
-    }
-  }, [queue.id, queue.name, moveToQueue, setDragOverTarget]);
 
   const renderMenuItems = (isDropdown: boolean) => {
     const MenuItem = isDropdown ? DropdownMenuItem : ContextMenuItem;
@@ -258,15 +220,11 @@ function QueueItem({
       <ContextMenuTrigger asChild>
         <div
           onClick={onClick}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
           className={cn(
             "flex items-center gap-2 px-2 py-1.5 rounded-md cursor-pointer transition-all group",
             isSelected
               ? "bg-primary/10 text-foreground"
               : "hover:bg-accent text-muted-foreground hover:text-foreground",
-            isDragOver && "ring-2 ring-primary bg-primary/20 scale-[1.02]"
           )}
         >
           {/* Color indicator or icon */}
@@ -282,29 +240,22 @@ function QueueItem({
           {/* Name */}
           <span className="text-sm truncate flex-1">{queue.name}</span>
 
-          {/* Drop indicator */}
-          {isDragOver && (
-            <Download className="h-3 w-3 text-primary animate-bounce" />
-          )}
-
           {/* More menu (not for default queue) */}
-          {!isDragOver && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <MoreHorizontal className="h-3 w-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {renderMenuItems(true)}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MoreHorizontal className="h-3 w-3" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {renderMenuItems(true)}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </ContextMenuTrigger>
       <ContextMenuContent>

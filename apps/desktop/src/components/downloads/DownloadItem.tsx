@@ -68,13 +68,10 @@ export function DownloadItem({ download }: DownloadItemProps) {
   const isSelected = selectedIds.has(download.id);
   const queue = useQueueStore((s) => s.queues.get(download.queue_id));
   const queues = useQueuesArray();
-  const { setIsDragging: setGlobalDragging } = useUIStore();
   const [showInfoDialog, setShowInfoDialog] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [speedLimitInput, setSpeedLimitInput] = useState<string>("");
   const [isOverrideEnabled, setIsOverrideEnabled] = useState(download.speed_limit !== null);
-  const [isDragging, setIsDragging] = useState(false);
-  const dragRef = useRef<HTMLDivElement>(null);
 
   const progress = download.size
     ? (download.downloaded / download.size) * 100
@@ -84,44 +81,6 @@ export function DownloadItem({ download }: DownloadItemProps) {
   const effectiveSpeedLimit = download.speed_limit ?? queue?.speed_limit ?? null;
   const isUsingQueueLimit = download.speed_limit === null && queue?.speed_limit !== null;
 
-  // Drag handlers
-  const handleDragStart = useCallback((e: React.DragEvent) => {
-    e.stopPropagation();
-    setIsDragging(true);
-    setGlobalDragging(true); // Set global state to prevent overlay
-    
-    // Get all selected download IDs, or just this one if not selected
-    const idsToMove = isSelected ? Array.from(selectedIds) : [download.id];
-    
-    // Set drag data
-    e.dataTransfer.setData("application/x-download-ids", JSON.stringify(idsToMove));
-    e.dataTransfer.effectAllowed = "move";
-    
-    // Create a custom drag image
-    const count = idsToMove.length;
-    const dragImage = document.createElement("div");
-    dragImage.className = "fixed bg-primary text-primary-foreground px-3 py-2 rounded-lg shadow-lg flex items-center gap-2 font-medium text-sm";
-    dragImage.innerHTML = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
-      <span>${count} download${count > 1 ? "s" : ""}</span>
-    `;
-    dragImage.style.position = "fixed";
-    dragImage.style.top = "-100px";
-    dragImage.style.left = "-100px";
-    document.body.appendChild(dragImage);
-    
-    e.dataTransfer.setDragImage(dragImage, 50, 25);
-    
-    // Clean up drag image after a frame
-    requestAnimationFrame(() => {
-      document.body.removeChild(dragImage);
-    });
-  }, [download.id, isSelected, selectedIds, setGlobalDragging]);
-
-  const handleDragEnd = useCallback(() => {
-    setIsDragging(false);
-    setGlobalDragging(false); // Clear global state
-  }, [setGlobalDragging]);
 
   const handlePause = useCallback(async (e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -515,20 +474,15 @@ export function DownloadItem({ download }: DownloadItemProps) {
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <div
-            ref={dragRef}
-            draggable
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
             data-download-item="true"
             className={cn(
               "rounded-lg border bg-card transition-all group",
               isSelected && "border-primary bg-primary/5",
-              isDragging && "ring-2 ring-primary cursor-grabbing opacity-50"
             )}
           >
             {/* Main Row */}
             <div 
-              className="flex items-center gap-3 p-3 cursor-grab active:cursor-grabbing"
+              className="flex items-center gap-3 p-3"
               onClick={(e) => toggleSelected(download.id, e.shiftKey)}
             >
               {/* Expand/Collapse Button */}

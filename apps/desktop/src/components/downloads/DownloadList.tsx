@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { DownloadItem } from "./DownloadItem";
+import { DraggableDownloadItem } from "@/components/dnd/DraggableDownloadItem";
+import { DownloadItem } from "@/components/downloads/DownloadItem";
 import type { Download } from "@/types";
 
 interface DownloadListProps {
@@ -13,9 +14,8 @@ export function DownloadList({ downloads }: DownloadListProps) {
   const virtualizer = useVirtualizer({
     count: downloads.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 80, // Base height estimate
+    estimateSize: () => 80,
     overscan: 5,
-    // Enable dynamic sizing based on measured elements
     measureElement: (element) => {
       return element.getBoundingClientRect().height;
     },
@@ -27,19 +27,21 @@ export function DownloadList({ downloads }: DownloadListProps) {
         className="relative w-full"
         style={{ height: `${virtualizer.getTotalSize()}px` }}
       >
-        {virtualizer.getVirtualItems().map((virtualRow) => {
-          const download = downloads[virtualRow.index];
+        {virtualizer.getVirtualItems().map((virtualItem) => {
+          const download = downloads[virtualItem.index];
           return (
             <div
-              key={download.id}
-              data-index={virtualRow.index}
+              key={virtualItem.key}
+              data-index={virtualItem.index}
               ref={virtualizer.measureElement}
-              className="absolute top-0 left-0 w-full px-4 py-1"
+              className="absolute top-0 left-0 w-full"
               style={{
-                transform: `translateY(${virtualRow.start}px)`,
+                transform: `translateY(${virtualItem.start}px)`,
               }}
             >
-              <DownloadItem download={download} />
+              <DraggableDownloadItem id={download.id} data={download}>
+                <DownloadItem download={download} />
+              </DraggableDownloadItem>
             </div>
           );
         })}
