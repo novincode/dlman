@@ -48,6 +48,16 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useDownloadStore } from "@/stores/downloads";
 import { useQueueStore, useQueuesArray } from "@/stores/queues";
 import { formatBytes, formatSpeed, formatDuration } from "@/lib/utils";
@@ -69,6 +79,7 @@ export function DownloadItem({ download }: DownloadItemProps) {
   const queues = useQueuesArray();
   const [showInfoDialog, setShowInfoDialog] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [speedLimitInput, setSpeedLimitInput] = useState<string>(
     download.speed_limit ? Math.round(download.speed_limit / 1024).toString() : ""
   );
@@ -178,6 +189,11 @@ export function DownloadItem({ download }: DownloadItemProps) {
 
   const handleDeleteFile = useCallback(async (e?: React.MouseEvent) => {
     e?.stopPropagation();
+    setShowDeleteDialog(true);
+  }, []);
+
+  const handleConfirmDeleteFile = useCallback(async () => {
+    setShowDeleteDialog(false);
     
     if (isTauri()) {
       try {
@@ -824,6 +840,24 @@ export function DownloadItem({ download }: DownloadItemProps) {
         onOpenChange={setShowInfoDialog}
         download={download}
       />
+
+      {/* Delete File Confirmation Dialog */}
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete File</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete the file "{download.filename}"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDeleteFile} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Delete File
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

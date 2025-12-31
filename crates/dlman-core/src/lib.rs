@@ -246,6 +246,30 @@ impl DlmanCore {
             .await
     }
 
+    /// Update speed limit for a download
+    pub async fn update_download_speed_limit(&self, id: Uuid, speed_limit: Option<u64>) -> Result<(), DlmanError> {
+        // Update the download manager (for running downloads)
+        let _ = self.download_manager.update_speed_limit(id, speed_limit).await;
+
+        // Update in memory and storage
+        {
+            let mut downloads = self.downloads.write().await;
+            if let Some(download) = downloads.get_mut(&id) {
+                download.speed_limit = speed_limit;
+            }
+        }
+
+        // Get updated download for saving
+        let download = self.downloads.read().await.get(&id).cloned();
+
+        // Save to storage
+        if let Some(download) = download {
+            self.storage.save_download(&download).await?;
+        }
+
+        Ok(())
+    }
+
     /// Delete a download
     pub async fn delete_download(&self, id: Uuid, delete_file: bool) -> Result<(), DlmanError> {
         // Cancel if running

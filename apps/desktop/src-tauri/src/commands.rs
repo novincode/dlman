@@ -78,11 +78,14 @@ pub async fn update_download(
     let uuid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
     state
         .with_core_async(|core| async move {
+            // Update speed limit for running downloads
+            if let Some(speed_limit) = updates.speed_limit {
+                core.update_download_speed_limit(uuid, speed_limit).await?;
+            }
+
+            // Update other fields in memory
             let mut downloads = core.downloads.write().await;
             if let Some(download) = downloads.get_mut(&uuid) {
-                if let Some(speed_limit) = updates.speed_limit {
-                    download.speed_limit = speed_limit;
-                }
                 if let Some(category_id) = updates.category_id {
                     download.category_id = category_id.map(|s| Uuid::parse_str(&s)).transpose().unwrap_or(None);
                 }
