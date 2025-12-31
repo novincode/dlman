@@ -648,9 +648,16 @@ impl TokenBucketLimiter {
     }
 
     pub fn set_rate(&mut self, bytes_per_second: u64) {
-        self.fill_rate = bytes_per_second as f64;
-        self.capacity = bytes_per_second;
-        self.tokens = self.tokens.min(bytes_per_second as f64);
+        if bytes_per_second == 0 {
+            // Unlimited
+            self.fill_rate = 1_000_000_000.0; // 1 GB/s
+            self.capacity = 1_000_000;
+            self.tokens = 1_000_000.0;
+        } else {
+            self.fill_rate = bytes_per_second as f64;
+            self.capacity = bytes_per_second;
+            self.tokens = self.tokens.min(bytes_per_second as f64);
+        }
     }
 
     pub fn get_rate(&self) -> u64 {

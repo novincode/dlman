@@ -87,12 +87,19 @@ export function DownloadItem({ download }: DownloadItemProps) {
 
   // Sync speedLimitInput when download changes
   useEffect(() => {
-    if (download.speed_limit) {
-      setSpeedLimitInput(Math.round(download.speed_limit / 1024).toString());
-    } else {
+    if (download.speed_limit === 0) {
+      // Unlimited
       setSpeedLimitInput("");
+      setIsOverrideEnabled(true);
+    } else if (download.speed_limit) {
+      // Custom limit
+      setSpeedLimitInput(Math.round(download.speed_limit / 1024).toString());
+      setIsOverrideEnabled(true);
+    } else {
+      // Use queue limit
+      setSpeedLimitInput("");
+      setIsOverrideEnabled(false);
     }
-    setIsOverrideEnabled(download.speed_limit !== null);
   }, [download.speed_limit]);
   const [fileExists, setFileExists] = useState<boolean | null>(null);
 
@@ -100,8 +107,13 @@ export function DownloadItem({ download }: DownloadItemProps) {
     ? (download.downloaded / download.size) * 100
     : 0;
 
-  // Get effective speed limit (from download or queue)
-  const effectiveSpeedLimit = download.speed_limit ?? queue?.speed_limit ?? null;
+  // Get effective speed limit
+  // speed_limit = 0 means unlimited
+  // speed_limit = null means use queue limit
+  // speed_limit = number means use that limit
+  const effectiveSpeedLimit = download.speed_limit === 0 ? null :
+                              download.speed_limit ??
+                              queue?.speed_limit ?? null;
   const isUsingQueueLimit = download.speed_limit === null && queue?.speed_limit !== null;
 
   // Check if file exists for completed downloads
@@ -284,8 +296,8 @@ export function DownloadItem({ download }: DownloadItemProps) {
   }, [download.id, moveToQueue]);
 
   const handleSpeedLimitChange = useCallback(async (newLimit: number | null) => {
-    // Convert KB/s to bytes/s
-    const limitBytes = newLimit ? newLimit * 1024 : null;
+    // Convert KB/s to bytes/s, 0 means unlimited
+    const limitBytes = newLimit === 0 ? 0 : newLimit ? newLimit * 1024 : null;
     
     // Update local state
     updateDownload(download.id, { speed_limit: limitBytes });
@@ -297,7 +309,8 @@ export function DownloadItem({ download }: DownloadItemProps) {
           id: download.id, 
           updates: { speed_limit: limitBytes }
         });
-        toast.success(limitBytes ? `Speed limit set to ${newLimit} KB/s` : "Speed limit removed");
+        toast.success(limitBytes === 0 ? "Speed limit disabled" :
+                     limitBytes ? `Speed limit set to ${newLimit} KB/s` : "Using queue speed limit");
       } catch (err) {
         console.error("Failed to update speed limit:", err);
       }
@@ -752,8 +765,8 @@ export function DownloadItem({ download }: DownloadItemProps) {
                             onCheckedChange={(checked) => {
                               setIsOverrideEnabled(!!checked);
                               if (!checked) {
-                                // Remove override, use queue limit
-                                handleSpeedLimitChange(null);
+                                // Remove override, set unlimited
+                                handleSpeedLimitChange(0);
                               }
                             }}
                           />
@@ -782,10 +795,10 @@ export function DownloadItem({ download }: DownloadItemProps) {
                               if (speedLimitInput.trim()) {
                                 const value = parseInt(speedLimitInput);
                                 if (!isNaN(value) && value >= 0) {
-                                  handleSpeedLimitChange(value > 0 ? value : null);
+                                  handleSpeedLimitChange(value > 0 ? value : 0);
                                 }
                               } else {
-                                handleSpeedLimitChange(null);
+                                handleSpeedLimitChange(0);
                               }
                             }}
                           >
@@ -795,7 +808,7 @@ export function DownloadItem({ download }: DownloadItemProps) {
                             size="sm"
                             variant="ghost"
                             className="h-8 text-xs"
-                            onClick={() => handleSpeedLimitChange(null)}
+                            onClick={() => handleSpeedLimitChange(0)}
                           >
                             <Zap className="h-3 w-3 mr-1" />
                             Unlimited
@@ -803,9 +816,7 @@ export function DownloadItem({ download }: DownloadItemProps) {
                         </div>
                       ) : (
                         <div className="text-xs text-muted-foreground">
-                          {queue?.speed_limit 
-                            ? `Using queue limit: ${Math.round(queue.speed_limit / 1024)} KB/s` 
-                            : "No speed limit (queue has no limit)"}
+                          Unlimited (override disabled)
                         </div>
                       )}
                     </div>
