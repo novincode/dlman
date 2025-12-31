@@ -432,42 +432,6 @@ impl DlmanCore {
         Ok(())
     }
 
-    /// Try to start the next queued download in a queue
-    /// Called automatically when a download completes to start the next queued download
-    pub(crate) async fn try_start_next_queued_download(&self, queue_id: Uuid) -> Result<(), DlmanError> {
-        let queues = self.queues.read().await;
-        
-        if let Some(queue) = queues.get(&queue_id) {
-            // Check if queue is running
-            if !self.queue_scheduler.is_queue_running(queue_id).await {
-                return Ok(()); // Queue not running
-            }
-
-            // Count currently downloading downloads in this queue
-            let downloads = self.downloads.read().await;
-            let downloading_count = downloads
-                .values()
-                .filter(|d| d.queue_id == queue_id && d.status == dlman_types::DownloadStatus::Downloading)
-                .count();
-
-            // If we have available slots, find and start the next queued download
-            if downloading_count < queue.max_concurrent as usize {
-                // Find the next queued download
-                let next_download = downloads
-                    .values()
-                    .find(|d| d.queue_id == queue_id && d.status == dlman_types::DownloadStatus::Queued)
-                    .cloned();
-
-                if let Some(download) = next_download {
-                    drop(queues);
-                    drop(downloads);
-                    self.start_download(download.id).await?;
-                }
-            }
-        }
-
-        Ok(())
-    }
 
     // ========================================================================
     // Queue Operations
