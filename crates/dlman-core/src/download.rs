@@ -21,6 +21,7 @@ use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::broadcast;
 use tokio::sync::RwLock as AsyncRwLock;
+use chrono::Utc;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
@@ -227,6 +228,8 @@ impl SimpleDownloadTask {
 
             if current_pos > end {
                 info!("Segment {} already fully downloaded ({} > {}), skipping", segment_idx, current_pos, end);
+                // Update segment as complete
+                self.update_segment_progress(segment_idx as u32, (end - start + 1) as u64).await;
                 continue;
             }
 
@@ -234,12 +237,16 @@ impl SimpleDownloadTask {
             let segment_start = start.max(current_pos);
             if segment_start >= end {
                 info!("Segment {} already complete (start: {}, end: {}, segment_start: {})", segment_idx, start, end, segment_start);
+                // Update segment as complete
+                self.update_segment_progress(segment_idx as u32, (end - start + 1) as u64).await;
                 continue; // Segment already complete
             }
 
             info!("Downloading segment {} from {} to {}", segment_idx, segment_start, end);
             // Download this segment
-            Arc::clone(&self).download_segment(&client, &url, segment_start, end).await?;
+            Arc::clone(&self).download_segment_with_progress(&client, &url, segment_start, end, segment_idx as u32).await?;
+            // Mark segment as complete
+            self.update_segment_progress(segment_idx as u32, (end - start + 1) as u64).await;
         }
 
         // Final check and sync
@@ -257,8 +264,18 @@ impl SimpleDownloadTask {
         Ok(())
     }
 
+    /// Update segment progress
+    async fn update_segment_progress(&self, segment_index: u32, downloaded: u64) {
+        // Emit segment progress event
+        let _ = self.event_tx.send(CoreEvent::SegmentProgress {
+            download_id: self.download.id,
+            segment_index,
+            downloaded,
+        });
+    }
+
     /// Download a single segment (used by both single and multi-segment downloads)
-    async fn download_segment(self: Arc<Self>, client: &Client, url: &str, start: u64, end: u64) -> Result<(), DlmanError> {
+    async fn download_segment_with_progress(self: Arc<Self>, client: &Client, url: &str, start: u64, end: u64, _segment_index: u32) -> Result<(), DlmanError> {
         let id = self.download.id;
 
         // Build range request
@@ -368,10 +385,20 @@ impl SimpleDownloadTask {
         info!("Download {} cancelled", self.download.id);
     }
 
-    /// Calculate current speed (simple moving average)
+    /// Calculate current speed in bytes per second
     fn calculate_speed(&self) -> u64 {
-        // TODO: Implement proper speed calculation
-        0
+        // For now, return a simple estimation
+        // TODO: Implement proper speed tracking with moving averages
+        let downloaded = self.downloaded_bytes.load(Ordering::Acquire);
+        let now = Utc::now();
+        let elapsed_ms = (now - self.download.created_at).num_milliseconds() as u64;
+
+        if downloaded == 0 || elapsed_ms == 0 {
+            return 0;
+        }
+
+        // Simple bytes per second calculation
+        (downloaded * 1000) / elapsed_ms
     }
 
     /// Calculate ETA in seconds

@@ -264,15 +264,11 @@ export function DownloadItem({ download }: DownloadItemProps) {
     
     if (isTauri()) {
       try {
-        // Add a new download with the same URL
-        await invoke<Download>("add_download", {
-          url: download.url,
-          destination: download.destination,
-          queueId: download.queue_id,
-        });
+        // Retry the existing download instead of creating a new one
+        await invoke("retry_download", { id: download.id });
         toast.success("Download restarted");
       } catch (err) {
-        console.error("Failed to redownload:", err);
+        console.error("Failed to retry download:", err);
         toast.error("Failed to restart download");
       }
     } else {

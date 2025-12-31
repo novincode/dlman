@@ -432,6 +432,27 @@ impl DlmanCore {
         Ok(())
     }
 
+    /// Update speed limits for all downloads in a queue that don't have custom overrides
+    async fn update_queue_downloads_speed_limit(&self, queue_id: Uuid, queue_speed_limit: u64) {
+        let mut downloads_to_update = Vec::new();
+
+        // Find downloads in this queue without custom speed limits
+        {
+            let downloads = self.downloads.read().await;
+            for (id, download) in downloads.iter() {
+                if download.queue_id == queue_id && download.speed_limit.is_none() {
+                    downloads_to_update.push(*id);
+                }
+            }
+        }
+
+        // Update speed limits for these downloads
+        for download_id in downloads_to_update {
+            if let Err(e) = self.update_download_speed_limit(download_id, Some(queue_speed_limit)).await {
+                error!("Failed to update speed limit for download {}: {}", download_id, e);
+            }
+        }
+    }
 
     // ========================================================================
     // Queue Operations
@@ -513,6 +534,11 @@ impl DlmanCore {
 
         // Save to storage
         self.storage.save_queue(&queue).await?;
+
+        // Update speed limits for downloads in this queue if speed limit changed
+        if options.speed_limit.is_some() {
+            self.update_queue_downloads_speed_limit(id, options.speed_limit.unwrap()).await;
+        }
 
         // Update in memory
         self.queues.write().await.insert(id, queue.clone());
