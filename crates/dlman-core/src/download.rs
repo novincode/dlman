@@ -24,6 +24,17 @@ struct SegmentProgress {
     speed: u64,
 }
 
+/// State of a download segment
+#[derive(Debug, Clone)]
+struct SegmentState {
+    index: u32,
+    start: u64,
+    end: u64,
+    downloaded: u64,
+    temp_path: PathBuf,
+    complete: bool,
+}
+
 /// Get a unique filename by appending (1), (2), etc. if file exists
 async fn get_unique_path(base_path: &Path) -> PathBuf {
     if !base_path.exists() {
@@ -159,7 +170,7 @@ impl DownloadManager {
 
         // Spawn download task
         tokio::spawn(async move {
-            let result = download_file(client, download.clone(), cancel_token.clone(), event_tx.clone()).await;
+            let result = download_file(client, download.clone(), cancel_token.clone(), event_tx.clone(), _core).await;
 
             // Remove from active
             active.write().remove(&id);
@@ -213,6 +224,7 @@ async fn download_file(
     download: Download,
     cancel_token: CancellationToken,
     event_tx: broadcast::Sender<CoreEvent>,
+    core: DlmanCore,
 ) -> Result<(), DlmanError> {
     let url = download.final_url.as_ref().unwrap_or(&download.url);
     let base_dest_path = download.destination.join(&download.filename);
@@ -244,16 +256,16 @@ async fn download_file(
     // Get speed limit from download or use none
     let speed_limit = download.speed_limit;
 
-    // Check if we should use segments (files > 1MB)
-    let use_segments = download.size.map(|s| s > 1024 * 1024).unwrap_or(false);
+    // Check if we should use segments (files > 1MB and segments are initialized)
+    let use_segments = !download.segments.is_empty() && download.size.is_some();
 
     if use_segments && download.size.is_some() {
         // Multi-segment download with proper async streaming
-        download_segmented(client, url, &dest_path, download.clone(), cancel_token, event_tx).await
+        download_segmented(client, url, &dest_path, download.clone(), cancel_token, event_tx, core).await
     } else {
         // Single stream download with streaming
         let is_resuming = download.downloaded > 0;
-        download_single(client, url, &dest_path, download.id, download.downloaded, is_resuming, speed_limit, cancel_token, event_tx).await
+        download_single(client, url, &dest_path, download.id, download.downloaded, is_resuming, speed_limit, cancel_token, event_tx, core).await
     }
 }
 
@@ -268,6 +280,7 @@ async fn download_single(
     speed_limit: Option<u64>,
     cancel_token: CancellationToken,
     event_tx: broadcast::Sender<CoreEvent>,
+    core: DlmanCore,
 ) -> Result<(), DlmanError> {
     // For resuming downloads, use range request
     let mut request = client.get(url);
@@ -385,6 +398,9 @@ async fn download_single(
                 eta,
             });
 
+            // Update progress in database
+            let _ = core.update_download_progress(id, downloaded, None).await;
+
             last_update = std::time::Instant::now();
             last_downloaded = downloaded;
         }
@@ -403,9 +419,12 @@ async fn download_segmented(
     download: Download,
     cancel_token: CancellationToken,
     event_tx: broadcast::Sender<CoreEvent>,
+    core: DlmanCore,
 ) -> Result<(), DlmanError> {
     let total_size = download.size.ok_or(DlmanError::ResumeNotSupported)?;
     let id = download.id;
+
+    info!("Starting segmented download: {} segments for {} bytes", download.segments.len().max(4), total_size);
 
     // Calculate segments if not already defined
     let segments = if download.segments.is_empty() {
@@ -414,31 +433,58 @@ async fn download_segmented(
         download.segments.clone()
     };
 
+    // Create temp directory for segments
+    let temp_dir = dest_path.parent().unwrap_or(Path::new(".")).join(".dlman_temp");
+    tokio::fs::create_dir_all(&temp_dir).await?;
+
+    // Clean up any existing temp files for this download
+    let _temp_pattern = format!("{}_*.part", id.simple());
+    if let Ok(entries) = tokio::fs::read_dir(&temp_dir).await {
+        use tokio_stream::wrappers::ReadDirStream;
+        let mut stream = ReadDirStream::new(entries);
+        while let Some(entry) = tokio_stream::StreamExt::next(&mut stream).await {
+            if let Ok(entry) = entry {
+                if let Some(name) = entry.file_name().to_str() {
+                    if name.starts_with(&format!("{}_", id.simple())) && name.ends_with(".part") {
+                        let _ = tokio::fs::remove_file(entry.path()).await;
+                    }
+                }
+            }
+        }
+    }
+
     // Create channel for progress updates from segment tasks
     let (progress_tx, mut progress_rx) = mpsc::channel::<SegmentProgress>(32);
 
-    // Spawn concurrent tasks for each segment
+    // Create segment states
+    let mut segment_states = Vec::new();
+    for (i, segment) in segments.iter().enumerate() {
+        let segment_state = SegmentState {
+            index: segment.index,
+            start: segment.start,
+            end: segment.end,
+            downloaded: segment.downloaded,
+            temp_path: temp_dir.join(format!("{}_{}.part", id.simple(), i)),
+            complete: segment.complete,
+        };
+        segment_states.push(segment_state);
+    }
+
+    // Spawn concurrent tasks for incomplete segments
     let mut handles = Vec::new();
-
-    // Create temp directory for segments
-    let temp_dir = dest_path.parent().unwrap_or(Path::new("."));
-    tokio::fs::create_dir_all(temp_dir).await?;
-
-    for segment in segments.iter() {
-        if segment.complete {
+    for segment_state in &segment_states {
+        if segment_state.complete {
             continue;
         }
 
         let client = client.clone();
         let url = url.to_string();
-        let dest_path_clone = dest_path.to_path_buf();
-        let segment = segment.clone();
+        let segment = segment_state.clone();
         let cancel_token = cancel_token.clone();
         let progress_tx = progress_tx.clone();
-        let temp_dir_clone = temp_dir.to_path_buf();
 
         handles.push(tokio::spawn(async move {
-            download_segment_task(client, &url, &dest_path_clone, segment, cancel_token, progress_tx, &temp_dir_clone).await
+            download_segment_task(client, &url, segment, cancel_token, progress_tx).await
         }));
     }
 
@@ -464,8 +510,8 @@ async fn download_segmented(
         // Calculate total downloaded across all segments
         total_downloaded = segment_progress.values().sum();
 
-        // Send progress update every 100ms
-        if last_update.elapsed() >= std::time::Duration::from_millis(100) {
+        // Send progress update every 50ms for responsive UI
+        if last_update.elapsed() >= std::time::Duration::from_millis(50) {
             let elapsed = last_update.elapsed().as_secs_f64();
             let speed = ((total_downloaded - last_total_downloaded) as f64 / elapsed) as u64;
             let eta = if total_size > total_downloaded {
@@ -482,6 +528,19 @@ async fn download_segmented(
                 speed,
                 eta,
             });
+
+            // Update progress in database with segment progress
+            let updated_segments = segment_states.iter().enumerate().map(|(i, state)| {
+                let segment_downloaded = segment_progress.get(&(i as u32)).copied().unwrap_or(state.downloaded);
+                dlman_types::Segment {
+                    index: state.index,
+                    start: state.start,
+                    end: state.end,
+                    downloaded: segment_downloaded,
+                    complete: segment_downloaded >= (state.end - state.start + 1),
+                }
+            }).collect::<Vec<_>>();
+            let _ = core.update_download_progress(id, total_downloaded, Some(updated_segments)).await;
 
             // Send segment progress updates
             for (segment_index, downloaded) in &segment_progress {
@@ -507,7 +566,7 @@ async fn download_segmented(
     }
 
     // All segments completed, merge into final file
-    merge_segments_from_parts(dest_path, &segments).await?;
+    merge_segments_from_parts(dest_path, &segment_states).await?;
 
     Ok(())
 }
@@ -516,20 +575,10 @@ async fn download_segmented(
 async fn download_segment_task(
     client: Client,
     url: &str,
-    dest_path: &Path,
-    segment: Segment,
+    segment: SegmentState,
     cancel_token: CancellationToken,
     progress_tx: mpsc::Sender<SegmentProgress>,
-    temp_dir: &Path,
 ) -> Result<(), DlmanError> {
-    // Create proper temp file path in the temp directory
-    let filename_base = dest_path
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("download");
-    let temp_filename = format!("{}.part{}", filename_base, segment.index);
-    let temp_path = temp_dir.join(temp_filename);
-
     // Calculate range for this segment
     let start_byte = segment.start + segment.downloaded;
     let end_byte = segment.end;
@@ -553,7 +602,7 @@ async fn download_segment_task(
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
-        .open(&temp_path)
+        .open(&segment.temp_path)
         .await?;
 
     let mut downloaded = segment.downloaded;
@@ -572,8 +621,8 @@ async fn download_segment_task(
         file.write_all(&chunk).await?;
         downloaded += chunk_size;
 
-        // Send progress update every 200ms to avoid flooding
-        if last_update.elapsed() >= std::time::Duration::from_millis(200) {
+        // Send progress update every 100ms
+        if last_update.elapsed() >= std::time::Duration::from_millis(100) {
             let elapsed = last_update.elapsed().as_secs_f64();
             let speed = ((downloaded - last_downloaded) as f64 / elapsed) as u64;
 
@@ -597,7 +646,7 @@ async fn download_segment_task(
 }
 
 /// Calculate segment ranges for a file
-fn calculate_segments(total_size: u64, num_segments: u32) -> Vec<Segment> {
+pub fn calculate_segments(total_size: u64, num_segments: u32) -> Vec<Segment> {
     let segment_size = total_size / num_segments as u64;
     let mut segments = Vec::new();
 
@@ -616,27 +665,17 @@ fn calculate_segments(total_size: u64, num_segments: u32) -> Vec<Segment> {
 }
 
 /// Merge segment temp files into final file
-async fn merge_segments_from_parts(dest_path: &Path, segments: &[Segment]) -> Result<(), DlmanError> {
+async fn merge_segments_from_parts(dest_path: &Path, segments: &[SegmentState]) -> Result<(), DlmanError> {
     let mut dest_file = File::create(dest_path).await?;
 
-    // Get temp directory and filename base (same logic as download_segment_task)
-    let temp_dir = dest_path.parent().unwrap_or(Path::new("."));
-    let filename_base = dest_path
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("download");
-
     for segment in segments {
-        let temp_filename = format!("{}.part{}", filename_base, segment.index);
-        let temp_path = temp_dir.join(temp_filename);
-
-        if temp_path.exists() {
-            let data = tokio::fs::read(&temp_path).await?;
+        if segment.temp_path.exists() {
+            let data = tokio::fs::read(&segment.temp_path).await?;
             dest_file.write_all(&data).await?;
         }
 
         // Clean up temp file
-        let _ = tokio::fs::remove_file(temp_path).await;
+        let _ = tokio::fs::remove_file(&segment.temp_path).await;
     }
 
     dest_file.flush().await?;

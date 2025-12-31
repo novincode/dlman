@@ -123,6 +123,12 @@ impl DlmanCore {
         download.size = probed.size;
         download.final_url = probed.final_url;
 
+        // Initialize segments if the server supports range requests and file is large enough
+        if probed.resumable && probed.size.map(|s| s > 1024 * 1024).unwrap_or(false) {
+            let num_segments = 4; // Default to 4 segments
+            download.segments = calculate_segments(probed.size.unwrap(), num_segments);
+        }
+
         // Get queue's speed limit if the download doesn't have its own
         if download.speed_limit.is_none() {
             let queues = self.queues.read().await;
@@ -296,6 +302,35 @@ impl DlmanCore {
 
         // Emit event
         self.emit(CoreEvent::DownloadStatusChanged { id, status, error });
+
+        Ok(())
+    }
+
+    /// Update download progress
+    async fn update_download_progress(
+        &self,
+        id: Uuid,
+        downloaded: u64,
+        segments: Option<Vec<dlman_types::Segment>>,
+    ) -> Result<(), DlmanError> {
+        // Update in memory
+        {
+            let mut downloads = self.downloads.write().await;
+            if let Some(download) = downloads.get_mut(&id) {
+                download.downloaded = downloaded;
+                if let Some(segments) = segments {
+                    download.segments = segments;
+                }
+            }
+        }
+
+        // Get updated download for saving
+        let download = self.downloads.read().await.get(&id).cloned();
+
+        // Save to storage
+        if let Some(download) = download {
+            self.storage.save_download(&download).await?;
+        }
 
         Ok(())
     }

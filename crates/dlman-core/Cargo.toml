@@ -12,6 +12,7 @@ dlman-types = { workspace = true }
 # Async runtime
 tokio = { workspace = true }
 tokio-util = { workspace = true, features = ["io"] }
+tokio-stream = "0.1"
 
 # HTTP client
 reqwest = { workspace = true }
