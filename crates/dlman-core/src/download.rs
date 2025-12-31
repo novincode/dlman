@@ -72,13 +72,17 @@ impl SimpleDownloadTask {
         info!("Download {}: existing file size = {} bytes, total_size = {:?}", download.id, existing_size, download.size);
 
         let total_size = download.size.unwrap_or(0);
+        
+        // Store download-specific override (0 means inherit from queue)
+        let download_override = download.speed_limit.unwrap_or(0);
+        info!("Download {}: speed override = {} (0 means inherit from queue)", download.id, download_override);
 
         Ok(Self {
             download: download.clone(),
             file: AsyncRwLock::new(file),
             downloaded_bytes: AtomicU64::new(existing_size),
             total_size,
-            speed_limit: AtomicU64::new(download.speed_limit.unwrap_or(0)),
+            speed_limit: AtomicU64::new(download_override),
             paused: AtomicBool::new(false),
             cancelled: AtomicBool::new(false),
             event_tx,
@@ -90,6 +94,18 @@ impl SimpleDownloadTask {
     pub async fn start(self: Arc<Self>, client: Client) -> Result<(), DlmanError> {
         let id = self.download.id;
         info!("Starting simple download {}: {}", id, self.download.url);
+
+        // Sync speed limit with queue before starting (in case queue changed)
+        {
+            let queues = self.core.queues.read().await;
+            if let Some(queue) = queues.get(&self.download.queue_id) {
+                if let Some(queue_limit) = queue.speed_limit {
+                    // Update our speed limit to match queue
+                    self.speed_limit.store(queue_limit, Ordering::Release);
+                    info!("Download {}: synced speed limit with queue: {} bytes/s", id, queue_limit);
+                }
+            }
+        }
 
         // Determine number of segments
         let num_segments = if self.total_size > 1024 * 1024 && self.download.segments.len() > 1 {

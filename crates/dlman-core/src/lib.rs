@@ -131,8 +131,8 @@ impl DlmanCore {
             download.segments = download::calculate_segments_public(probed.size.unwrap(), num_segments);
         }
 
-        // Get queue's speed limit if the download doesn't have its own
-        if download.speed_limit.is_none() {
+        // Set download speed limit to match queue speed limit (inheritance by default)
+        {
             let queues = self.queues.read().await;
             if let Some(queue) = queues.get(&queue_id) {
                 download.speed_limit = queue.speed_limit;
@@ -461,26 +461,29 @@ impl DlmanCore {
         Ok(())
     }
 
-    /// Update speed limits for all downloads in a queue that don't have custom overrides
-    async fn update_queue_downloads_speed_limit(&self, queue_id: Uuid, queue_speed_limit: u64) {
+    /// Sync speed limits for ALL downloads in a queue to match the queue speed limit
+    async fn sync_queue_speed_limits(&self, queue_id: Uuid, queue_speed_limit: Option<u64>) {
         let mut downloads_to_update = Vec::new();
 
-        // Find downloads in this queue without custom speed limits
+        // Find ALL downloads in this queue
         {
             let downloads = self.downloads.read().await;
             for (id, download) in downloads.iter() {
-                if download.queue_id == queue_id && download.speed_limit.is_none() {
+                if download.queue_id == queue_id {
                     downloads_to_update.push(*id);
                 }
             }
         }
 
-        // Update speed limits for these downloads
+        // Update speed limits for ALL downloads in this queue to match queue
+        let num_downloads = downloads_to_update.len();
         for download_id in downloads_to_update {
-            if let Err(e) = self.update_download_speed_limit(download_id, Some(queue_speed_limit)).await {
-                error!("Failed to update speed limit for download {}: {}", download_id, e);
+            if let Err(e) = self.update_download_speed_limit(download_id, queue_speed_limit).await {
+                error!("Failed to sync speed limit for download {}: {}", download_id, e);
             }
         }
+
+        info!("Synced speed limit for {} downloads in queue {} to {:?}", num_downloads, queue_id, queue_speed_limit);
     }
 
     // ========================================================================
@@ -564,9 +567,9 @@ impl DlmanCore {
         // Save to storage
         self.storage.save_queue(&queue).await?;
 
-        // Update speed limits for downloads in this queue if speed limit changed
+        // Sync speed limits for ALL downloads in this queue to match the new queue speed limit
         if options.speed_limit.is_some() {
-            self.update_queue_downloads_speed_limit(id, options.speed_limit.unwrap()).await;
+            self.sync_queue_speed_limits(id, options.speed_limit).await;
         }
 
         // Update in memory
