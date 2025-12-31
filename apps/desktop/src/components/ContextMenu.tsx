@@ -136,16 +136,28 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
 
 // Hook for global context menu (right-click on empty areas)
 export function useGlobalContextMenu() {
-  const { showContextMenu } = useContextMenu();
+  const { showContextMenu, hideContextMenu } = useContextMenu();
   const { setShowNewDownloadDialog, setShowBatchImportDialog, setShowQueueManagerDialog, setShowSettingsDialog } = useUIStore();
 
   const handleGlobalContextMenu = useCallback((e: React.MouseEvent) => {
-    // Only show if clicking on an empty area (not on interactive elements)
+    // Check if this is a right-click on a specific context-menu component
     const target = e.target as HTMLElement;
-    const isInteractive = target.closest('button, a, input, [role="button"], [data-context-menu]');
     
-    if (!isInteractive) {
+    // Don't intercept if there's a radix context menu trigger nearby
+    const hasRadixContextMenu = target.closest('[data-radix-context-menu-trigger], [data-state="open"]');
+    if (hasRadixContextMenu) {
+      return; // Let Radix handle it
+    }
+    
+    // Don't intercept if clicking on interactive elements that have their own menus
+    const isInteractive = target.closest('button, a, input, textarea, [role="button"], [role="menuitem"]');
+    
+    // Check if we're in the main content area (for global menu)
+    const isInMainContent = target.closest('[data-global-context-area]');
+    
+    if (!isInteractive && isInMainContent) {
       e.preventDefault();
+      e.stopPropagation();
       showContextMenu(e.clientX, e.clientY, [
         {
           label: 'Add Download',
@@ -188,8 +200,11 @@ export function useGlobalContextMenu() {
           onClick: () => setShowSettingsDialog(true),
         },
       ]);
+    } else {
+      // Hide our custom context menu if we're not handling this
+      hideContextMenu();
     }
-  }, [showContextMenu, setShowNewDownloadDialog, setShowBatchImportDialog, setShowQueueManagerDialog, setShowSettingsDialog]);
+  }, [showContextMenu, hideContextMenu, setShowNewDownloadDialog, setShowBatchImportDialog, setShowQueueManagerDialog, setShowSettingsDialog]);
 
   return handleGlobalContextMenu;
 }

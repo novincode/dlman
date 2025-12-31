@@ -70,15 +70,28 @@ export function SettingsDialog() {
   const handleSave = useCallback(async () => {
     try {
       setIsSaving(true);
-      await invoke('update_settings', { settings: localSettings });
+      // Update local store first (this persists to localStorage)
       updateSettings(localSettings);
+      
+      // Try to sync with backend if in Tauri context
+      const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
+      if (isTauri) {
+        try {
+          await invoke('update_settings', { settings: localSettings });
+        } catch (err) {
+          // Backend sync failed, but local settings are saved
+          console.warn('Backend settings sync failed:', err);
+        }
+      }
+      
       setHasChanges(false);
+      setShowSettingsDialog(false);
     } catch (err) {
       console.error('Failed to save settings:', err);
     } finally {
       setIsSaving(false);
     }
-  }, [localSettings, updateSettings]);
+  }, [localSettings, updateSettings, setShowSettingsDialog]);
 
   const handleClose = () => {
     setShowSettingsDialog(false);

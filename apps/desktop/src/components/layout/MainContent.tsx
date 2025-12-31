@@ -41,7 +41,7 @@ export function MainContent() {
   }, [baseFilteredDownloads, selectedQueueId, selectedCategoryId, categories]);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full" data-global-context-area>
       {/* Filter Bar */}
       <FilterBar />
 

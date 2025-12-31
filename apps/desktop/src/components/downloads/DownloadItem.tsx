@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react";
 import { motion } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
+import { open as openPath } from "@tauri-apps/plugin-shell";
 import { toast } from "sonner";
 import {
   FileIcon,
@@ -49,12 +50,15 @@ import { cn } from "@/lib/utils";
 import { DownloadInfoDialog } from "@/components/dialogs/DownloadInfoDialog";
 import type { Download, DownloadStatus } from "@/types";
 
+// Check if we're in Tauri context
+const isTauri = () => typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
+
 interface DownloadItemProps {
   download: Download & { speed?: number; eta?: number | null };
 }
 
 export function DownloadItem({ download }: DownloadItemProps) {
-  const { selectedIds, toggleSelected, removeDownload, moveToQueue } = useDownloadStore();
+  const { selectedIds, toggleSelected, removeDownload, updateStatus, moveToQueue } = useDownloadStore();
   const isSelected = selectedIds.has(download.id);
   const queue = useQueueStore((s) => s.queues.get(download.queue_id));
   const queues = useQueuesArray();
@@ -66,36 +70,60 @@ export function DownloadItem({ download }: DownloadItemProps) {
 
   const handlePause = useCallback(async (e?: React.MouseEvent) => {
     e?.stopPropagation();
-    try {
-      await invoke("pause_download", { id: download.id });
-    } catch (err) {
-      console.error("Failed to pause download:", err);
-      toast.error("Failed to pause download");
+    // Update local state immediately
+    updateStatus(download.id, "paused", null);
+    
+    if (isTauri()) {
+      try {
+        await invoke("pause_download", { id: download.id });
+        toast.success("Download paused");
+      } catch (err) {
+        console.error("Failed to pause download:", err);
+        // Revert on failure
+        updateStatus(download.id, "downloading", null);
+        toast.error("Failed to pause download");
+      }
     }
-  }, [download.id]);
+  }, [download.id, updateStatus]);
 
   const handleResume = useCallback(async (e?: React.MouseEvent) => {
     e?.stopPropagation();
-    try {
-      await invoke("resume_download", { id: download.id });
-    } catch (err) {
-      console.error("Failed to resume download:", err);
-      toast.error("Failed to resume download");
+    // Update local state immediately
+    updateStatus(download.id, "downloading", null);
+    
+    if (isTauri()) {
+      try {
+        await invoke("resume_download", { id: download.id });
+        toast.success("Download resumed");
+      } catch (err) {
+        console.error("Failed to resume download:", err);
+        // Revert on failure
+        updateStatus(download.id, "paused", null);
+        toast.error("Failed to resume download");
+      }
     }
-  }, [download.id]);
+  }, [download.id, updateStatus]);
 
   const handleCancel = useCallback(async (e?: React.MouseEvent) => {
     e?.stopPropagation();
-    try {
-      await invoke("cancel_download", { id: download.id });
-    } catch (err) {
-      console.error("Failed to cancel download:", err);
+    // Update local state immediately
+    updateStatus(download.id, "cancelled", null);
+    
+    if (isTauri()) {
+      try {
+        await invoke("cancel_download", { id: download.id });
+        toast.success("Download cancelled");
+      } catch (err) {
+        console.error("Failed to cancel download:", err);
+        toast.error("Failed to cancel download");
+      }
     }
-  }, [download.id]);
+  }, [download.id, updateStatus]);
 
   const handleRemove = useCallback((e?: React.MouseEvent) => {
     e?.stopPropagation();
     removeDownload(download.id);
+    toast.success("Download removed");
   }, [download.id, removeDownload]);
 
   const handleCopyUrl = useCallback(async (e?: React.MouseEvent) => {
@@ -108,17 +136,36 @@ export function DownloadItem({ download }: DownloadItemProps) {
     }
   }, [download.url]);
 
-  const handleOpenFolder = useCallback((e?: React.MouseEvent) => {
+  const handleOpenFolder = useCallback(async (e?: React.MouseEvent) => {
     e?.stopPropagation();
-    // TODO: Implement with Tauri shell plugin
-    toast.info("Opening folder...");
-  }, []);
+    if (isTauri()) {
+      try {
+        // Open the destination folder
+        await openPath(download.destination);
+      } catch (err) {
+        console.error("Failed to open folder:", err);
+        toast.error("Failed to open folder");
+      }
+    } else {
+      toast.info("Open folder is only available in the desktop app");
+    }
+  }, [download.destination]);
 
-  const handleOpenFile = useCallback((e?: React.MouseEvent) => {
+  const handleOpenFile = useCallback(async (e?: React.MouseEvent) => {
     e?.stopPropagation();
-    // TODO: Implement with Tauri shell plugin
-    toast.info("Opening file...");
-  }, []);
+    if (isTauri() && download.status === "completed") {
+      try {
+        // Open the file
+        const filePath = `${download.destination}/${download.filename}`;
+        await openPath(filePath);
+      } catch (err) {
+        console.error("Failed to open file:", err);
+        toast.error("Failed to open file");
+      }
+    } else {
+      toast.info("File not available");
+    }
+  }, [download.destination, download.filename, download.status]);
 
   const handleShowInfo = useCallback((e?: React.MouseEvent) => {
     e?.stopPropagation();

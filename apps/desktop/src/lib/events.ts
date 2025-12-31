@@ -2,10 +2,24 @@
 
 import { listen } from "@tauri-apps/api/event";
 import { useDownloadStore } from "@/stores/downloads";
+import { useUIStore } from "@/stores/ui";
 import { CoreEvent } from "@/types";
 
 // Check if we're running in Tauri context
 const isTauri = () => typeof window !== 'undefined' && window.__TAURI_INTERNALS__ !== undefined;
+
+// Store for drag-drop URLs to pass to dialog
+let pendingDropUrls: string[] = [];
+
+export function getPendingDropUrls(): string[] {
+  const urls = [...pendingDropUrls];
+  pendingDropUrls = [];
+  return urls;
+}
+
+export function setPendingDropUrls(urls: string[]) {
+  pendingDropUrls = urls;
+}
 
 export function setupEventListeners(): () => void {
   const unlisten: Array<() => void> = [];
@@ -56,6 +70,28 @@ export function setupEventListeners(): () => void {
       useDownloadStore.getState().removeDownload(data.payload.id);
     }
   }).then((fn) => unlisten.push(fn)).catch(console.error);
+
+  // Listen for Tauri file drop events (tauri://drop)
+  listen<{ paths: string[]; position: { x: number; y: number } }>(
+    "tauri://drop",
+    (event) => {
+      const { paths } = event.payload;
+      
+      // Filter for URLs (files starting with http)
+      // Note: Tauri drops files as paths, but we can also handle dropped text/URLs
+      // For now, just check if any path looks like a URL
+      const urls = paths.filter(p => p.startsWith('http://') || p.startsWith('https://'));
+      
+      if (urls.length > 0) {
+        setPendingDropUrls(urls);
+        if (urls.length === 1) {
+          useUIStore.getState().setShowNewDownloadDialog(true);
+        } else {
+          useUIStore.getState().setShowBatchImportDialog(true);
+        }
+      }
+    }
+  ).then((fn) => unlisten.push(fn)).catch(console.error);
 
   // Cleanup function
   return () => {

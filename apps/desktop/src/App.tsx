@@ -8,7 +8,7 @@ import {
   QueueManagerDialog,
 } from "@/components/dialogs";
 import { DropZoneOverlay } from "@/components/DropZoneOverlay";
-import { ContextMenuProvider, useGlobalContextMenu } from "@/components/ContextMenu";
+import { ContextMenuProvider } from "@/components/ContextMenu";
 import { useSettingsStore } from "@/stores/settings";
 import { useUIStore } from "@/stores/ui";
 import { setupEventListeners } from "@/lib/events";
@@ -18,8 +18,6 @@ function AppContent() {
   const theme = useSettingsStore((s) => s.settings.theme);
   const devMode = useSettingsStore((s) => s.settings.devMode);
   const { setShowNewDownloadDialog, setShowBatchImportDialog, showDevConsole } = useUIStore();
-  
-  const handleGlobalContextMenu = useGlobalContextMenu();
 
   // Enable keyboard shortcuts
   useKeyboardShortcuts();
@@ -74,7 +72,7 @@ function AppContent() {
   }, [setShowNewDownloadDialog, setShowBatchImportDialog]);
 
   return (
-    <div onContextMenu={handleGlobalContextMenu}>
+    <div>
       <Layout />
       
       {/* Drop Zone Overlay */}
