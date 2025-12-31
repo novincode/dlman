@@ -1,7 +1,6 @@
 import { useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
-import { open as openPath } from '@tauri-apps/plugin-shell';
 import { toast } from 'sonner';
 import {
   Play,
@@ -50,7 +49,6 @@ export function SelectionToolbar({ className }: SelectionToolbarProps) {
   // Check what actions are applicable
   const hasActive = selectedDownloads.some(d => d?.status === 'downloading');
   const hasPaused = selectedDownloads.some(d => d?.status === 'paused');
-  const hasCompleted = selectedDownloads.some(d => d?.status === 'completed');
   const hasFailed = selectedDownloads.some(d => d?.status === 'failed');
   const hasPending = selectedDownloads.some(d => d?.status === 'pending' || d?.status === 'queued');
   const canPause = hasActive || hasPending;
@@ -168,28 +166,6 @@ export function SelectionToolbar({ className }: SelectionToolbarProps) {
       },
     });
   }, [selectedIds, selectedCount, removeDownload, clearSelection, openConfirmDialog]);
-
-  const handleOpenFolders = useCallback(async () => {
-    const openedFolders = new Set<string>();
-    const downloadsMap = new Map(downloads.map(d => [d.id, d]));
-    
-    for (const id of selectedIds) {
-      const download = downloadsMap.get(id);
-      if (download && download.status === 'completed') {
-        const folder = download.destination;
-        if (!openedFolders.has(folder)) {
-          openedFolders.add(folder);
-          if (isTauri()) {
-            try {
-              await openPath(folder);
-            } catch (err) {
-              console.error(`Failed to open folder ${folder}:`, err);
-            }
-          }
-        }
-      }
-    }
-  }, [selectedIds, downloads]);
 
   const handleMoveToQueue = useCallback((queueId: string) => {
     const ids = Array.from(selectedIds);
