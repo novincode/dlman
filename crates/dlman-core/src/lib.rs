@@ -99,12 +99,14 @@ impl DlmanCore {
         url: &str,
         destination: PathBuf,
         queue_id: Uuid,
+        category_id: Option<Uuid>,
     ) -> Result<Download, DlmanError> {
         // Validate URL
         let parsed_url = url::Url::parse(url).map_err(|_| DlmanError::InvalidUrl(url.to_string()))?;
 
         // Create download
-        let download = Download::new(url.to_string(), destination, queue_id);
+        let mut download = Download::new(url.to_string(), destination, queue_id);
+        download.category_id = category_id;
         let id = download.id;
 
         // Probe the URL for metadata

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
@@ -53,7 +53,6 @@ import { useQueueStore, useQueuesArray } from "@/stores/queues";
 import { formatBytes, formatSpeed, formatDuration } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { DownloadInfoDialog } from "@/components/dialogs/DownloadInfoDialog";
-import { useUIStore } from "@/stores/ui";
 import type { Download, DownloadStatus } from "@/types";
 
 // Check if we're in Tauri context
@@ -72,6 +71,7 @@ export function DownloadItem({ download }: DownloadItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [speedLimitInput, setSpeedLimitInput] = useState<string>("");
   const [isOverrideEnabled, setIsOverrideEnabled] = useState(download.speed_limit !== null);
+  const [fileExists, setFileExists] = useState<boolean | null>(null);
 
   const progress = download.size
     ? (download.downloaded / download.size) * 100
@@ -80,6 +80,24 @@ export function DownloadItem({ download }: DownloadItemProps) {
   // Get effective speed limit (from download or queue)
   const effectiveSpeedLimit = download.speed_limit ?? queue?.speed_limit ?? null;
   const isUsingQueueLimit = download.speed_limit === null && queue?.speed_limit !== null;
+
+  // Check if file exists for completed downloads
+  useEffect(() => {
+    if (isTauri() && download.status === "completed" && fileExists === null) {
+      const checkFile = async () => {
+        try {
+          const exists = await invoke<boolean>("file_exists", { 
+            path: `${download.destination}/${download.filename}` 
+          });
+          setFileExists(exists);
+        } catch (err) {
+          console.error("Failed to check file existence:", err);
+          setFileExists(true); // Assume exists on error
+        }
+      };
+      checkFile();
+    }
+  }, [download.status, download.destination, download.filename, fileExists]);
 
 
   const handlePause = useCallback(async (e?: React.MouseEvent) => {
@@ -501,10 +519,7 @@ export function DownloadItem({ download }: DownloadItemProps) {
               <Checkbox
                 checked={isSelected}
                 onCheckedChange={() => toggleSelected(download.id)}
-                onClick={(e: React.MouseEvent) => {
-                  e.stopPropagation();
-                  toggleSelected(download.id, e.shiftKey);
-                }}
+                onClick={(e) => e.stopPropagation()}
               />
 
               {/* Queue Color Indicator */}
@@ -526,6 +541,12 @@ export function DownloadItem({ download }: DownloadItemProps) {
                 <div className="flex items-center gap-2">
                   <span className="font-medium truncate">{download.filename}</span>
                   <StatusBadge status={download.status} />
+                  {/* MOVED badge for completed downloads where file doesn't exist */}
+                  {download.status === "completed" && fileExists === false && (
+                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded uppercase bg-orange-500/10 text-orange-500">
+                      MOVED
+                    </span>
+                  )}
                   {/* Speed limit indicator */}
                   {effectiveSpeedLimit && (
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground flex items-center gap-1">

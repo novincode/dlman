@@ -245,6 +245,7 @@ export function BatchImportDialog() {
               status: 'pending',
               segments: [],
               queue_id: queueId,
+              category_id: null,
               color: null,
               error: null,
               speed_limit: null,

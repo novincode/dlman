@@ -16,12 +16,14 @@ pub async fn add_download(
     url: String,
     destination: String,
     queue_id: String,
+    category_id: Option<String>,
 ) -> Result<Download, String> {
     let queue_uuid = Uuid::parse_str(&queue_id).map_err(|e| e.to_string())?;
+    let category_uuid = category_id.map(|s| Uuid::parse_str(&s).map_err(|e| e.to_string())).transpose()?;
     let dest_path = PathBuf::from(destination);
 
     state
-        .with_core_async(|core| async move { core.add_download(&url, dest_path, queue_uuid).await })
+        .with_core_async(|core| async move { core.add_download(&url, dest_path, queue_uuid, category_uuid).await })
         .await
 }
 
@@ -64,6 +66,7 @@ pub async fn delete_download(
 #[derive(serde::Deserialize)]
 pub struct DownloadUpdates {
     pub speed_limit: Option<Option<u64>>,
+    pub category_id: Option<Option<String>>,
 }
 
 #[tauri::command]
@@ -79,6 +82,9 @@ pub async fn update_download(
             if let Some(download) = downloads.get_mut(&uuid) {
                 if let Some(speed_limit) = updates.speed_limit {
                     download.speed_limit = speed_limit;
+                }
+                if let Some(category_id) = updates.category_id {
+                    download.category_id = category_id.map(|s| Uuid::parse_str(&s)).transpose().unwrap_or(None);
                 }
             }
             Ok(())
@@ -315,4 +321,10 @@ pub async fn delete_file_only(path: String) -> Result<(), String> {
         std::fs::remove_file(&path).map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+#[tauri::command]
+pub async fn file_exists(path: String) -> Result<bool, String> {
+    let path = PathBuf::from(&path);
+    Ok(path.exists())
 }

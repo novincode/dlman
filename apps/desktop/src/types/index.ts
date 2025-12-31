@@ -11,6 +11,7 @@ export interface Download {
   status: DownloadStatus;
   segments: Segment[];
   queue_id: string;
+  category_id: string | null;
   color: string | null;
   error: string | null;
   speed_limit: number | null;

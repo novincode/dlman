@@ -7,6 +7,7 @@ import {
   useSensors,
   DragOverlay,
   defaultDropAnimationSideEffects,
+  closestCenter,
 } from "@dnd-kit/core";
 import { useState } from "react";
 import { useUIStore } from "@/stores/ui";
@@ -14,6 +15,7 @@ import { useDownloadStore } from "@/stores/downloads";
 import { useCategoryStore } from "@/stores/categories";
 import { toast } from "sonner";
 import { createPortal } from "react-dom";
+import { invoke } from "@tauri-apps/api/core";
 
 export type DndItemType = "download" | "queue" | "category";
 
@@ -29,7 +31,7 @@ interface DndProviderProps {
 
 export function DndProvider({ children }: DndProviderProps) {
   const { setIsDragging } = useUIStore();
-  const { moveToQueue, selectedIds, updateDownload, downloads } = useDownloadStore();
+  const { moveToQueue, selectedIds, updateDownload } = useDownloadStore();
   const { categories } = useCategoryStore();
   const [activeItem, setActiveItem] = useState<DndItem | null>(null);
   
@@ -73,8 +75,17 @@ export function DndProvider({ children }: DndProviderProps) {
           const category = categories.get(destinationId);
           if (category) {
             // Move downloads to this category
-            idsToMove.forEach(id => {
+            idsToMove.forEach(async (id) => {
               updateDownload(id, { category_id: destinationId });
+              // Update backend
+              try {
+                await invoke("update_download", { 
+                  id, 
+                  updates: { category_id: destinationId }
+                });
+              } catch (err) {
+                console.error("Failed to update download category:", err);
+              }
             });
             toast.success(`Moved ${idsToMove.length} item${idsToMove.length > 1 ? 's' : ''} to ${category.name} category`);
           }
@@ -104,6 +115,7 @@ export function DndProvider({ children }: DndProviderProps) {
   return (
     <DndContext
       sensors={sensors}
+      collisionDetection={closestCenter}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
       onDragCancel={handleDragCancel}
