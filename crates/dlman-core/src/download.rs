@@ -263,10 +263,6 @@ async fn download_single(
     // Speed limiting state - use a token bucket approach
     let mut bucket_tokens: f64 = 0.0;
     let mut last_refill = std::time::Instant::now();
-    
-    // Minimum chunk size we'll accept before potentially waiting
-    // This prevents the download from appearing "stuck" at 0
-    const MIN_PROGRESS_INTERVAL: std::time::Duration = std::time::Duration::from_millis(100);
 
     while let Some(chunk_result) = tokio::select! {
         chunk = stream.next() => chunk,
