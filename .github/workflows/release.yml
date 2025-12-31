@@ -1,0 +1,165 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.create-release.outputs.id }}
+      upload_url: ${{ steps.create-release.outputs.upload_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Release
+        id: create-release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.get_version.outputs.version }}
+          name: DLMan ${{ steps.get_version.outputs.version }}
+          body: |
+            ## DLMan ${{ steps.get_version.outputs.version }}
+            
+            A modern, open-source download manager with multi-segment downloads, queue management, and more.
+            
+            ### Downloads
+            
+            | Platform | Download |
+            |----------|----------|
+            | **Windows** | See assets below (.msi or .exe) |
+            | **macOS (Intel)** | See assets below (.dmg for x64) |
+            | **macOS (Apple Silicon)** | See assets below (.dmg for aarch64) |
+            | **Linux** | See assets below (.deb, .rpm, or .AppImage) |
+            
+            ### macOS Users
+            
+            Since DLMan is not signed with an Apple Developer certificate, you'll need to:
+            1. Download the .dmg file
+            2. Open it and drag DLMan to Applications
+            3. Open Terminal and run: `xattr -cr /Applications/DLMan.app`
+            4. Now you can open DLMan normally
+            
+            Or right-click the app → Open → Open (in the warning dialog)
+            
+            ### Linux Users
+            
+            For AppImage:
+            ```bash
+            chmod +x DLMan_*.AppImage
+            ./DLMan_*.AppImage
+            ```
+            
+            ### What's New
+            
+            - 🎉 First stable release!
+            - Multi-segment parallel downloads
+            - Queue management with speed limits
+            - Expandable download details with segment visualization
+            - Per-download speed limit override
+            - Modern UI with dark/light themes
+          draft: false
+          prerelease: false
+
+  build-tauri:
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+            args: '--target x86_64-apple-darwin'
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            args: '--target aarch64-apple-darwin'
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            args: ''
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - name: Setup Rust
+        uses: dtolnay/rust-action@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install Rust target (macOS cross-compile)
+        if: matrix.platform == 'macos-latest'
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Install dependencies (Ubuntu)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev
+
+      - name: Install frontend dependencies
+        run: pnpm install
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          releaseId: ${{ needs.create-release.outputs.release_id }}
+          projectPath: apps/desktop
+          tauriScript: pnpm tauri
+          args: ${{ matrix.args }}
+
+  update-release:
+    needs: [create-release, build-tauri]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          draft: false

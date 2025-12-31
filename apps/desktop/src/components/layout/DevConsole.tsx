@@ -1,11 +1,16 @@
-import { Terminal, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { Terminal, Trash2, AlertCircle, AlertTriangle, Bug, MessageSquare } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useUIStore } from "@/stores/ui";
 import { cn } from "@/lib/utils";
 
+type LogLevel = "info" | "warn" | "error" | "debug" | "all";
+
 export function DevConsole() {
   const { consoleLogs, clearConsoleLogs } = useUIStore();
+  const [filter, setFilter] = useState<LogLevel>("all");
 
   const getLevelColor = (level: string) => {
     switch (level) {
@@ -20,50 +25,121 @@ export function DevConsole() {
     }
   };
 
+  const getLevelIcon = (level: string) => {
+    switch (level) {
+      case "error":
+        return <AlertCircle className="h-3 w-3" />;
+      case "warn":
+        return <AlertTriangle className="h-3 w-3" />;
+      case "debug":
+        return <Bug className="h-3 w-3" />;
+      default:
+        return <MessageSquare className="h-3 w-3" />;
+    }
+  };
+
+  const filteredLogs = filter === "all" 
+    ? consoleLogs 
+    : consoleLogs.filter(log => log.level === filter);
+
+  const errorCount = consoleLogs.filter(l => l.level === "error").length;
+  const warnCount = consoleLogs.filter(l => l.level === "warn").length;
+
   return (
     <div className="flex flex-col h-full bg-card border-t">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-1.5 border-b">
+      <div className="flex items-center justify-between px-3 py-1.5 border-b gap-2">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Terminal className="h-4 w-4" />
           <span>Dev Console</span>
-          <span className="text-xs">({consoleLogs.length} logs)</span>
+          {errorCount > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-500 font-medium">
+              {errorCount} error{errorCount > 1 ? "s" : ""}
+            </span>
+          )}
+          {warnCount > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-500 font-medium">
+              {warnCount} warning{warnCount > 1 ? "s" : ""}
+            </span>
+          )}
         </div>
+
+        {/* Filter Toggle */}
+        <ToggleGroup 
+          type="single" 
+          value={filter} 
+          onValueChange={(v) => v && setFilter(v as LogLevel)}
+          className="gap-0.5"
+        >
+          <ToggleGroupItem value="all" size="sm" className="text-xs h-6 px-2">
+            All
+          </ToggleGroupItem>
+          <ToggleGroupItem value="error" size="sm" className="text-xs h-6 px-2 data-[state=on]:text-red-500">
+            <AlertCircle className="h-3 w-3 mr-1" />
+            Errors
+          </ToggleGroupItem>
+          <ToggleGroupItem value="warn" size="sm" className="text-xs h-6 px-2 data-[state=on]:text-yellow-500">
+            <AlertTriangle className="h-3 w-3 mr-1" />
+            Warnings
+          </ToggleGroupItem>
+          <ToggleGroupItem value="debug" size="sm" className="text-xs h-6 px-2 data-[state=on]:text-blue-500">
+            <Bug className="h-3 w-3 mr-1" />
+            Debug
+          </ToggleGroupItem>
+          <ToggleGroupItem value="info" size="sm" className="text-xs h-6 px-2">
+            <MessageSquare className="h-3 w-3 mr-1" />
+            Info
+          </ToggleGroupItem>
+        </ToggleGroup>
+
         <Button
           variant="ghost"
-          size="icon"
-          className="h-6 w-6"
+          size="sm"
+          className="h-6 px-2 text-xs gap-1"
           onClick={clearConsoleLogs}
         >
           <Trash2 className="h-3 w-3" />
+          Clear
         </Button>
       </div>
 
       {/* Logs */}
       <ScrollArea className="flex-1">
         <div className="p-2 font-mono text-xs space-y-0.5">
-          {consoleLogs.length === 0 ? (
-            <div className="text-muted-foreground italic">
-              No logs yet. Events will appear here.
+          {filteredLogs.length === 0 ? (
+            <div className="text-muted-foreground italic py-4 text-center">
+              {filter === "all" 
+                ? "No logs yet. Events will appear here."
+                : `No ${filter} logs.`}
             </div>
           ) : (
-            consoleLogs.map((log) => (
-              <div key={log.id} className="flex gap-2">
+            filteredLogs.map((log) => (
+              <div 
+                key={log.id} 
+                className={cn(
+                  "flex gap-2 py-0.5 px-1 rounded hover:bg-muted/50",
+                  log.level === "error" && "bg-red-500/5",
+                  log.level === "warn" && "bg-yellow-500/5"
+                )}
+              >
                 <span className="text-muted-foreground shrink-0">
                   [{log.timestamp.toLocaleTimeString()}]
                 </span>
                 <span
                   className={cn(
-                    "uppercase shrink-0 w-12",
+                    "shrink-0 w-14 flex items-center gap-1",
                     getLevelColor(log.level)
                   )}
                 >
-                  {log.level}
+                  {getLevelIcon(log.level)}
+                  <span className="uppercase text-[10px]">{log.level}</span>
                 </span>
-                <span className="break-all">{log.message}</span>
+                <span className="break-all flex-1">{log.message}</span>
                 {log.data !== undefined && (
-                  <code className="text-muted-foreground text-xs">
-                    {String(JSON.stringify(log.data, null, 2))}
+                  <code className="text-muted-foreground text-[10px] bg-muted px-1 rounded">
+                    {typeof log.data === 'object' 
+                      ? JSON.stringify(log.data) 
+                      : String(log.data)}
                   </code>
                 )}
               </div>

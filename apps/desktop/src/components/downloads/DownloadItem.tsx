@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
 import {
@@ -18,10 +18,16 @@ import {
   RefreshCw,
   Square,
   ListTodo,
+  ChevronDown,
+  ChevronRight,
+  Gauge,
+  Zap,
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -57,15 +63,22 @@ interface DownloadItemProps {
 }
 
 export function DownloadItem({ download }: DownloadItemProps) {
-  const { selectedIds, toggleSelected, removeDownload, updateStatus, moveToQueue } = useDownloadStore();
+  const { selectedIds, toggleSelected, removeDownload, updateStatus, updateDownload, moveToQueue } = useDownloadStore();
   const isSelected = selectedIds.has(download.id);
   const queue = useQueueStore((s) => s.queues.get(download.queue_id));
   const queues = useQueuesArray();
   const [showInfoDialog, setShowInfoDialog] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [speedLimitInput, setSpeedLimitInput] = useState<string>("");
+  const [isOverrideEnabled, setIsOverrideEnabled] = useState(download.speed_limit !== null);
 
   const progress = download.size
     ? (download.downloaded / download.size) * 100
     : 0;
+
+  // Get effective speed limit (from download or queue)
+  const effectiveSpeedLimit = download.speed_limit ?? queue?.speed_limit ?? null;
+  const isUsingQueueLimit = download.speed_limit === null && queue?.speed_limit !== null;
 
   const handlePause = useCallback(async (e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -227,6 +240,32 @@ export function DownloadItem({ download }: DownloadItemProps) {
     moveToQueue([download.id], queueId);
     toast.success("Moved to queue");
   }, [download.id, moveToQueue]);
+
+  const handleSpeedLimitChange = useCallback(async (newLimit: number | null) => {
+    // Convert KB/s to bytes/s
+    const limitBytes = newLimit ? newLimit * 1024 : null;
+    
+    // Update local state
+    updateDownload(download.id, { speed_limit: limitBytes });
+    
+    // Update backend
+    if (isTauri()) {
+      try {
+        await invoke("update_download", { 
+          id: download.id, 
+          updates: { speed_limit: limitBytes }
+        });
+        toast.success(limitBytes ? `Speed limit set to ${newLimit} KB/s` : "Speed limit removed");
+      } catch (err) {
+        console.error("Failed to update speed limit:", err);
+      }
+    }
+  }, [download.id, updateDownload]);
+
+  const handleToggleExpand = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsExpanded(!isExpanded);
+  }, [isExpanded]);
 
   // Determine which primary action button to show
   const renderPrimaryAction = () => {
@@ -439,99 +478,259 @@ export function DownloadItem({ download }: DownloadItemProps) {
             exit={{ opacity: 0, y: -10 }}
             data-download-item="true"
             className={cn(
-              "flex items-center gap-3 p-3 rounded-lg border bg-card transition-colors group cursor-pointer",
+              "rounded-lg border bg-card transition-colors group",
               isSelected && "border-primary bg-primary/5"
             )}
-            onClick={(e) => toggleSelected(download.id, e.shiftKey)}
           >
-            {/* Checkbox */}
-            <Checkbox
-              checked={isSelected}
-              onCheckedChange={() => toggleSelected(download.id)}
-              onClick={(e: React.MouseEvent) => {
-                e.stopPropagation();
-                toggleSelected(download.id, e.shiftKey);
-              }}
-            />
+            {/* Main Row */}
+            <div 
+              className="flex items-center gap-3 p-3 cursor-pointer"
+              onClick={(e) => toggleSelected(download.id, e.shiftKey)}
+            >
+              {/* Expand/Collapse Button */}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 shrink-0"
+                onClick={handleToggleExpand}
+              >
+                {isExpanded ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
+              </Button>
 
-            {/* Queue Color Indicator */}
-            {queue && (
-              <div
-                className="w-1 h-10 rounded-full shrink-0"
-                style={{ backgroundColor: queue.color }}
+              {/* Checkbox */}
+              <Checkbox
+                checked={isSelected}
+                onCheckedChange={() => toggleSelected(download.id)}
+                onClick={(e: React.MouseEvent) => {
+                  e.stopPropagation();
+                  toggleSelected(download.id, e.shiftKey);
+                }}
               />
-            )}
 
-            {/* File Icon */}
-            <div className="shrink-0">
-              <StatusIcon status={download.status} />
-            </div>
-
-            {/* Main Content */}
-            <div className="flex-1 min-w-0">
-              {/* Filename and Status */}
-              <div className="flex items-center gap-2">
-                <span className="font-medium truncate">{download.filename}</span>
-                <StatusBadge status={download.status} />
-              </div>
-
-              {/* Progress Bar (for active downloads) */}
-              {(download.status === "downloading" ||
-                download.status === "paused") && (
-                <div className="mt-1.5">
-                  <Progress value={progress} className="h-1.5" />
-                </div>
+              {/* Queue Color Indicator */}
+              {queue && (
+                <div
+                  className="w-1 self-stretch rounded-full shrink-0"
+                  style={{ backgroundColor: queue.color }}
+                />
               )}
 
-              {/* Details */}
-              <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                {/* Size */}
-                <span>
-                  {formatBytes(download.downloaded)}
-                  {download.size && ` / ${formatBytes(download.size)}`}
-                </span>
+              {/* File Icon */}
+              <div className="shrink-0">
+                <StatusIcon status={download.status} />
+              </div>
 
-                {/* Speed (for active downloads) */}
-                {download.status === "downloading" && download.speed && (
-                  <span className="text-primary">{formatSpeed(download.speed)}</span>
+              {/* Main Content */}
+              <div className="flex-1 min-w-0">
+                {/* Filename and Status */}
+                <div className="flex items-center gap-2">
+                  <span className="font-medium truncate">{download.filename}</span>
+                  <StatusBadge status={download.status} />
+                  {/* Speed limit indicator */}
+                  {effectiveSpeedLimit && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground flex items-center gap-1">
+                      <Gauge className="h-3 w-3" />
+                      {Math.round(effectiveSpeedLimit / 1024)} KB/s
+                      {isUsingQueueLimit && <span className="opacity-60">(queue)</span>}
+                    </span>
+                  )}
+                </div>
+
+                {/* Progress Bar (for active downloads) */}
+                {(download.status === "downloading" ||
+                  download.status === "paused") && (
+                  <div className="mt-1.5">
+                    <Progress value={progress} className="h-1.5" />
+                  </div>
                 )}
 
-                {/* ETA */}
-                {download.status === "downloading" && download.eta && (
-                  <span>{formatDuration(download.eta)} remaining</span>
-                )}
-
-                {/* Error */}
-                {download.status === "failed" && download.error && (
-                  <span className="text-destructive truncate max-w-[200px]">
-                    {download.error}
+                {/* Details */}
+                <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                  {/* Size */}
+                  <span>
+                    {formatBytes(download.downloaded)}
+                    {download.size && ` / ${formatBytes(download.size)}`}
                   </span>
-                )}
+
+                  {/* Speed (for active downloads) */}
+                  {download.status === "downloading" && download.speed && (
+                    <span className="text-primary">{formatSpeed(download.speed)}</span>
+                  )}
+
+                  {/* ETA */}
+                  {download.status === "downloading" && download.eta && (
+                    <span>{formatDuration(download.eta)} remaining</span>
+                  )}
+
+                  {/* Error */}
+                  {download.status === "failed" && download.error && (
+                    <span className="text-destructive truncate max-w-[200px]">
+                      {download.error}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Actions - Always visible primary action + More menu */}
+              <div className="flex items-center gap-1 shrink-0">
+                {/* Primary action button (always visible) */}
+                {renderPrimaryAction()}
+
+                {/* More options */}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <MoreHorizontal className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    {renderMenuItems(true)}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
 
-            {/* Actions - Always visible primary action + More menu */}
-            <div className="flex items-center gap-1 shrink-0">
-              {/* Primary action button (always visible) */}
-              {renderPrimaryAction()}
+            {/* Expanded Details Panel */}
+            <AnimatePresence>
+              {isExpanded && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden border-t"
+                >
+                  <div className="p-3 space-y-3 bg-muted/30">
+                    {/* Segments visualization */}
+                    {download.segments && download.segments.length > 0 && (
+                      <div className="space-y-2">
+                        <Label className="text-xs font-medium">Download Segments</Label>
+                        <div className="flex gap-1 h-4">
+                          {download.segments.map((segment, idx) => {
+                            const segmentProgress = segment.end > segment.start 
+                              ? (segment.downloaded / (segment.end - segment.start + 1)) * 100 
+                              : 0;
+                            return (
+                              <div
+                                key={idx}
+                                className="flex-1 bg-muted rounded-sm overflow-hidden relative"
+                                title={`Segment ${idx + 1}: ${Math.round(segmentProgress)}%`}
+                              >
+                                <div
+                                  className={cn(
+                                    "h-full transition-all",
+                                    segment.complete ? "bg-green-500" : "bg-primary"
+                                  )}
+                                  style={{ width: `${segmentProgress}%` }}
+                                />
+                                <span className="absolute inset-0 flex items-center justify-center text-[9px] font-medium">
+                                  {idx + 1}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
 
-              {/* More options */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  {renderMenuItems(true)}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </div>
+                    {/* Speed limit control */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label className="text-xs font-medium flex items-center gap-1">
+                          <Gauge className="h-3 w-3" />
+                          Speed Limit
+                        </Label>
+                        <div className="flex items-center gap-2">
+                          <Checkbox
+                            id={`speed-override-${download.id}`}
+                            checked={isOverrideEnabled}
+                            onCheckedChange={(checked) => {
+                              setIsOverrideEnabled(!!checked);
+                              if (!checked) {
+                                // Remove override, use queue limit
+                                handleSpeedLimitChange(null);
+                              }
+                            }}
+                          />
+                          <Label htmlFor={`speed-override-${download.id}`} className="text-xs cursor-pointer">
+                            Override queue limit
+                          </Label>
+                        </div>
+                      </div>
+                      
+                      {isOverrideEnabled ? (
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="number"
+                            placeholder="Unlimited"
+                            value={download.speed_limit ? Math.round(download.speed_limit / 1024) : ""}
+                            onChange={(e) => setSpeedLimitInput(e.target.value)}
+                            className="h-8 text-sm"
+                            min={0}
+                          />
+                          <span className="text-xs text-muted-foreground">KB/s</span>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            className="h-8"
+                            onClick={() => {
+                              const value = speedLimitInput ? parseInt(speedLimitInput) : null;
+                              handleSpeedLimitChange(value);
+                            }}
+                          >
+                            Apply
+                          </Button>
+                          {download.speed_limit && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-8 text-xs"
+                              onClick={() => handleSpeedLimitChange(null)}
+                            >
+                              <Zap className="h-3 w-3 mr-1" />
+                              Unlimited
+                            </Button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-muted-foreground">
+                          {queue?.speed_limit 
+                            ? `Using queue limit: ${Math.round(queue.speed_limit / 1024)} KB/s` 
+                            : "No speed limit (queue has no limit)"}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Additional info */}
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-muted-foreground">Queue:</span>{" "}
+                        <span className="font-medium">{queue?.name ?? "Unknown"}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Created:</span>{" "}
+                        <span className="font-medium">
+                          {new Date(download.created_at).toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="col-span-2 truncate">
+                        <span className="text-muted-foreground">URL:</span>{" "}
+                        <span className="font-mono text-[10px]">{download.url}</span>
+                      </div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </motion.div>
         </ContextMenuTrigger>
 

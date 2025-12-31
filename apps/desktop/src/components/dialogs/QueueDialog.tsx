@@ -60,13 +60,15 @@ export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps)
   const isEditing = !!editQueue;
 
   // Populate form when editing
+  // Note: speed_limit in storage is in bytes/s, UI shows KB/s
   useEffect(() => {
     if (open && editQueue) {
       setName(editQueue.name);
       setColor(editQueue.color);
       setIcon(editQueue.icon ?? null);
       setMaxConcurrent(editQueue.max_concurrent);
-      setSpeedLimit(editQueue.speed_limit ?? null);
+      // Convert from bytes/s to KB/s for display
+      setSpeedLimit(editQueue.speed_limit ? Math.round(editQueue.speed_limit / 1024) : null);
     } else if (open) {
       // Reset for new queue
       setName('');
@@ -83,9 +85,12 @@ export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps)
     try {
       setIsSaving(true);
 
+      // Convert KB/s to bytes/s for storage
+      const speedLimitBytes = speedLimit ? speedLimit * 1024 : null;
+
       const options: QueueOptions = {
         max_concurrent: maxConcurrent,
-        speed_limit: speedLimit,
+        speed_limit: speedLimitBytes,
         schedule: null,
         post_action: 'none',
         color,
@@ -102,7 +107,7 @@ export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps)
         } catch (err) {
           console.error('Backend update failed, updating local state:', err);
         }
-        updateQueue(editQueue.id, { name, color, icon, max_concurrent: maxConcurrent, speed_limit: speedLimit });
+        updateQueue(editQueue.id, { name, color, icon, max_concurrent: maxConcurrent, speed_limit: speedLimitBytes });
       } else {
         // Create new queue
         try {
@@ -117,7 +122,7 @@ export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps)
             color,
             icon,
             max_concurrent: maxConcurrent,
-            speed_limit: speedLimit,
+            speed_limit: speedLimitBytes,
             schedule: null,
             post_action: 'none',
             created_at: new Date().toISOString(),

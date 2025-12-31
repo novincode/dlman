@@ -201,7 +201,10 @@ export function SelectionToolbar({ className }: SelectionToolbarProps) {
               </span>
             </div>
 
-            <Separator orientation="vertical" className="h-6" />
+            {/* First separator - only show if there are action buttons */}
+            {(canResume || canPause || hasActive || hasPaused || hasFailed) && (
+              <Separator orientation="vertical" className="h-6" />
+            )}
 
             {/* Play/Resume button */}
             {canResume && (

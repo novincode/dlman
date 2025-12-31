@@ -260,9 +260,13 @@ async fn download_single(
     let mut last_update = std::time::Instant::now();
     let mut last_downloaded: u64 = 0;
     
-    // Speed limiting state
-    let mut throttle_start = std::time::Instant::now();
-    let mut throttle_bytes: u64 = 0;
+    // Speed limiting state - use a token bucket approach
+    let mut bucket_tokens: f64 = 0.0;
+    let mut last_refill = std::time::Instant::now();
+    
+    // Minimum chunk size we'll accept before potentially waiting
+    // This prevents the download from appearing "stuck" at 0
+    const MIN_PROGRESS_INTERVAL: std::time::Duration = std::time::Duration::from_millis(100);
 
     while let Some(chunk_result) = tokio::select! {
         chunk = stream.next() => chunk,
@@ -271,26 +275,40 @@ async fn download_single(
         }
     } {
         let chunk = chunk_result?;
-        file.write_all(&chunk).await?;
-        downloaded += chunk.len() as u64;
-        throttle_bytes += chunk.len() as u64;
-
-        // Speed limiting: if we've exceeded the limit, sleep
+        let chunk_size = chunk.len() as u64;
+        
+        // Speed limiting using token bucket algorithm
         if let Some(limit) = speed_limit {
-            let elapsed = throttle_start.elapsed().as_secs_f64();
-            let target_time = throttle_bytes as f64 / limit as f64;
+            // Refill tokens based on time elapsed
+            let now = std::time::Instant::now();
+            let elapsed = now.duration_since(last_refill).as_secs_f64();
+            bucket_tokens += elapsed * limit as f64;
+            // Cap at 1 second worth of tokens (allow small bursts)
+            bucket_tokens = bucket_tokens.min(limit as f64);
+            last_refill = now;
             
-            if target_time > elapsed {
-                let sleep_time = target_time - elapsed;
-                tokio::time::sleep(std::time::Duration::from_secs_f64(sleep_time)).await;
+            // If we don't have enough tokens, wait
+            if (chunk_size as f64) > bucket_tokens {
+                let tokens_needed = chunk_size as f64 - bucket_tokens;
+                let wait_time = tokens_needed / limit as f64;
+                // Cap wait time to prevent appearing stuck (max 500ms wait)
+                let capped_wait = wait_time.min(0.5);
+                if capped_wait > 0.001 {
+                    tokio::time::sleep(std::time::Duration::from_secs_f64(capped_wait)).await;
+                    // Refill tokens after sleeping
+                    bucket_tokens += capped_wait * limit as f64;
+                }
             }
             
-            // Reset every second
-            if throttle_start.elapsed() >= std::time::Duration::from_secs(1) {
-                throttle_start = std::time::Instant::now();
-                throttle_bytes = 0;
+            // Consume tokens for this chunk
+            bucket_tokens -= chunk_size as f64;
+            if bucket_tokens < 0.0 {
+                bucket_tokens = 0.0;
             }
         }
+        
+        file.write_all(&chunk).await?;
+        downloaded += chunk_size;
 
         // Throttle progress updates to every 100ms
         if last_update.elapsed() >= std::time::Duration::from_millis(100) {

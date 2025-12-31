@@ -13,12 +13,16 @@ export function DownloadList({ downloads }: DownloadListProps) {
   const virtualizer = useVirtualizer({
     count: downloads.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 80,
+    estimateSize: () => 80, // Base height estimate
     overscan: 5,
+    // Enable dynamic sizing based on measured elements
+    measureElement: (element) => {
+      return element.getBoundingClientRect().height;
+    },
   });
 
   return (
-    <div ref={parentRef} className="h-full overflow-auto pt-2">
+    <div ref={parentRef} className="h-full overflow-auto">
       <div
         className="relative w-full"
         style={{ height: `${virtualizer.getTotalSize()}px` }}
@@ -28,9 +32,10 @@ export function DownloadList({ downloads }: DownloadListProps) {
           return (
             <div
               key={download.id}
-              className="absolute top-0 left-0 w-full px-4 py-2"
+              data-index={virtualRow.index}
+              ref={virtualizer.measureElement}
+              className="absolute top-0 left-0 w-full px-4 py-1"
               style={{
-                height: `${virtualRow.size}px`,
                 transform: `translateY(${virtualRow.start}px)`,
               }}
             >

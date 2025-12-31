@@ -1,7 +1,8 @@
 export { NewDownloadDialog } from './NewDownloadDialog';
 export { BatchImportDialog } from './BatchImportDialog';
 export { SettingsDialog } from './SettingsDialog';
-export { QueueDialog, QueueManagerDialog } from './QueueDialog';
+export { QueueDialog } from './QueueDialog';
+export { QueueManagerDialog } from './QueueManagerDialog';
 export { CategoryDialog } from './CategoryDialog';
 export { DownloadInfoDialog } from './DownloadInfoDialog';
 export { AboutDialog } from './AboutDialog';
