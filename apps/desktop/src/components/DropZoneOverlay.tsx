@@ -33,19 +33,21 @@ export function DropZoneOverlay({ onDrop }: DropZoneOverlayProps) {
         resetOverlay();
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [resetOverlay]);
 
-  // Handle web drag events (for links from browser)
+  // Handle web drag events on the window to show the overlay
   useEffect(() => {
     const handleDragEnter = (e: DragEvent) => {
       if (isInternalDrag) return;
       
+      // Check if it's a file or a link
       const isFile = e.dataTransfer?.types.includes('Files');
       const isLink = e.dataTransfer?.types.includes('text/uri-list');
+      const isPlain = e.dataTransfer?.types.includes('text/plain');
       
-      if (isFile || isLink) {
+      if (isFile || isLink || isPlain) {
         e.preventDefault();
         e.stopPropagation();
         dragCounter.current++;
@@ -57,24 +59,16 @@ export function DropZoneOverlay({ onDrop }: DropZoneOverlayProps) {
 
     const handleDragOver = (e: DragEvent) => {
       if (isInternalDrag) return;
-      
-      const isFile = e.dataTransfer?.types.includes('Files');
-      const isLink = e.dataTransfer?.types.includes('text/uri-list');
-      
-      if (isFile || isLink) {
-        e.preventDefault();
-        e.stopPropagation();
-        // Ensure overlay is shown if we missed dragenter
-        if (dragCounter.current === 0) {
-          dragCounter.current = 1;
-          setIsExternalDrag(true);
-        }
+      e.preventDefault();
+      e.stopPropagation();
+      if (dragCounter.current === 0) {
+        dragCounter.current = 1;
+        setIsExternalDrag(true);
       }
     };
 
     const handleDragLeave = (e: DragEvent) => {
       if (isInternalDrag) return;
-      
       e.preventDefault();
       e.stopPropagation();
       dragCounter.current--;
@@ -83,45 +77,16 @@ export function DropZoneOverlay({ onDrop }: DropZoneOverlayProps) {
       }
     };
 
-    const handleDrop = (e: DragEvent) => {
-      if (isInternalDrag) return;
-      
-      e.preventDefault();
-      e.stopPropagation();
-      resetOverlay();
-
-      const urls: string[] = [];
-      
-      // Try to get URL from text/uri-list
-      const uriList = e.dataTransfer?.getData('text/uri-list');
-      if (uriList) {
-        const lines = uriList.split('\n').filter(line => line.trim() && !line.startsWith('#'));
-        urls.push(...lines);
-      }
-      
-      // Also check for plain text that looks like a URL
-      const text = e.dataTransfer?.getData('text/plain');
-      if (text && text.match(/^https?:\/\//) && !urls.includes(text)) {
-        urls.push(text);
-      }
-
-      if (urls.length > 0) {
-        onDrop(urls);
-      }
-    };
-
     window.addEventListener('dragenter', handleDragEnter);
     window.addEventListener('dragover', handleDragOver);
     window.addEventListener('dragleave', handleDragLeave);
-    window.addEventListener('drop', handleDrop);
 
     return () => {
       window.removeEventListener('dragenter', handleDragEnter);
       window.removeEventListener('dragover', handleDragOver);
       window.removeEventListener('dragleave', handleDragLeave);
-      window.removeEventListener('drop', handleDrop);
     };
-  }, [isInternalDrag, onDrop, resetOverlay]);
+  }, [isInternalDrag, resetOverlay]);
 
   // Listen to Tauri drag/drop events for external files
   useEffect(() => {
@@ -172,6 +137,33 @@ export function DropZoneOverlay({ onDrop }: DropZoneOverlayProps) {
     };
   }, [onDrop, resetOverlay, isInternalDrag]);
 
+  const handleOverlayDrop = (e: React.DragEvent) => {
+    if (isInternalDrag) return;
+    
+    e.preventDefault();
+    e.stopPropagation();
+    resetOverlay();
+
+    const urls: string[] = [];
+    
+    // Try to get URL from text/uri-list
+    const uriList = e.dataTransfer?.getData('text/uri-list');
+    if (uriList) {
+      const lines = uriList.split('\n').filter(line => line.trim() && !line.startsWith('#'));
+      urls.push(...lines);
+    }
+    
+    // Also check for plain text that looks like a URL
+    const text = e.dataTransfer?.getData('text/plain');
+    if (text && text.match(/^https?:\/\//) && !urls.includes(text)) {
+      urls.push(text);
+    }
+
+    if (urls.length > 0) {
+      onDrop(urls);
+    }
+  };
+
   const shouldShow = isExternalDrag && !isInternalDrag;
 
   return (
@@ -181,9 +173,14 @@ export function DropZoneOverlay({ onDrop }: DropZoneOverlayProps) {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm border-2 border-dashed border-primary m-4 rounded-xl pointer-events-none"
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onDrop={handleOverlayDrop}
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm border-2 border-dashed border-primary m-4 rounded-xl pointer-events-auto cursor-copy"
         >
-          <div className="flex flex-col items-center gap-4 text-center">
+          <div className="flex flex-col items-center gap-4 text-center pointer-events-none">
             <div className="p-6 rounded-full bg-primary/10 text-primary">
               <Download className="h-12 w-12" />
             </div>
