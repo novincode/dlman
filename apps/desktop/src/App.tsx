@@ -13,7 +13,7 @@ import {
 import { DropZoneOverlay } from "@/components/DropZoneOverlay";
 import { ContextMenuProvider } from "@/components/ContextMenu";
 import { DndProvider } from "@/components/dnd/DndProvider";
-import { useSettingsStore, syncSettingsToBackend } from "@/stores/settings";
+import { useSettingsStore, loadSettingsFromBackend } from "@/stores/settings";
 import { useUIStore } from "@/stores/ui";
 import { setupEventListeners, setPendingClipboardUrls } from "@/lib/events";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
@@ -66,19 +66,17 @@ function AppContent() {
     localStorage.setItem("dlman-theme", theme);
   }, [theme]);
 
-  // Set up Tauri event listeners and sync settings
+  // Load settings from backend (SQLite - single source of truth)
+  useEffect(() => {
+    // Load settings from SQLite on startup - this is the single source of truth
+    loadSettingsFromBackend().catch(console.error);
+  }, []);
+
+  // Set up Tauri event listeners
   useEffect(() => {
     const cleanup = setupEventListeners();
     
-    // Sync frontend settings to backend on startup
-    // This ensures backend uses the same settings as frontend (e.g., default_segments)
-    // Add a small delay to ensure Tauri is fully initialized
-    const syncTimer = setTimeout(() => {
-      syncSettingsToBackend().catch(console.error);
-    }, 500);
-    
     return () => {
-      clearTimeout(syncTimer);
       cleanup();
     };
   }, []);

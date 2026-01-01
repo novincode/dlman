@@ -1,11 +1,12 @@
-//! SQLite-based persistence layer for downloads
+//! SQLite-based persistence layer for downloads and settings
 //!
-//! Stores downloads and segments in a relational database for atomic, transactional updates.
+//! Stores downloads, segments, and settings in a relational database for atomic, transactional updates.
+//! This is the SINGLE SOURCE OF TRUTH for all persistent data.
 
 use crate::error::DlmanError;
-use dlman_types::{Download, DownloadStatus, Segment};
+use dlman_types::{Download, DownloadStatus, Segment, Settings, Theme};
 use sqlx::{sqlite::{SqliteConnectOptions, SqlitePool}, Row, SqlitePool as Pool};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 /// Database connection pool for download persistence
@@ -66,6 +67,22 @@ impl DownloadDatabase {
                 temp_file_path TEXT,
                 PRIMARY KEY (download_id, segment_index),
                 FOREIGN KEY (download_id) REFERENCES downloads(id) ON DELETE CASCADE
+            );
+            
+            CREATE TABLE IF NOT EXISTS settings (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                default_download_path TEXT NOT NULL,
+                max_concurrent_downloads INTEGER NOT NULL DEFAULT 4,
+                default_segments INTEGER NOT NULL DEFAULT 4,
+                global_speed_limit INTEGER,
+                theme TEXT NOT NULL DEFAULT 'system',
+                dev_mode INTEGER NOT NULL DEFAULT 0,
+                minimize_to_tray INTEGER NOT NULL DEFAULT 1,
+                start_on_boot INTEGER NOT NULL DEFAULT 0,
+                browser_integration_port INTEGER NOT NULL DEFAULT 7899,
+                remember_last_path INTEGER NOT NULL DEFAULT 1,
+                max_retries INTEGER NOT NULL DEFAULT 5,
+                retry_delay_seconds INTEGER NOT NULL DEFAULT 30
             );
             
             CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
@@ -376,6 +393,98 @@ impl DownloadDatabase {
         }
         
         Ok(downloads)
+    }
+    
+    // ========================================================================
+    // Settings CRUD - Single source of truth
+    // ========================================================================
+    
+    /// Load settings from database (returns default if not exists)
+    pub async fn load_settings(&self) -> Result<Settings, DlmanError> {
+        let row = sqlx::query("SELECT * FROM settings WHERE id = 1")
+            .fetch_optional(&self.pool)
+            .await?;
+        
+        match row {
+            Some(row) => {
+                let theme_str: String = row.get("theme");
+                let theme = match theme_str.as_str() {
+                    "light" => Theme::Light,
+                    "dark" => Theme::Dark,
+                    _ => Theme::System,
+                };
+                
+                Ok(Settings {
+                    default_download_path: PathBuf::from(row.get::<String, _>("default_download_path")),
+                    max_concurrent_downloads: row.get::<i64, _>("max_concurrent_downloads") as u32,
+                    default_segments: row.get::<i64, _>("default_segments") as u32,
+                    global_speed_limit: row.get::<Option<i64>, _>("global_speed_limit").map(|v| v as u64),
+                    theme,
+                    dev_mode: row.get::<i64, _>("dev_mode") != 0,
+                    minimize_to_tray: row.get::<i64, _>("minimize_to_tray") != 0,
+                    start_on_boot: row.get::<i64, _>("start_on_boot") != 0,
+                    browser_integration_port: row.get::<i64, _>("browser_integration_port") as u16,
+                    remember_last_path: row.get::<i64, _>("remember_last_path") != 0,
+                    max_retries: row.get::<i64, _>("max_retries") as u32,
+                    retry_delay_seconds: row.get::<i64, _>("retry_delay_seconds") as u32,
+                })
+            }
+            None => {
+                // No settings in DB, insert defaults and return them
+                let defaults = Settings::default();
+                self.save_settings(&defaults).await?;
+                Ok(defaults)
+            }
+        }
+    }
+    
+    /// Save settings to database (upsert)
+    pub async fn save_settings(&self, settings: &Settings) -> Result<(), DlmanError> {
+        let theme_str = match settings.theme {
+            Theme::Light => "light",
+            Theme::Dark => "dark",
+            Theme::System => "system",
+        };
+        
+        sqlx::query(
+            r#"
+            INSERT INTO settings (
+                id, default_download_path, max_concurrent_downloads, default_segments,
+                global_speed_limit, theme, dev_mode, minimize_to_tray, start_on_boot,
+                browser_integration_port, remember_last_path, max_retries, retry_delay_seconds
+            ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                default_download_path = excluded.default_download_path,
+                max_concurrent_downloads = excluded.max_concurrent_downloads,
+                default_segments = excluded.default_segments,
+                global_speed_limit = excluded.global_speed_limit,
+                theme = excluded.theme,
+                dev_mode = excluded.dev_mode,
+                minimize_to_tray = excluded.minimize_to_tray,
+                start_on_boot = excluded.start_on_boot,
+                browser_integration_port = excluded.browser_integration_port,
+                remember_last_path = excluded.remember_last_path,
+                max_retries = excluded.max_retries,
+                retry_delay_seconds = excluded.retry_delay_seconds
+            "#,
+        )
+        .bind(settings.default_download_path.to_string_lossy().to_string())
+        .bind(settings.max_concurrent_downloads as i64)
+        .bind(settings.default_segments as i64)
+        .bind(settings.global_speed_limit.map(|v| v as i64))
+        .bind(theme_str)
+        .bind(if settings.dev_mode { 1i64 } else { 0i64 })
+        .bind(if settings.minimize_to_tray { 1i64 } else { 0i64 })
+        .bind(if settings.start_on_boot { 1i64 } else { 0i64 })
+        .bind(settings.browser_integration_port as i64)
+        .bind(if settings.remember_last_path { 1i64 } else { 0i64 })
+        .bind(settings.max_retries as i64)
+        .bind(settings.retry_delay_seconds as i64)
+        .execute(&self.pool)
+        .await?;
+        
+        tracing::info!("Settings saved to database: default_segments={}", settings.default_segments);
+        Ok(())
     }
 }
 

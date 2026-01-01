@@ -37,9 +37,9 @@ pub struct DlmanCore {
     pub download_manager: Arc<DownloadManager>,
     /// Queue manager
     queue_manager: Arc<QueueManager>,
-    /// Legacy storage for queues and settings (JSON files)
+    /// Legacy storage for queues (JSON files) - settings moved to SQLite
     storage: Arc<Storage>,
-    /// Application settings
+    /// Application settings (cached from SQLite)
     settings: Arc<RwLock<Settings>>,
     /// Event broadcaster
     event_tx: broadcast::Sender<CoreEvent>,
@@ -51,14 +51,15 @@ impl DlmanCore {
         // Create event channel
         let (event_tx, _) = broadcast::channel(1000);
         
-        // Initialize storage (for queues and settings)
+        // Initialize storage (for queues only - settings now in SQLite)
         let storage = Storage::new(data_dir.clone()).await?;
-        
-        // Load settings
-        let settings = storage.load_settings().await?;
         
         // Initialize download manager (includes SQLite DB)
         let download_manager = Arc::new(DownloadManager::new(data_dir.clone(), event_tx.clone()).await?);
+        
+        // Load settings from SQLite database (single source of truth)
+        let settings = download_manager.db().load_settings().await?;
+        info!("Loaded settings from SQLite: default_segments={}", settings.default_segments);
         
         // Restore downloads from database
         let downloads = download_manager.restore_downloads().await?;
@@ -515,9 +516,12 @@ impl DlmanCore {
         self.settings.read().await.clone()
     }
     
-    /// Update settings
+    /// Update settings (saves to SQLite - single source of truth)
     pub async fn update_settings(&self, settings: Settings) -> Result<(), DlmanError> {
-        self.storage.save_settings(&settings).await?;
+        info!("Updating settings in SQLite: default_segments={}", settings.default_segments);
+        // Save to SQLite database (single source of truth)
+        self.download_manager.db().save_settings(&settings).await?;
+        // Update in-memory cache
         *self.settings.write().await = settings;
         Ok(())
     }
