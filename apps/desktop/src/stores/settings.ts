@@ -69,16 +69,25 @@ export const useSettingsStore = create<SettingsState>()(
  * Call this once when the app starts.
  */
 export async function syncSettingsToBackend(): Promise<void> {
+  console.log('[Settings] syncSettingsToBackend called');
+  
   const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
-  if (!isTauri) return;
+  console.log('[Settings] isTauri:', isTauri);
+  
+  if (!isTauri) {
+    console.log('[Settings] Not in Tauri context, skipping sync');
+    return;
+  }
   
   try {
     const { invoke } = await import('@tauri-apps/api/core');
     const settings = useSettingsStore.getState().settings;
-    console.log('Syncing settings to backend:', settings);
+    console.log('[Settings] Current settings from store:', settings);
+    console.log('[Settings] default_segments:', settings.default_segments);
+    
     await invoke('update_settings', { settings });
-    console.log('Settings synced to backend successfully');
+    console.log('[Settings] Settings synced to backend successfully');
   } catch (err) {
-    console.error('Failed to sync settings to backend:', err);
+    console.error('[Settings] Failed to sync settings to backend:', err);
   }
 }

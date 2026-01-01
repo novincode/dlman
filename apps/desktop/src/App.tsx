@@ -72,9 +72,15 @@ function AppContent() {
     
     // Sync frontend settings to backend on startup
     // This ensures backend uses the same settings as frontend (e.g., default_segments)
-    syncSettingsToBackend();
+    // Add a small delay to ensure Tauri is fully initialized
+    const syncTimer = setTimeout(() => {
+      syncSettingsToBackend().catch(console.error);
+    }, 500);
     
-    return cleanup;
+    return () => {
+      clearTimeout(syncTimer);
+      cleanup();
+    };
   }, []);
 
   // Handle paste for links

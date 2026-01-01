@@ -193,6 +193,7 @@ pub async fn update_settings(
     state: State<'_, AppState>,
     settings: Settings,
 ) -> Result<(), String> {
+    tracing::info!("update_settings called with default_segments={}", settings.default_segments);
     state
         .with_core_async(|core| async move { core.update_settings(settings).await })
         .await
