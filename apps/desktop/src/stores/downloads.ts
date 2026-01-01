@@ -141,8 +141,8 @@ export const useDownloadStore = create<DownloadState>()(
               error,
               // When completed, set downloaded to size to ensure they match
               downloaded: status === "completed" ? (download.size ?? download.downloaded) : download.downloaded,
-              completed_at:
-                status === "completed" ? new Date().toISOString() : download.completed_at,
+              completedAt:
+                status === "completed" ? new Date().toISOString() : download.completedAt,
             });
           }
           return { downloads };
@@ -222,7 +222,7 @@ export const useDownloadStore = create<DownloadState>()(
           for (const id of ids) {
             const download = downloads.get(id);
             if (download) {
-              downloads.set(id, { ...download, queue_id: queueId });
+              downloads.set(id, { ...download, queueId: queueId });
             }
           }
           return { downloads };
@@ -365,7 +365,7 @@ export const selectFilteredDownloads = (state: DownloadState) => {
         break;
       case "date":
         comparison =
-          new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
         break;
       case "status":
         comparison = a.status.localeCompare(b.status);

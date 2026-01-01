@@ -1,23 +1,23 @@
-// Download types - mirrors Rust types
+// Download types - mirrors Rust types (camelCase via serde)
 
 export interface Download {
   id: string;
   url: string;
-  final_url: string | null;
+  finalUrl: string | null;
   filename: string;
   destination: string;
   size: number | null;
   downloaded: number;
   status: DownloadStatus;
   segments: Segment[];
-  queue_id: string;
-  category_id: string | null;
+  queueId: string;
+  categoryId: string | null;
   color: string | null;
   error: string | null;
-  speed_limit: number | null;
-  created_at: string;
-  completed_at: string | null;
-  retry_count?: number;
+  speedLimit: number | null;
+  createdAt: string;
+  completedAt: string | null;
+  retryCount?: number;
 }
 
 export type DownloadStatus =
@@ -45,18 +45,18 @@ export interface Queue {
   name: string;
   color: string;
   icon: string | null;
-  max_concurrent: number;
-  speed_limit: number | null;
-  segment_count: number | null;
+  maxConcurrent: number;
+  speedLimit: number | null;
+  segmentCount: number | null;
   schedule: Schedule | null;
-  post_action: PostAction;
-  created_at: string;
+  postAction: PostAction;
+  createdAt: string;
 }
 
 export interface Schedule {
   enabled: boolean;
-  start_time: string | null;
-  stop_time: string | null;
+  startTime: string | null;
+  stopTime: string | null;
   days: string[];
 }
 
@@ -66,17 +66,17 @@ export type PostAction =
   | "sleep"
   | "hibernate"
   | "notify"
-  | { run_command: string };
+  | { runCommand: string };
 
 export interface QueueOptions {
   name?: string;
   color?: string;
   icon?: string | null;
-  max_concurrent?: number;
-  speed_limit?: number | null;
-  segment_count?: number | null;
+  maxConcurrent?: number;
+  speedLimit?: number | null;
+  segmentCount?: number | null;
   schedule?: Schedule | null;
-  post_action?: PostAction;
+  postAction?: PostAction;
 }
 
 // Settings types
@@ -94,22 +94,6 @@ export interface Settings {
   rememberLastPath: boolean;
   maxRetries: number;
   retryDelaySeconds: number;
-}
-
-// Settings as returned from Rust (snake_case)
-export interface RustSettings {
-  default_download_path: string;
-  max_concurrent_downloads: number;
-  default_segments: number;
-  global_speed_limit: number | null;
-  theme: Theme;
-  dev_mode: boolean;
-  minimize_to_tray: boolean;
-  start_on_boot: boolean;
-  browser_integration_port: number;
-  remember_last_path: boolean;
-  max_retries: number;
-  retry_delay_seconds: number;
 }
 
 export type Theme = "light" | "dark" | "system";
@@ -185,7 +169,7 @@ export type CoreEvent =
 
 export interface LinkInfo {
   url: string;
-  final_url: string | null;
+  finalUrl: string | null;
   filename: string;
   size: number | null;
   content_type: string | null;

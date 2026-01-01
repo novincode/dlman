@@ -93,7 +93,7 @@ export function MenuBar() {
           destination: d.destination,
           status: d.status,
           size: d.size,
-          queue_id: d.queue_id,
+          queueId: d.queueId,
         })),
         queues: queues,
       };
@@ -134,7 +134,7 @@ export function MenuBar() {
           await invoke('add_download', {
             url: dl.url,
             destination: dl.destination,
-            queueId: dl.queue_id,
+            queueId: dl.queueId,
           });
         } catch (err) {
           console.error("Failed to import download:", err);

@@ -87,7 +87,8 @@ impl DownloadTask {
     
     /// Run the download task
     pub async fn run(mut self) -> Result<(), DlmanError> {
-        info!("Starting download task for {}: {}", self.download.id, self.download.filename);
+        info!("Starting download task for {}: {} with segment_count={}", 
+              self.download.id, self.download.filename, self.segment_count);
         
         // Check for early pause/cancel
         if self.cancelled.load(Ordering::Acquire) {

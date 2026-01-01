@@ -67,10 +67,10 @@ export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps)
       setName(editQueue.name);
       setColor(editQueue.color);
       setIcon(editQueue.icon ?? null);
-      setMaxConcurrent(editQueue.max_concurrent);
+      setMaxConcurrent(editQueue.maxConcurrent);
       // Convert from bytes/s to KB/s for display
-      setSpeedLimit(editQueue.speed_limit ? Math.round(editQueue.speed_limit / 1024) : null);
-      setSegmentCount(editQueue.segment_count ?? null);
+      setSpeedLimit(editQueue.speedLimit ? Math.round(editQueue.speedLimit / 1024) : null);
+      setSegmentCount(editQueue.segmentCount ?? null);
     } else if (open) {
       // Reset for new queue
       setName('');
@@ -92,11 +92,11 @@ export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps)
       const speedLimitBytes = speedLimit ? speedLimit * 1024 : null;
 
       const options: QueueOptions = {
-        max_concurrent: maxConcurrent,
-        speed_limit: speedLimitBytes,
-        segment_count: segmentCount,
+        maxConcurrent: maxConcurrent,
+        speedLimit: speedLimitBytes,
+        segmentCount: segmentCount,
         schedule: null,
-        post_action: 'none',
+        postAction: 'none',
         color,
         icon,
       };
@@ -111,7 +111,7 @@ export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps)
         } catch (err) {
           console.error('Backend update failed, updating local state:', err);
         }
-        updateQueue(editQueue.id, { name, color, icon, max_concurrent: maxConcurrent, speed_limit: speedLimitBytes, segment_count: segmentCount });
+        updateQueue(editQueue.id, { name, color, icon, maxConcurrent: maxConcurrent, speedLimit: speedLimitBytes, segmentCount: segmentCount });
       } else {
         // Create new queue
         try {
@@ -125,12 +125,12 @@ export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps)
             name,
             color,
             icon,
-            max_concurrent: maxConcurrent,
-            speed_limit: speedLimitBytes,
-            segment_count: segmentCount,
+            maxConcurrent: maxConcurrent,
+            speedLimit: speedLimitBytes,
+            segmentCount: segmentCount,
             schedule: null,
-            post_action: 'none',
-            created_at: new Date().toISOString(),
+            postAction: 'none',
+            createdAt: new Date().toISOString(),
           };
           addQueue(localQueue);
         }

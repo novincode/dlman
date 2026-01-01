@@ -75,46 +75,31 @@ interface DownloadItemProps {
 export function DownloadItem({ download }: DownloadItemProps) {
   const { selectedIds, toggleSelected, removeDownload, updateStatus, updateDownload, moveToQueue } = useDownloadStore();
   const isSelected = selectedIds.has(download.id);
-  const queue = useQueueStore((s) => s.queues.get(download.queue_id));
+  const queue = useQueueStore((s) => s.queues.get(download.queueId));
   const queues = useQueuesArray();
   const [showInfoDialog, setShowInfoDialog] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [speedLimitInput, setSpeedLimitInput] = useState<string>(
-    download.speed_limit ? Math.round(download.speed_limit / 1024).toString() : ""
+    download.speedLimit ? Math.round(download.speedLimit / 1024).toString() : ""
   );
-  const [isOverrideEnabled, setIsOverrideEnabled] = useState(download.speed_limit !== null);
 
   // Sync speedLimitInput when download changes
   useEffect(() => {
-    if (download.speed_limit === 0) {
-      // Unlimited
-      setSpeedLimitInput("");
-      setIsOverrideEnabled(true);
-    } else if (download.speed_limit) {
-      // Custom limit
-      setSpeedLimitInput(Math.round(download.speed_limit / 1024).toString());
-      setIsOverrideEnabled(true);
+    if (download.speedLimit) {
+      setSpeedLimitInput(Math.round(download.speedLimit / 1024).toString());
     } else {
-      // Use queue limit
       setSpeedLimitInput("");
-      setIsOverrideEnabled(false);
     }
-  }, [download.speed_limit]);
+  }, [download.speedLimit]);
   const [fileExists, setFileExists] = useState<boolean | null>(null);
 
   const progress = download.size
     ? (download.downloaded / download.size) * 100
     : 0;
 
-  // Get effective speed limit
-  // speed_limit = 0 means unlimited
-  // speed_limit = null means use queue limit
-  // speed_limit = number means use that limit
-  const effectiveSpeedLimit = download.speed_limit === 0 ? null :
-                              download.speed_limit ??
-                              queue?.speed_limit ?? null;
-  const isUsingQueueLimit = download.speed_limit === null && queue?.speed_limit !== null;
+  // Get effective speed limit for display
+  const effectiveSpeedLimit = download.speedLimit || null;
 
   // Check if file exists for completed downloads
   useEffect(() => {
@@ -288,7 +273,7 @@ export function DownloadItem({ download }: DownloadItemProps) {
       updateStatus(download.id, "pending", null);
       toast.info("Download queued for retry");
     }
-  }, [download.url, download.destination, download.queue_id, download.id, updateStatus]);
+  }, [download.url, download.destination, download.queueId, download.id, updateStatus]);
 
   const handleMoveToQueue = useCallback((queueId: string) => {
     moveToQueue([download.id], queueId);
@@ -300,14 +285,14 @@ export function DownloadItem({ download }: DownloadItemProps) {
     const limitBytes = newLimit === 0 ? 0 : newLimit ? newLimit * 1024 : null;
     
     // Update local state
-    updateDownload(download.id, { speed_limit: limitBytes });
+    updateDownload(download.id, { speedLimit: limitBytes });
     
     // Update backend
     if (isTauri()) {
       try {
         await invoke("update_download", { 
           id: download.id, 
-          updates: { speed_limit: limitBytes }
+          updates: { speedLimit: limitBytes }
         });
         toast.success(limitBytes === 0 ? "Speed limit disabled" :
                      limitBytes ? `Speed limit set to ${newLimit} KB/s` : "Using queue speed limit");
@@ -495,7 +480,7 @@ export function DownloadItem({ download }: DownloadItemProps) {
               <MenuItem
                 key={q.id}
                 onClick={() => handleMoveToQueue(q.id)}
-                className={q.id === download.queue_id ? "bg-accent" : ""}
+                className={q.id === download.queueId ? "bg-accent" : ""}
               >
                 <div
                   className="w-3 h-3 rounded-full mr-2"
@@ -598,7 +583,6 @@ export function DownloadItem({ download }: DownloadItemProps) {
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground flex items-center gap-1">
                       <Gauge className="h-3 w-3" />
                       {Math.round(effectiveSpeedLimit / 1024)} KB/s
-                      {isUsingQueueLimit && <span className="opacity-60">(queue)</span>}
                     </span>
                   )}
                 </div>
@@ -757,68 +741,45 @@ export function DownloadItem({ download }: DownloadItemProps) {
                           <Gauge className="h-3 w-3" />
                           Speed Limit
                         </Label>
-                        <div className="flex items-center gap-2">
-                          <Checkbox
-                            className="checkbox"
-                            id={`speed-override-${download.id}`}
-                            checked={isOverrideEnabled}
-                            onCheckedChange={(checked) => {
-                              setIsOverrideEnabled(!!checked);
-                              if (!checked) {
-                                // Remove override, set unlimited
-                                handleSpeedLimitChange(0);
-                              }
-                            }}
-                          />
-                          <Label htmlFor={`speed-override-${download.id}`} className="text-xs cursor-pointer">
-                            Override queue limit
-                          </Label>
-                        </div>
                       </div>
                       
-                      {isOverrideEnabled ? (
-                        <div className="flex items-center gap-2">
-                          <Input
-                            type="number"
-                            placeholder="Unlimited"
-                            value={speedLimitInput}
-                            onChange={(e) => setSpeedLimitInput(e.target.value)}
-                            className="h-8 text-sm"
-                            min={0}
-                          />
-                          <span className="text-xs text-muted-foreground">KB/s</span>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            className="h-8"
-                            onClick={() => {
-                              if (speedLimitInput.trim()) {
-                                const value = parseInt(speedLimitInput);
-                                if (!isNaN(value) && value >= 0) {
-                                  handleSpeedLimitChange(value > 0 ? value : 0);
-                                }
-                              } else {
-                                handleSpeedLimitChange(0);
+                      <div className="flex items-center gap-2">
+                        <Input
+                          type="number"
+                          placeholder="Unlimited"
+                          value={speedLimitInput}
+                          onChange={(e) => setSpeedLimitInput(e.target.value)}
+                          className="h-8 text-sm"
+                          min={0}
+                        />
+                        <span className="text-xs text-muted-foreground">KB/s</span>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          className="h-8"
+                          onClick={() => {
+                            if (speedLimitInput.trim()) {
+                              const value = parseInt(speedLimitInput);
+                              if (!isNaN(value) && value >= 0) {
+                                handleSpeedLimitChange(value > 0 ? value : 0);
                               }
-                            }}
-                          >
-                            Apply
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-8 text-xs"
-                            onClick={() => handleSpeedLimitChange(0)}
-                          >
-                            <Zap className="h-3 w-3 mr-1" />
-                            Unlimited
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="text-xs text-muted-foreground">
-                          Unlimited (override disabled)
-                        </div>
-                      )}
+                            } else {
+                              handleSpeedLimitChange(0);
+                            }
+                          }}
+                        >
+                          Apply
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 text-xs"
+                          onClick={() => handleSpeedLimitChange(0)}
+                        >
+                          <Zap className="h-3 w-3 mr-1" />
+                          Unlimited
+                        </Button>
+                      </div>
                     </div>
 
                     {/* Additional info */}
@@ -830,7 +791,7 @@ export function DownloadItem({ download }: DownloadItemProps) {
                       <div>
                         <span className="text-muted-foreground">Created:</span>{" "}
                         <span className="font-medium">
-                          {new Date(download.created_at).toLocaleString()}
+                          {new Date(download.createdAt).toLocaleString()}
                         </span>
                       </div>
                       <div className="col-span-2 truncate">

@@ -237,20 +237,20 @@ export function BatchImportDialog() {
             const localDownload: DownloadType = {
               id: crypto.randomUUID(),
               url: link.url,
-              final_url: link.info?.final_url || null,
+              finalUrl: link.info?.finalUrl || null,
               filename: link.info?.filename || link.url.split('/').pop() || 'unknown',
               destination,
               size: link.info?.size || null,
               downloaded: 0,
               status: 'pending',
               segments: [],
-              queue_id: queueId,
-              category_id: null,
+              queueId: queueId,
+              categoryId: null,
               color: null,
               error: null,
-              speed_limit: null,
-              created_at: new Date().toISOString(),
-              completed_at: null,
+              speedLimit: null,
+              createdAt: new Date().toISOString(),
+              completedAt: null,
             };
             addDownload(localDownload);
             successCount++;

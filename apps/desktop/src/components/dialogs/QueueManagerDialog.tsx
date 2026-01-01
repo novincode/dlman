@@ -76,9 +76,9 @@ export function QueueManagerDialog() {
       setName(selectedQueue.name);
       setColor(selectedQueue.color);
       setIcon(selectedQueue.icon ?? null);
-      setMaxConcurrent(selectedQueue.max_concurrent);
+      setMaxConcurrent(selectedQueue.maxConcurrent);
       // Convert bytes/s to KB/s for display
-      setSpeedLimit(selectedQueue.speed_limit ? Math.round(selectedQueue.speed_limit / 1024) : null);
+      setSpeedLimit(selectedQueue.speedLimit ? Math.round(selectedQueue.speedLimit / 1024) : null);
       setHasChanges(false);
     }
   }, [selectedQueue, isCreating]);
@@ -117,10 +117,10 @@ export function QueueManagerDialog() {
       const speedLimitBytes = speedLimit ? speedLimit * 1024 : null;
 
       const options: QueueOptions = {
-        max_concurrent: maxConcurrent,
-        speed_limit: speedLimitBytes,
+        maxConcurrent: maxConcurrent,
+        speedLimit: speedLimitBytes,
         schedule: null,
-        post_action: 'none',
+        postAction: 'none',
         color,
         icon,
       };
@@ -140,11 +140,12 @@ export function QueueManagerDialog() {
               name,
               color,
               icon,
-              max_concurrent: maxConcurrent,
-              speed_limit: speedLimitBytes,
+              maxConcurrent: maxConcurrent,
+              speedLimit: speedLimitBytes,
+              segmentCount: null,
               schedule: null,
-              post_action: 'none',
-              created_at: new Date().toISOString(),
+              postAction: 'none',
+              createdAt: new Date().toISOString(),
             };
             addQueue(localQueue);
             setSelectedQueueId(localQueue.id);
@@ -155,11 +156,12 @@ export function QueueManagerDialog() {
             name,
             color,
             icon,
-            max_concurrent: maxConcurrent,
-            speed_limit: speedLimitBytes,
+            maxConcurrent: maxConcurrent,
+            speedLimit: speedLimitBytes,
+            segmentCount: null,
             schedule: null,
-            post_action: 'none',
-            created_at: new Date().toISOString(),
+            postAction: 'none',
+            createdAt: new Date().toISOString(),
           };
           addQueue(localQueue);
           setSelectedQueueId(localQueue.id);
@@ -182,8 +184,8 @@ export function QueueManagerDialog() {
           name, 
           color, 
           icon, 
-          max_concurrent: maxConcurrent, 
-          speed_limit: speedLimitBytes 
+          maxConcurrent: maxConcurrent, 
+          speedLimit: speedLimitBytes 
         });
         toast.success("Queue updated");
       }
