@@ -145,6 +145,9 @@ pub struct Queue {
     pub icon: Option<String>,
     pub max_concurrent: u32,
     pub speed_limit: Option<u64>,
+    /// Number of segments for downloads in this queue (None = use app settings)
+    #[serde(default)]
+    pub segment_count: Option<u32>,
     pub schedule: Option<Schedule>,
     pub post_action: PostAction,
     pub created_at: DateTime<Utc>,
@@ -159,6 +162,7 @@ impl Queue {
             icon: None,
             max_concurrent: 2,
             speed_limit: None,
+            segment_count: None,
             schedule: None,
             post_action: PostAction::None,
             created_at: Utc::now(),
@@ -174,6 +178,7 @@ impl Queue {
             icon: None,
             max_concurrent: 4,
             speed_limit: None,
+            segment_count: None,
             schedule: None,
             post_action: PostAction::None,
             created_at: Utc::now(),
@@ -211,6 +216,7 @@ pub struct QueueOptions {
     pub icon: Option<String>,
     pub max_concurrent: Option<u32>,
     pub speed_limit: Option<u64>,
+    pub segment_count: Option<u32>,
     pub schedule: Option<Schedule>,
     pub post_action: Option<PostAction>,
 }

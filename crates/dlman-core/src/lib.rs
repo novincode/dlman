@@ -92,10 +92,18 @@ impl DlmanCore {
     // ========================================================================
     
     /// Get a unique filename in the destination directory
-    /// If file exists, appends (1), (2), etc. until unique
-    fn get_unique_filename(destination: &PathBuf, filename: &str) -> String {
+    /// If file exists or another download is using it, appends (1), (2), etc. until unique
+    async fn get_unique_filename(destination: &PathBuf, filename: &str, db: &DownloadDatabase) -> String {
+        // Get all existing downloads in this destination
+        let existing_downloads = db.load_all_downloads().await.unwrap_or_default();
+        let existing_filenames: std::collections::HashSet<String> = existing_downloads
+            .into_iter()
+            .filter(|d| d.destination == *destination)
+            .map(|d| d.filename)
+            .collect();
+        
         let full_path = destination.join(filename);
-        if !full_path.exists() {
+        if !full_path.exists() && !existing_filenames.contains(filename) {
             return filename.to_string();
         }
         
@@ -114,7 +122,7 @@ impl DlmanCore {
                 None => format!("{} ({})", stem, i),
             };
             let new_path = destination.join(&new_filename);
-            if !new_path.exists() {
+            if !new_path.exists() && !existing_filenames.contains(&new_filename) {
                 return new_filename;
             }
         }
@@ -155,8 +163,8 @@ impl DlmanCore {
             .map(|s| s.into_owned())
             .unwrap_or(filename);
         
-        // Get unique filename to avoid overwriting existing files
-        let unique_filename = Self::get_unique_filename(&destination, &filename);
+        // Get unique filename to avoid overwriting existing files or conflicting with in-progress downloads
+        let unique_filename = Self::get_unique_filename(&destination, &filename, self.download_manager.db()).await;
         
         // Create download - size and final_url will be set when download starts
         let mut download = Download::new(url.to_string(), destination, queue_id);
@@ -215,14 +223,48 @@ impl DlmanCore {
     /// Resume a download
     pub async fn resume_download(&self, id: Uuid) -> Result<(), DlmanError> {
         let download = self.get_download(id).await?;
-        let speed_limit = download.speed_limit;
         
-        self.download_manager.resume(id).await?;
+        // Get queue for settings lookup
+        let queue = self.queue_manager.get_queue(download.queue_id).await;
         
-        // Update speed limit if needed
-        if let Some(limit) = speed_limit {
-            self.download_manager.rate_limiter.set_limit(limit).await;
-        }
+        info!(
+            "resume_download: id={}, download.speed_limit={:?}, queue.speed_limit={:?}, queue.segment_count={:?}",
+            id,
+            download.speed_limit,
+            queue.as_ref().and_then(|q| q.speed_limit),
+            queue.as_ref().and_then(|q| q.segment_count)
+        );
+        
+        // Calculate effective speed limit: download override > queue limit > unlimited
+        let effective_speed_limit = if let Some(limit) = download.speed_limit {
+            Some(limit)
+        } else {
+            // Download has no override, check queue
+            queue.as_ref().and_then(|q| q.speed_limit)
+        };
+        
+        // Get segment count: existing segments > queue setting > app settings
+        let segment_count = if !download.segments.is_empty() {
+            // Download already has segments, use existing count
+            download.segments.len() as u32
+        } else if let Some(count) = queue.as_ref().and_then(|q| q.segment_count) {
+            // Queue has segment count setting
+            count
+        } else {
+            // Use app settings
+            self.settings.read().await.default_segments
+        };
+        
+        // Get retry settings from app settings
+        let settings = self.settings.read().await;
+        let max_retries = settings.max_retries;
+        let retry_delay_secs = settings.retry_delay_seconds;
+        drop(settings);
+        
+        info!("resume_download: effective_speed_limit={:?}, segment_count={}, max_retries={}", 
+              effective_speed_limit, segment_count, max_retries);
+        
+        self.download_manager.resume(id, effective_speed_limit, segment_count, max_retries, retry_delay_secs).await?;
         
         self.emit(CoreEvent::DownloadStatusChanged {
             id,
@@ -275,12 +317,27 @@ impl DlmanCore {
     }
     
     /// Update download speed limit
+    /// `speed_limit` - None means use queue limit, Some(0) is treated as unlimited, Some(x) is x bytes/sec
     pub async fn update_download_speed_limit(
         &self,
         id: Uuid,
         speed_limit: Option<u64>,
     ) -> Result<(), DlmanError> {
-        self.download_manager.update_speed_limit(id, speed_limit).await
+        // Get download to find its queue
+        let download = self.get_download(id).await?;
+        
+        // Calculate effective limit for active downloads:
+        // - If speed_limit is Some(value), use that value
+        // - If speed_limit is None, use queue's speed limit (or unlimited if queue has none)
+        let effective_limit = if speed_limit.is_some() {
+            speed_limit
+        } else {
+            self.queue_manager.get_queue(download.queue_id).await
+                .and_then(|q| q.speed_limit)
+        };
+        
+        // The manager stores the raw speed_limit but uses effective_limit for active downloads
+        self.download_manager.update_speed_limit_with_effective(id, speed_limit, effective_limit).await
     }
     
     /// Update download status (internal)
@@ -316,13 +373,18 @@ impl DlmanCore {
         let queue = self.queue_manager.update_queue(id, options).await?;
         self.storage.save_queue(&queue).await?;
         
-        // Update speed limits for all downloads in this queue
-        if let Some(speed_limit) = queue.speed_limit {
-            let downloads = self.download_manager.db().get_downloads_by_queue(id).await?;
-            for download in downloads {
-                if self.download_manager.is_active(download.id).await {
-                    self.download_manager.rate_limiter.set_limit(speed_limit).await;
-                }
+        // Update speed limits for all active downloads in this queue that use queue limit
+        let downloads = self.download_manager.db().get_downloads_by_queue(id).await?;
+        for download in downloads {
+            // Only update if download has no override (uses queue limit)
+            if download.speed_limit.is_none() && self.download_manager.is_active(download.id).await {
+                // Update the effective limit for this active download
+                let effective_limit = queue.speed_limit;
+                self.download_manager.update_speed_limit_with_effective(
+                    download.id, 
+                    None,  // Keep the download's stored value as None
+                    effective_limit,
+                ).await?;
             }
         }
         
@@ -415,21 +477,24 @@ impl DlmanCore {
         }
         
         // Get new queue speed limit
-        let new_speed_limit = self.queue_manager.get_queue(queue_id).await
+        let new_queue_limit = self.queue_manager.get_queue(queue_id).await
             .and_then(|q| q.speed_limit);
         
         // Update downloads
         for id in ids {
             let mut download = self.get_download(id).await?;
             download.queue_id = queue_id;
-            download.speed_limit = new_speed_limit;
+            // Clear the download's speed limit override so it uses the new queue's limit
+            download.speed_limit = None;
             self.download_manager.db().upsert_download(&download).await?;
             
             // Update speed limit if download is active
             if self.download_manager.is_active(id).await {
-                if let Some(limit) = new_speed_limit {
-                    self.download_manager.rate_limiter.set_limit(limit).await;
-                }
+                self.download_manager.update_speed_limit_with_effective(
+                    id,
+                    None,  // Use queue limit
+                    new_queue_limit,
+                ).await?;
             }
         }
         

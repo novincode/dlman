@@ -47,6 +47,7 @@ export interface Queue {
   icon: string | null;
   max_concurrent: number;
   speed_limit: number | null;
+  segment_count: number | null;
   schedule: Schedule | null;
   post_action: PostAction;
   created_at: string;
@@ -73,6 +74,7 @@ export interface QueueOptions {
   icon?: string | null;
   max_concurrent?: number;
   speed_limit?: number | null;
+  segment_count?: number | null;
   schedule?: Schedule | null;
   post_action?: PostAction;
 }

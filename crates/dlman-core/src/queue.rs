@@ -100,6 +100,9 @@ impl QueueManager {
         if let Some(speed_limit) = options.speed_limit {
             queue.speed_limit = Some(speed_limit);
         }
+        if let Some(segment_count) = options.segment_count {
+            queue.segment_count = Some(segment_count);
+        }
         if let Some(schedule) = options.schedule {
             queue.schedule = Some(schedule);
         }

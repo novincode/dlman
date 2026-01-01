@@ -23,8 +23,6 @@ pub struct DownloadManager {
     active_tasks: Arc<RwLock<HashMap<Uuid, DownloadTaskHandle>>>,
     /// HTTP client
     client: Client,
-    /// Global rate limiter (public for access by core)
-    pub rate_limiter: RateLimiter,
     /// Database
     db: DownloadDatabase,
     /// Temporary directory for segment files
@@ -40,6 +38,8 @@ struct DownloadTaskHandle {
     /// Shared references for control
     paused: Arc<std::sync::atomic::AtomicBool>,
     cancelled: Arc<std::sync::atomic::AtomicBool>,
+    /// Rate limiter for this specific download
+    rate_limiter: RateLimiter,
 }
 
 impl DownloadManager {
@@ -64,13 +64,9 @@ impl DownloadManager {
             .build()
             .map_err(|e| DlmanError::Unknown(e.to_string()))?;
         
-        // Create unlimited rate limiter (will be updated per queue)
-        let rate_limiter = RateLimiter::unlimited();
-        
         Ok(Self {
             active_tasks: Arc::new(RwLock::new(HashMap::new())),
             client,
-            rate_limiter,
             db,
             temp_dir,
             event_tx,
@@ -134,7 +130,14 @@ impl DownloadManager {
     }
     
     /// Start or resume a download
-    pub async fn start(&self, download: Download, speed_limit: Option<u64>) -> Result<(), DlmanError> {
+    pub async fn start(
+        &self, 
+        download: Download, 
+        speed_limit: Option<u64>, 
+        segment_count: u32,
+        max_retries: u32,
+        retry_delay_secs: u32,
+    ) -> Result<(), DlmanError> {
         let id = download.id;
         
         // Check if already running
@@ -143,12 +146,24 @@ impl DownloadManager {
             return Ok(());
         }
         
-        info!("Starting download {}: {}", id, download.filename);
+        info!("Starting download {}: {} (segments: {}, speed_limit: {:?}, max_retries: {})", 
+              id, download.filename, segment_count, speed_limit, max_retries);
         
-        // Update rate limiter if speed limit is set
-        if let Some(limit) = speed_limit {
-            self.rate_limiter.set_limit(limit).await;
-        }
+        // Create a per-download rate limiter with the effective speed limit
+        // This ensures each download respects its own limit independently
+        let download_rate_limiter = match speed_limit {
+            Some(limit) if limit > 0 => {
+                info!("Setting rate limiter to {} bytes/sec", limit);
+                RateLimiter::new(limit)
+            },
+            _ => {
+                info!("No speed limit - using unlimited rate limiter");
+                RateLimiter::unlimited()
+            }
+        };
+        
+        // Clone the rate limiter so we can keep a reference for dynamic updates
+        let rate_limiter_for_handle = download_rate_limiter.clone();
         
         // Create control flags that are shared with the task
         let paused = Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -158,16 +173,19 @@ impl DownloadManager {
         let active_tasks = self.active_tasks.clone();
         let task_id = id;
         
-        // Create download task with shared control flags
+        // Create download task with its own rate limiter
         let task = DownloadTask::new(
             download,
             self.temp_dir.clone(),
             self.client.clone(),
-            self.rate_limiter.clone(),
+            download_rate_limiter,
             self.db.clone(),
             self.event_tx.clone(),
             paused.clone(),
             cancelled.clone(),
+            segment_count,
+            max_retries,
+            retry_delay_secs,
         );
         
         // Spawn task with cleanup
@@ -178,13 +196,14 @@ impl DownloadManager {
             result
         });
         
-        // Store handle with shared control flags
+        // Store handle with shared control flags and rate limiter
         self.active_tasks.write().await.insert(
             id,
             DownloadTaskHandle {
                 _task_handle: task_handle,
                 paused,
                 cancelled,
+                rate_limiter: rate_limiter_for_handle,
             },
         );
         
@@ -218,7 +237,16 @@ impl DownloadManager {
     }
     
     /// Resume a download
-    pub async fn resume(&self, id: Uuid) -> Result<(), DlmanError> {
+    /// `effective_speed_limit` - the resolved speed limit (download override > queue limit > None for unlimited)
+    /// `segment_count` - number of segments for new downloads (ignored if download already has segments)
+    pub async fn resume(
+        &self, 
+        id: Uuid, 
+        effective_speed_limit: Option<u64>, 
+        segment_count: u32,
+        max_retries: u32,
+        retry_delay_secs: u32,
+    ) -> Result<(), DlmanError> {
         // Check if task is still running (might be if pause was very recent)
         {
             let tasks = self.active_tasks.read().await;
@@ -226,6 +254,11 @@ impl DownloadManager {
                 // Task still running, just unpause
                 handle.paused.store(false, std::sync::atomic::Ordering::Release);
                 info!("Unpaused running download {}", id);
+                
+                // Update rate limiter with effective limit if provided
+                if let Some(limit) = effective_speed_limit {
+                    handle.rate_limiter.set_limit(limit).await;
+                }
                 
                 // Emit status change
                 let _ = self.event_tx.send(CoreEvent::DownloadStatusChanged {
@@ -251,9 +284,8 @@ impl DownloadManager {
         let download = self.db.load_download(id).await?
             .ok_or(DlmanError::NotFound(id))?;
         
-        // Start the download
-        let speed_limit = download.speed_limit;
-        self.start(download, speed_limit).await?;
+        // Start the download with the effective speed limit
+        self.start(download, effective_speed_limit, segment_count, max_retries, retry_delay_secs).await?;
         
         Ok(())
     }
@@ -319,8 +351,14 @@ impl DownloadManager {
     }
     
     /// Update speed limit for a download
-    pub async fn update_speed_limit(&self, id: Uuid, speed_limit: Option<u64>) -> Result<(), DlmanError> {
-        // Update in DB
+    /// Stores `speed_limit` in DB and applies `effective_limit` to active downloads
+    pub async fn update_speed_limit_with_effective(
+        &self, 
+        id: Uuid, 
+        speed_limit: Option<u64>,
+        effective_limit: Option<u64>,
+    ) -> Result<(), DlmanError> {
+        // Update in DB (store the user's setting, not the resolved value)
         let download = self.db.load_download(id).await?
             .ok_or(DlmanError::NotFound(id))?;
         
@@ -330,15 +368,18 @@ impl DownloadManager {
         
         // Update rate limiter if download is active
         let tasks = self.active_tasks.read().await;
-        if tasks.contains_key(&id) {
-            if let Some(limit) = speed_limit {
-                self.rate_limiter.set_limit(limit).await;
-            } else {
-                self.rate_limiter.set_limit(u64::MAX).await;
-            }
+        if let Some(handle) = tasks.get(&id) {
+            let limit = effective_limit.unwrap_or(u64::MAX);
+            handle.rate_limiter.set_limit(limit).await;
+            info!("Updated speed limit for active download {} to {:?} (effective: {:?})", id, speed_limit, effective_limit);
         }
         
         Ok(())
+    }
+    
+    /// Update speed limit for a download (simple version, effective = stored)
+    pub async fn update_speed_limit(&self, id: Uuid, speed_limit: Option<u64>) -> Result<(), DlmanError> {
+        self.update_speed_limit_with_effective(id, speed_limit, speed_limit).await
     }
     
     /// Pause all downloads
@@ -355,6 +396,8 @@ impl DownloadManager {
     }
     
     /// Resume all paused downloads
+    /// Note: This uses default values. For proper queue/settings resolution,
+    /// use the DlmanCore API instead.
     pub async fn resume_all(&self) -> Result<(), DlmanError> {
         // Load all paused downloads from DB
         let all_downloads = self.db.load_all_downloads().await?;
@@ -364,7 +407,11 @@ impl DownloadManager {
             .collect();
         
         for download in paused {
-            self.resume(download.id).await?;
+            // Use download's stored speed limit and default settings
+            // Queue resolution should be done at API layer
+            let segment_count = if download.segments.is_empty() { 4 } else { download.segments.len() as u32 };
+            // Use default retry settings
+            self.resume(download.id, download.speed_limit, segment_count, 5, 30).await?;
         }
         
         Ok(())

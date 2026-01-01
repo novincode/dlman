@@ -27,6 +27,12 @@ pub struct DownloadTask {
     paused: Arc<AtomicBool>,
     cancelled: Arc<AtomicBool>,
     total_downloaded: Arc<AtomicU64>,
+    /// Number of segments to use for multi-segment downloads
+    segment_count: u32,
+    /// Maximum number of retries for failed segments
+    max_retries: u32,
+    /// Delay between retries in seconds
+    retry_delay_secs: u32,
 }
 
 impl DownloadTask {
@@ -40,6 +46,9 @@ impl DownloadTask {
         event_tx: broadcast::Sender<CoreEvent>,
         paused: Arc<AtomicBool>,
         cancelled: Arc<AtomicBool>,
+        segment_count: u32,
+        max_retries: u32,
+        retry_delay_secs: u32,
     ) -> Self {
         // Calculate total downloaded from segments if available, otherwise use download.downloaded
         let total_from_segments: u64 = download.segments.iter().map(|s| s.downloaded).sum();
@@ -60,6 +69,9 @@ impl DownloadTask {
             paused,
             cancelled,
             total_downloaded,
+            segment_count,
+            max_retries,
+            retry_delay_secs,
         }
     }
     
@@ -125,13 +137,13 @@ impl DownloadTask {
                 return Ok(());
             }
             
-            if supports_range && self.download.size.unwrap_or(0) > 1024 * 1024 {
+            if supports_range && self.download.size.unwrap_or(0) > 1024 * 1024 && self.segment_count > 1 {
                 // Multi-segment download
-                let num_segments = 4; // TODO: Make configurable
+                let num_segments = self.segment_count as usize;
                 self.download.segments = self.calculate_segments(num_segments);
                 info!("Initialized {} segments", num_segments);
             } else {
-                // Single segment download
+                // Single segment download (no range support, small file, or segment_count=1)
                 let size = self.download.size.unwrap_or(u64::MAX);
                 self.download.segments = vec![Segment {
                     index: 0,
@@ -253,19 +265,35 @@ impl DownloadTask {
     
     /// Download with multiple parallel segments
     async fn download_multi_segment(&self) -> Result<(), DlmanError> {
-        let mut join_set = JoinSet::new();
+        let mut retry_counts: std::collections::HashMap<u32, u32> = std::collections::HashMap::new();
         
-        // Count incomplete segments
-        let incomplete_count = self.download.segments.iter().filter(|s| !s.complete).count();
+        // Start progress reporter
+        let progress_handle = self.spawn_progress_reporter();
         
-        if incomplete_count == 0 {
+        // Segments that need to be downloaded (initially, all incomplete ones)
+        let mut segments_to_download: Vec<Segment> = self.download.segments
+            .iter()
+            .filter(|s| !s.complete)
+            .cloned()
+            .collect();
+        
+        if segments_to_download.is_empty() {
             // All segments already complete
+            self.cancelled.store(true, Ordering::Release);
+            let _ = progress_handle.await;
             return Ok(());
         }
         
-        // Spawn a worker for each incomplete segment
-        for segment in &self.download.segments {
-            if !segment.complete {
+        // Main retry loop
+        loop {
+            if segments_to_download.is_empty() {
+                break;
+            }
+            
+            let mut join_set = JoinSet::new();
+            
+            // Spawn a worker for each segment that needs downloading
+            for segment in &segments_to_download {
                 let worker = SegmentWorker::new(
                     self.download.id,
                     segment.clone(),
@@ -280,58 +308,100 @@ impl DownloadTask {
                     self.total_downloaded.clone(),
                 );
                 
-                join_set.spawn(async move { worker.run().await });
+                let segment_index = segment.index;
+                join_set.spawn(async move { 
+                    let result = worker.run().await;
+                    (segment_index, result)
+                });
             }
-        }
-        
-        // Start progress reporter
-        let progress_handle = self.spawn_progress_reporter();
-        
-        // Wait for all segments to complete
-        let mut was_paused = false;
-        while let Some(result) = join_set.join_next().await {
-            match result {
-                Ok(Ok(path)) => {
-                    info!("Segment completed: {:?}", path);
+            
+            // Track failed segments for retry
+            let mut failed_segments: Vec<Segment> = Vec::new();
+            let mut was_paused = false;
+            let mut was_cancelled = false;
+            
+            // Wait for all segments to complete
+            while let Some(result) = join_set.join_next().await {
+                match result {
+                    Ok((segment_idx, Ok(_path))) => {
+                        info!("Segment {} completed", segment_idx);
+                    }
+                    Ok((segment_idx, Err(DlmanError::Paused))) => {
+                        info!("Segment {} paused", segment_idx);
+                        self.paused.store(true, Ordering::Release);
+                        was_paused = true;
+                    }
+                    Ok((segment_idx, Err(DlmanError::Cancelled))) => {
+                        info!("Segment {} cancelled", segment_idx);
+                        self.cancelled.store(true, Ordering::Release);
+                        was_cancelled = true;
+                    }
+                    Ok((segment_idx, Err(e))) => {
+                        let retry_count = retry_counts.entry(segment_idx).or_insert(0);
+                        *retry_count += 1;
+                        
+                        if *retry_count <= self.max_retries {
+                            warn!("Segment {} failed (attempt {}/{}): {}. Will retry.", 
+                                  segment_idx, retry_count, self.max_retries, e);
+                            // Find the segment to retry
+                            if let Some(seg) = self.download.segments.iter().find(|s| s.index == segment_idx) {
+                                failed_segments.push(seg.clone());
+                            }
+                        } else {
+                            error!("Segment {} failed after {} attempts: {}", segment_idx, self.max_retries, e);
+                            self.cancelled.store(true, Ordering::Release);
+                            let _ = progress_handle.await;
+                            return Err(e);
+                        }
+                    }
+                    Err(e) => {
+                        error!("Segment task panicked: {}", e);
+                        self.cancelled.store(true, Ordering::Release);
+                        let _ = progress_handle.await;
+                        return Err(DlmanError::Unknown(format!("Segment task panicked: {}", e)));
+                    }
                 }
-                Ok(Err(DlmanError::Paused)) => {
-                    // One segment was paused - signal others to pause too
-                    info!("Segment paused, stopping other segments");
-                    self.paused.store(true, Ordering::Release);
-                    was_paused = true;
-                    // Don't return yet, let other segments finish their current chunk and save
-                }
-                Ok(Err(DlmanError::Cancelled)) => {
-                    // One segment was cancelled
-                    info!("Segment cancelled, stopping other segments");
-                    self.cancelled.store(true, Ordering::Release);
-                    // Wait for others to stop
-                }
-                Ok(Err(e)) => {
-                    error!("Segment failed: {}", e);
-                    // Cancel all other segments on error
-                    self.cancelled.store(true, Ordering::Release);
-                    // Stop progress reporter and return error
+            }
+            
+            // Check for pause/cancel
+            if was_paused {
+                self.cancelled.store(true, Ordering::Release);
+                let _ = progress_handle.await;
+                return Err(DlmanError::Paused);
+            }
+            
+            if was_cancelled {
+                self.cancelled.store(true, Ordering::Release);
+                let _ = progress_handle.await;
+                return Err(DlmanError::Cancelled);
+            }
+            
+            // Prepare for retry if there are failed segments
+            if !failed_segments.is_empty() {
+                info!("Retrying {} failed segments after {} seconds delay...", 
+                      failed_segments.len(), self.retry_delay_secs);
+                tokio::time::sleep(tokio::time::Duration::from_secs(self.retry_delay_secs as u64)).await;
+                
+                // Check if cancelled during delay
+                if self.cancelled.load(Ordering::Acquire) {
                     let _ = progress_handle.await;
-                    return Err(e);
+                    return Err(DlmanError::Cancelled);
                 }
-                Err(e) => {
-                    error!("Segment task panicked: {}", e);
-                    self.cancelled.store(true, Ordering::Release);
+                if self.paused.load(Ordering::Acquire) {
                     let _ = progress_handle.await;
-                    return Err(DlmanError::Unknown(format!("Segment task panicked: {}", e)));
+                    return Err(DlmanError::Paused);
                 }
+                
+                segments_to_download = failed_segments;
+            } else {
+                // All segments completed successfully
+                segments_to_download.clear();
             }
         }
         
         // Stop progress reporter
         self.cancelled.store(true, Ordering::Release);
         let _ = progress_handle.await;
-        
-        // Return appropriate result
-        if was_paused {
-            return Err(DlmanError::Paused);
-        }
         
         Ok(())
     }
@@ -348,10 +418,12 @@ impl DownloadTask {
         
         tokio::spawn(async move {
             // Rolling speed calculation with exponential moving average
+            // Use a sliding window for more stable measurements
+            let mut speed_samples: Vec<f64> = Vec::with_capacity(10);
             let mut last_downloaded = total_downloaded.load(Ordering::Acquire);
             let mut last_time = std::time::Instant::now();
             let mut smoothed_speed: f64 = 0.0;
-            let alpha = 0.3; // Smoothing factor (0-1, lower = smoother)
+            let alpha = 0.15; // Lower alpha = smoother speed display (was 0.3)
             let mut last_db_save = std::time::Instant::now();
             
             while !cancelled.load(Ordering::Acquire) {
@@ -362,6 +434,8 @@ impl DownloadTask {
                 if paused.load(Ordering::Acquire) {
                     last_time = std::time::Instant::now();
                     last_downloaded = total_downloaded.load(Ordering::Acquire);
+                    speed_samples.clear();
+                    smoothed_speed = 0.0;
                     continue;
                 }
                 
@@ -376,8 +450,21 @@ impl DownloadTask {
                     0.0
                 };
                 
-                // Apply exponential moving average for smooth speed
-                smoothed_speed = alpha * instant_speed + (1.0 - alpha) * smoothed_speed;
+                // Store sample in sliding window (last 10 samples = 5 seconds)
+                speed_samples.push(instant_speed);
+                if speed_samples.len() > 10 {
+                    speed_samples.remove(0);
+                }
+                
+                // Use windowed average combined with EMA for stability
+                let window_avg = if !speed_samples.is_empty() {
+                    speed_samples.iter().sum::<f64>() / speed_samples.len() as f64
+                } else {
+                    instant_speed
+                };
+                
+                // Apply exponential moving average to windowed average for smooth speed
+                smoothed_speed = alpha * window_avg + (1.0 - alpha) * smoothed_speed;
                 let speed = smoothed_speed as u64;
                 
                 // Calculate ETA
