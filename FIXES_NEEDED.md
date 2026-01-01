@@ -1,6 +1,36 @@
 # DLMan Fixes and Improvements Needed
 
-## ✅ FIXED Issues (January 2026)
+## ✅ FIXED Issues (January 2026) - Round 2
+
+### Progress/Speed Not Showing During Download
+**Problem**: Main progress bar and speed weren't displaying during active downloads. Only segment progress was visible.
+
+**Root Cause**: 
+1. `total_downloaded` counter was initialized from `download.downloaded` which wasn't properly synced with segment progress
+2. No initial progress event was emitted when starting/resuming
+
+**Fix Applied**:
+1. **Calculate `total_downloaded` from segments** - When resuming, sum all segment.downloaded values
+2. **Emit initial progress event** immediately when starting so UI shows current state
+3. **Emit `DownloadUpdated` on completion** with all segments marked complete
+
+### Progress Resets on Resume
+**Problem**: Progress bar would show 0% when resuming even though segments had downloaded data.
+
+**Root Cause**: The `total_downloaded` atomic was initialized from `download.downloaded` which wasn't updated frequently enough.
+
+**Fix Applied**: Initialize `total_downloaded` by summing all segment.downloaded values, which is always accurate.
+
+### Segments Show Incomplete After Download Finishes
+**Problem**: After download completed, UI showed segments as not fully complete.
+
+**Fix Applied**: 
+1. Mark all segments complete before emitting final status
+2. Emit `DownloadUpdated` event after completion with final segment states
+
+---
+
+## ✅ FIXED Issues (January 2026) - Round 1
 
 ### UI Lock/Freeze During Download
 **Problem**: When adding a download, the UI would freeze and become unresponsive. Users couldn't see progress or click the pause button.

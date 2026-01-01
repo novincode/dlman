@@ -41,7 +41,14 @@ impl DownloadTask {
         paused: Arc<AtomicBool>,
         cancelled: Arc<AtomicBool>,
     ) -> Self {
-        let total_downloaded = Arc::new(AtomicU64::new(download.downloaded));
+        // Calculate total downloaded from segments if available, otherwise use download.downloaded
+        let total_from_segments: u64 = download.segments.iter().map(|s| s.downloaded).sum();
+        let initial_downloaded = if total_from_segments > 0 {
+            total_from_segments
+        } else {
+            download.downloaded
+        };
+        let total_downloaded = Arc::new(AtomicU64::new(initial_downloaded));
         
         Self {
             download,
@@ -88,6 +95,16 @@ impl DownloadTask {
         self.download.status = DownloadStatus::Downloading;
         self.db.update_download_status(self.download.id, DownloadStatus::Downloading, None).await?;
         self.emit_status_change(DownloadStatus::Downloading, None).await;
+        
+        // Emit initial progress so UI shows current state immediately
+        let initial_downloaded = self.total_downloaded.load(Ordering::Acquire);
+        let _ = self.event_tx.send(CoreEvent::DownloadProgress {
+            id: self.download.id,
+            downloaded: initial_downloaded,
+            total: self.download.size,
+            speed: 0,
+            eta: None,
+        });
         
         // If no segments, probe URL and initialize them
         if self.download.segments.is_empty() {
@@ -176,11 +193,22 @@ impl DownloadTask {
         info!("All segments complete, merging...");
         self.merge_segments().await?;
         
+        // Mark all segments as complete in our local state
+        for segment in &mut self.download.segments {
+            segment.complete = true;
+            segment.downloaded = segment.end - segment.start + 1;
+        }
+        
         // Update status to completed
         self.download.status = DownloadStatus::Completed;
         self.download.downloaded = self.download.size.unwrap_or(0);
         self.db.update_download_status(self.download.id, DownloadStatus::Completed, None).await?;
         self.emit_status_change(DownloadStatus::Completed, None).await;
+        
+        // Emit final download update so UI shows all segments complete
+        let _ = self.event_tx.send(CoreEvent::DownloadUpdated {
+            download: self.download.clone(),
+        });
         
         info!("Download completed: {}", self.download.filename);
         Ok(())
