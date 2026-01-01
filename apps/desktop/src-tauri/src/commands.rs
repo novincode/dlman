@@ -91,12 +91,11 @@ pub async fn update_download(
                 core.update_download_speed_limit(uuid, speed_limit).await?;
             }
 
-            // Update other fields in memory
-            let mut downloads = core.downloads.write().await;
-            if let Some(download) = downloads.get_mut(&uuid) {
-                if let Some(category_id) = updates.category_id {
-                    download.category_id = category_id.map(|s| Uuid::parse_str(&s)).transpose().unwrap_or(None);
-                }
+            // Update category in database
+            if let Some(category_id) = updates.category_id {
+                let mut download = core.get_download(uuid).await?;
+                download.category_id = category_id.map(|s| Uuid::parse_str(&s)).transpose().unwrap_or(None);
+                core.download_manager.db().upsert_download(&download).await?;
             }
             Ok(())
         })
@@ -106,10 +105,7 @@ pub async fn update_download(
 #[tauri::command]
 pub async fn get_downloads(state: State<'_, AppState>) -> Result<Vec<Download>, String> {
     state
-        .with_core_async(|core| async move {
-            let downloads = core.downloads.read().await;
-            Ok(downloads.values().cloned().collect())
-        })
+        .with_core_async(|core| async move { core.get_all_downloads().await })
         .await
 }
 
@@ -130,10 +126,7 @@ pub async fn probe_links(
 #[tauri::command]
 pub async fn get_queues(state: State<'_, AppState>) -> Result<Vec<Queue>, String> {
     state
-        .with_core_async(|core| async move {
-            let queues = core.queues.read().await;
-            Ok(queues.values().cloned().collect())
-        })
+        .with_core_async(|core| async move { Ok(core.get_queues().await) })
         .await
 }
 

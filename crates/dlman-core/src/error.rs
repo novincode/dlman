@@ -27,6 +27,9 @@ pub enum DlmanError {
     #[error("Download was cancelled")]
     Cancelled,
 
+    #[error("Download was paused")]
+    Paused,
+
     #[error("Invalid operation: {0}")]
     InvalidOperation(String),
 

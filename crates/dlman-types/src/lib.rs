@@ -108,12 +108,27 @@ impl Segment {
         }
     }
 
+    /// Get the total size of this segment in bytes
+    /// Returns u64::MAX for unknown size segments (where end = u64::MAX)
     pub fn size(&self) -> u64 {
-        self.end - self.start + 1
+        if self.end == u64::MAX {
+            u64::MAX
+        } else {
+            self.end - self.start + 1
+        }
+    }
+
+    /// Check if this is an unknown size segment
+    pub fn is_unknown_size(&self) -> bool {
+        self.end == u64::MAX
     }
 
     pub fn progress(&self) -> f64 {
-        (self.downloaded as f64 / self.size() as f64) * 100.0
+        if self.end == u64::MAX {
+            0.0 // Cannot calculate progress for unknown size
+        } else {
+            (self.downloaded as f64 / self.size() as f64) * 100.0
+        }
     }
 }
 

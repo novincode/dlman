@@ -57,7 +57,7 @@ pub async fn list_downloads(
     show_all: bool,
     format: OutputFormat,
 ) -> Result<()> {
-    let downloads: Vec<Download> = core.downloads.read().await.values().cloned().collect();
+    let downloads = core.get_all_downloads().await?;
 
     // Apply filters
     let filtered: Vec<_> = downloads
@@ -175,13 +175,7 @@ fn print_download_summary(download: &Download, detailed: bool) {
 
 pub async fn show_info(core: &DlmanCore, id: &str, format: OutputFormat) -> Result<()> {
     let uuid = Uuid::parse_str(id)?;
-    let download = core
-        .downloads
-        .read()
-        .await
-        .get(&uuid)
-        .cloned()
-        .ok_or_else(|| anyhow!("Download not found"))?;
+    let download = core.get_download(uuid).await?;
 
     match format {
         OutputFormat::Json => {
@@ -239,7 +233,7 @@ pub async fn queue_action(
 ) -> Result<()> {
     match action {
         QueueAction::List => {
-            let queues: Vec<Queue> = core.queues.read().await.values().cloned().collect();
+            let queues = core.get_queues().await;
 
             match format {
                 OutputFormat::Json => {
