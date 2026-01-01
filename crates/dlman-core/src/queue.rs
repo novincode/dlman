@@ -102,10 +102,7 @@ impl QueueManager {
         if let Some(speed_limit) = options.speed_limit {
             queue.speed_limit = Some(speed_limit);
         }
-        if let Some(segment_count) = options.segment_count {
-            tracing::info!("update_queue: setting segment_count to {}", segment_count);
-            queue.segment_count = Some(segment_count);
-        }
+        // Note: segment_count is now managed at app settings level, not per-queue
         if let Some(schedule) = options.schedule {
             queue.schedule = Some(schedule);
         }
@@ -113,7 +110,6 @@ impl QueueManager {
             queue.post_action = post_action;
         }
         
-        tracing::info!("update_queue: result queue.segment_count={:?}", queue.segment_count);
         let updated = queue.clone();
         Ok(updated)
     }

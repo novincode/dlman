@@ -13,7 +13,7 @@ import {
 import { DropZoneOverlay } from "@/components/DropZoneOverlay";
 import { ContextMenuProvider } from "@/components/ContextMenu";
 import { DndProvider } from "@/components/dnd/DndProvider";
-import { useSettingsStore } from "@/stores/settings";
+import { useSettingsStore, syncSettingsToBackend } from "@/stores/settings";
 import { useUIStore } from "@/stores/ui";
 import { setupEventListeners, setPendingClipboardUrls } from "@/lib/events";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
@@ -66,9 +66,14 @@ function AppContent() {
     localStorage.setItem("dlman-theme", theme);
   }, [theme]);
 
-  // Set up Tauri event listeners
+  // Set up Tauri event listeners and sync settings
   useEffect(() => {
     const cleanup = setupEventListeners();
+    
+    // Sync frontend settings to backend on startup
+    // This ensures backend uses the same settings as frontend (e.g., default_segments)
+    syncSettingsToBackend();
+    
     return cleanup;
   }, []);
 

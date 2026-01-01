@@ -223,15 +223,14 @@ impl DlmanCore {
     pub async fn resume_download(&self, id: Uuid) -> Result<(), DlmanError> {
         let download = self.get_download(id).await?;
         
-        // Get queue for settings lookup
+        // Get queue for speed limit lookup
         let queue = self.queue_manager.get_queue(download.queue_id).await;
         
         info!(
-            "resume_download: id={}, download.speed_limit={:?}, queue.speed_limit={:?}, queue.segment_count={:?}",
+            "resume_download: id={}, download.speed_limit={:?}, queue.speed_limit={:?}",
             id,
             download.speed_limit,
-            queue.as_ref().and_then(|q| q.speed_limit),
-            queue.as_ref().and_then(|q| q.segment_count)
+            queue.as_ref().and_then(|q| q.speed_limit)
         );
         
         // Calculate effective speed limit: download override > queue limit > unlimited
@@ -242,16 +241,18 @@ impl DlmanCore {
             queue.as_ref().and_then(|q| q.speed_limit)
         };
         
-        // Get segment count: existing segments > queue setting > app settings
+        // Get segment count: existing segments > app settings (queue segment_count removed)
+        let settings_segment_count = self.settings.read().await.default_segments;
+        info!("resume_download: settings.default_segments={}", settings_segment_count);
+        
         let segment_count = if !download.segments.is_empty() {
             // Download already has segments, use existing count
+            info!("resume_download: using existing segment count from download");
             download.segments.len() as u32
-        } else if let Some(count) = queue.as_ref().and_then(|q| q.segment_count) {
-            // Queue has segment count setting
-            count
         } else {
             // Use app settings
-            self.settings.read().await.default_segments
+            info!("resume_download: using settings default_segments={}", settings_segment_count);
+            settings_segment_count
         };
         
         // Get retry settings from app settings

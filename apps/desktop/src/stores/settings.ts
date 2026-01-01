@@ -63,3 +63,22 @@ export const useSettingsStore = create<SettingsState>()(
     }
   )
 );
+/**
+ * Sync frontend settings to backend on app startup.
+ * This ensures the Rust backend uses the same settings as the frontend.
+ * Call this once when the app starts.
+ */
+export async function syncSettingsToBackend(): Promise<void> {
+  const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
+  if (!isTauri) return;
+  
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    const settings = useSettingsStore.getState().settings;
+    console.log('Syncing settings to backend:', settings);
+    await invoke('update_settings', { settings });
+    console.log('Settings synced to backend successfully');
+  } catch (err) {
+    console.error('Failed to sync settings to backend:', err);
+  }
+}

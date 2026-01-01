@@ -55,7 +55,6 @@ export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps)
   const [icon, setIcon] = useState<string | null>(null);
   const [maxConcurrent, setMaxConcurrent] = useState(4);
   const [speedLimit, setSpeedLimit] = useState<number | null>(null);
-  const [segmentCount, setSegmentCount] = useState<number | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   const isEditing = !!editQueue;
@@ -70,7 +69,6 @@ export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps)
       setMaxConcurrent(editQueue.max_concurrent);
       // Convert from bytes/s to KB/s for display
       setSpeedLimit(editQueue.speed_limit ? Math.round(editQueue.speed_limit / 1024) : null);
-      setSegmentCount(editQueue.segment_count ?? null);
     } else if (open) {
       // Reset for new queue
       setName('');
@@ -78,7 +76,6 @@ export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps)
       setIcon(null);
       setMaxConcurrent(4);
       setSpeedLimit(null);
-      setSegmentCount(null);
     }
   }, [open, editQueue]);
 
@@ -94,7 +91,7 @@ export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps)
       const options: QueueOptions = {
         max_concurrent: maxConcurrent,
         speed_limit: speedLimitBytes,
-        segment_count: segmentCount,
+        // Note: segment_count is now managed at app settings level, not per-queue
         schedule: null,
         post_action: 'none',
         color,
@@ -111,7 +108,7 @@ export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps)
         } catch (err) {
           console.error('Backend update failed, updating local state:', err);
         }
-        updateQueue(editQueue.id, { name, color, icon, max_concurrent: maxConcurrent, speed_limit: speedLimitBytes, segment_count: segmentCount });
+        updateQueue(editQueue.id, { name, color, icon, max_concurrent: maxConcurrent, speed_limit: speedLimitBytes });
       } else {
         // Create new queue
         try {
@@ -127,7 +124,6 @@ export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps)
             icon,
             max_concurrent: maxConcurrent,
             speed_limit: speedLimitBytes,
-            segment_count: segmentCount,
             schedule: null,
             post_action: 'none',
             created_at: new Date().toISOString(),
@@ -142,7 +138,7 @@ export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps)
     } finally {
       setIsSaving(false);
     }
-  }, [name, color, icon, maxConcurrent, speedLimit, segmentCount, isEditing, editQueue, addQueue, updateQueue, onOpenChange]);
+  }, [name, color, icon, maxConcurrent, speedLimit, isEditing, editQueue, addQueue, updateQueue, onOpenChange]);
 
   const handleDelete = useCallback(async () => {
     if (!editQueue) return;
@@ -290,30 +286,7 @@ export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps)
             />
           </div>
 
-          {/* Segment Count */}
-          <div className="grid gap-2">
-            <div className="flex items-center justify-between">
-              <Label>Segment Count</Label>
-              {segmentCount !== null && (
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="h-6 text-xs"
-                  onClick={() => setSegmentCount(null)}
-                >
-                  Use App Settings
-                </Button>
-              )}
-            </div>
-            <Input
-              type="number"
-              value={segmentCount ?? ''}
-              onChange={(e) => setSegmentCount(e.target.value ? parseInt(e.target.value) : null)}
-              placeholder="Use App Settings"
-              min={1}
-              max={32}
-            />
-          </div>
+          {/* Note: Segment count is now managed in App Settings */}
         </div>
 
         <DialogFooter className="flex justify-between">

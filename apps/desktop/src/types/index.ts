@@ -47,7 +47,7 @@ export interface Queue {
   icon: string | null;
   max_concurrent: number;
   speed_limit: number | null;
-  segment_count: number | null;
+  segment_count?: number | null;  // Deprecated - segment count is now managed at app settings level
   schedule: Schedule | null;
   post_action: PostAction;
   created_at: string;
