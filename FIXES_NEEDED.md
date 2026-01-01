@@ -1,5 +1,46 @@
 # DLMan Fixes and Improvements Needed
 
+## ✅ FIXED Issues (January 2026)
+
+### UI Lock/Freeze During Download
+**Problem**: When adding a download, the UI would freeze and become unresponsive. Users couldn't see progress or click the pause button.
+
+**Root Cause**: The `add_download` command was making a **blocking HTTP HEAD request** (URL probe) before adding the download. This blocked the entire UI until the network request completed.
+
+**Fix Applied**:
+1. **Removed synchronous URL probing from `add_download`** - Downloads are now added immediately with status "Queued"
+2. **URL probing now happens lazily** when the download actually starts (in the background task)
+3. **Auto-start of queued downloads is now spawned** in a background task (non-blocking)
+4. **Added `DownloadUpdated` event emission** after probing so UI gets size/metadata updates
+
+### Progress Bar Not Updating
+**Problem**: Multi-segment download progress wasn't visible in the UI.
+
+**Fix Applied**:
+1. **Emit `DownloadUpdated` event** after probing/initialization so frontend gets the file size and segments
+2. **Progress events are already throttled** at 500ms intervals (no change needed)
+
+### Pause Button Unresponsive
+**Problem**: Clicking pause during download initialization had no effect.
+
+**Fix Applied**:
+1. **Added early pause/cancel checks** at the start of download task `run()`
+2. **Added pause/cancel checks after URL probe** (which might take time due to slow servers)
+3. The download now responds to pause/cancel at every stage of initialization
+
+### Database Query Performance (N+1 Problem)
+**Problem**: Loading downloads with segments made N+1 database queries (one per download for segments).
+
+**Fix Applied**:
+1. **Optimized `load_all_downloads`** - Now loads all segments in a single query and groups them in memory
+2. **Optimized `get_downloads_by_queue`** - Same optimization for queue-filtered queries
+
+### Cleaned Up Old Files
+- Removed `download_old.rs`, `lib_old.rs`, `queue_old.rs` (old backup files)
+- Removed `download.rs` (unused alternative implementation)
+
+---
+
 ## Overview
 Since the latest commit, we identified and attempted to fix several critical issues with the download manager's queue and pause functionality. The main problems were around queue management, moving downloads between queues, and the global pause feature.
 

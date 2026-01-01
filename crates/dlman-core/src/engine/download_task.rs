@@ -70,6 +70,20 @@ impl DownloadTask {
     pub async fn run(mut self) -> Result<(), DlmanError> {
         info!("Starting download task for {}: {}", self.download.id, self.download.filename);
         
+        // Check for early pause/cancel
+        if self.cancelled.load(Ordering::Acquire) {
+            self.download.status = DownloadStatus::Cancelled;
+            self.db.update_download_status(self.download.id, DownloadStatus::Cancelled, None).await?;
+            self.emit_status_change(DownloadStatus::Cancelled, None).await;
+            return Ok(());
+        }
+        if self.paused.load(Ordering::Acquire) {
+            self.download.status = DownloadStatus::Paused;
+            self.db.update_download_status(self.download.id, DownloadStatus::Paused, None).await?;
+            self.emit_status_change(DownloadStatus::Paused, None).await;
+            return Ok(());
+        }
+        
         // Update status to downloading
         self.download.status = DownloadStatus::Downloading;
         self.db.update_download_status(self.download.id, DownloadStatus::Downloading, None).await?;
@@ -79,6 +93,20 @@ impl DownloadTask {
         if self.download.segments.is_empty() {
             info!("No segments found, initializing...");
             let supports_range = self.probe_url().await?;
+            
+            // Check for pause/cancel after probe (which might have taken time)
+            if self.cancelled.load(Ordering::Acquire) {
+                self.download.status = DownloadStatus::Cancelled;
+                self.db.update_download_status(self.download.id, DownloadStatus::Cancelled, None).await?;
+                self.emit_status_change(DownloadStatus::Cancelled, None).await;
+                return Ok(());
+            }
+            if self.paused.load(Ordering::Acquire) {
+                self.download.status = DownloadStatus::Paused;
+                self.db.update_download_status(self.download.id, DownloadStatus::Paused, None).await?;
+                self.emit_status_change(DownloadStatus::Paused, None).await;
+                return Ok(());
+            }
             
             if supports_range && self.download.size.unwrap_or(0) > 1024 * 1024 {
                 // Multi-segment download
@@ -100,6 +128,11 @@ impl DownloadTask {
             
             // Save segments to DB
             self.db.upsert_download(&self.download).await?;
+            
+            // Emit update event so UI gets size and final URL
+            let _ = self.event_tx.send(CoreEvent::DownloadUpdated {
+                download: self.download.clone(),
+            });
         }
         
         // Check if all segments are already complete (resuming a finished-but-not-merged download)

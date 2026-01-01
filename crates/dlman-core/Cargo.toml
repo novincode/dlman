@@ -38,6 +38,7 @@ tracing = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 url = { workspace = true }
+urlencoding = "2.1"
 futures = { workspace = true }
 parking_lot = { workspace = true }
 directories = { workspace = true }

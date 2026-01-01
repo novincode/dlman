@@ -183,17 +183,37 @@ impl DownloadDatabase {
         Ok(Some(row_to_download(row, segments)?))
     }
     
-    /// Load all downloads
+    /// Load all downloads (optimized with single segments query)
     pub async fn load_all_downloads(&self) -> Result<Vec<Download>, DlmanError> {
-        let rows = sqlx::query("SELECT * FROM downloads ORDER BY created_at DESC")
+        // Load all downloads
+        let download_rows = sqlx::query("SELECT * FROM downloads ORDER BY created_at DESC")
             .fetch_all(&self.pool)
             .await?;
         
+        // Load all segments in one query
+        let segment_rows = sqlx::query("SELECT * FROM segments ORDER BY download_id, segment_index")
+            .fetch_all(&self.pool)
+            .await?;
+        
+        // Group segments by download_id
+        let mut segments_map: std::collections::HashMap<String, Vec<Segment>> = std::collections::HashMap::new();
+        for row in segment_rows {
+            let download_id: String = row.get("download_id");
+            let segment = Segment {
+                index: row.get::<i64, _>("segment_index") as u32,
+                start: row.get::<i64, _>("start_byte") as u64,
+                end: row.get::<i64, _>("end_byte") as u64,
+                downloaded: row.get::<i64, _>("downloaded_bytes") as u64,
+                complete: row.get::<i64, _>("complete") != 0,
+            };
+            segments_map.entry(download_id).or_default().push(segment);
+        }
+        
+        // Build downloads with their segments
         let mut downloads = Vec::new();
-        for row in rows {
-            let id = Uuid::parse_str(row.get::<String, _>("id").as_str())
-                .map_err(|e| DlmanError::Unknown(e.to_string()))?;
-            let segments = self.load_segments(id).await?;
+        for row in download_rows {
+            let id: String = row.get("id");
+            let segments = segments_map.remove(&id).unwrap_or_default();
             downloads.push(row_to_download(row, segments)?);
         }
         
@@ -299,20 +319,59 @@ impl DownloadDatabase {
         Ok(())
     }
     
-    /// Get downloads by queue ID
+    /// Get downloads by queue ID (optimized with single segments query)
     pub async fn get_downloads_by_queue(&self, queue_id: Uuid) -> Result<Vec<Download>, DlmanError> {
-        let rows = sqlx::query(
+        // Load downloads for this queue
+        let download_rows = sqlx::query(
             "SELECT * FROM downloads WHERE queue_id = ? ORDER BY created_at DESC"
         )
         .bind(queue_id.to_string())
         .fetch_all(&self.pool)
         .await?;
         
+        if download_rows.is_empty() {
+            return Ok(Vec::new());
+        }
+        
+        // Collect download IDs
+        let download_ids: Vec<String> = download_rows
+            .iter()
+            .map(|row| row.get::<String, _>("id"))
+            .collect();
+        
+        // Load all segments for these downloads in one query
+        // Build placeholders for IN clause
+        let placeholders = download_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+        let query = format!(
+            "SELECT * FROM segments WHERE download_id IN ({}) ORDER BY download_id, segment_index",
+            placeholders
+        );
+        
+        let mut segment_query = sqlx::query(&query);
+        for id in &download_ids {
+            segment_query = segment_query.bind(id);
+        }
+        let segment_rows = segment_query.fetch_all(&self.pool).await?;
+        
+        // Group segments by download_id
+        let mut segments_map: std::collections::HashMap<String, Vec<Segment>> = std::collections::HashMap::new();
+        for row in segment_rows {
+            let download_id: String = row.get("download_id");
+            let segment = Segment {
+                index: row.get::<i64, _>("segment_index") as u32,
+                start: row.get::<i64, _>("start_byte") as u64,
+                end: row.get::<i64, _>("end_byte") as u64,
+                downloaded: row.get::<i64, _>("downloaded_bytes") as u64,
+                complete: row.get::<i64, _>("complete") != 0,
+            };
+            segments_map.entry(download_id).or_default().push(segment);
+        }
+        
+        // Build downloads with their segments
         let mut downloads = Vec::new();
-        for row in rows {
-            let id = Uuid::parse_str(row.get::<String, _>("id").as_str())
-                .map_err(|e| DlmanError::Unknown(e.to_string()))?;
-            let segments = self.load_segments(id).await?;
+        for row in download_rows {
+            let id: String = row.get("id");
+            let segments = segments_map.remove(&id).unwrap_or_default();
             downloads.push(row_to_download(row, segments)?);
         }
         

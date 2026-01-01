@@ -128,6 +128,9 @@ impl DlmanCore {
     }
     
     /// Add a new download
+    /// 
+    /// This is NON-BLOCKING - the download is immediately added to the queue
+    /// and returned. URL probing happens lazily when the download actually starts.
     pub async fn add_download(
         &self,
         url: &str,
@@ -139,18 +142,28 @@ impl DlmanCore {
         let parsed_url = url::Url::parse(url)
             .map_err(|_| DlmanError::InvalidUrl(url.to_string()))?;
         
-        // Probe URL for metadata
-        let link_info = self.download_manager.probe_url(&parsed_url).await?;
+        // Extract filename from URL without making network request
+        // The actual metadata (size, resumable) will be fetched when download starts
+        let filename = parsed_url.path_segments()
+            .and_then(|s| s.last())
+            .filter(|s| !s.is_empty())
+            .unwrap_or("download")
+            .to_string();
+        
+        // URL decode the filename
+        let filename = urlencoding::decode(&filename)
+            .map(|s| s.into_owned())
+            .unwrap_or(filename);
         
         // Get unique filename to avoid overwriting existing files
-        let unique_filename = Self::get_unique_filename(&destination, &link_info.filename);
+        let unique_filename = Self::get_unique_filename(&destination, &filename);
         
-        // Create download
+        // Create download - size and final_url will be set when download starts
         let mut download = Download::new(url.to_string(), destination, queue_id);
         download.category_id = category_id;
         download.filename = unique_filename;
-        download.size = link_info.size;
-        download.final_url = link_info.final_url;
+        download.size = None; // Will be set when download starts
+        download.final_url = None; // Will be set when download starts
         download.status = DownloadStatus::Queued;
         
         // Get queue speed limit
@@ -161,13 +174,18 @@ impl DlmanCore {
         // Save to database
         self.download_manager.db().upsert_download(&download).await?;
         
-        // Emit event
+        // Emit event immediately so UI updates
         self.emit(CoreEvent::DownloadAdded {
             download: download.clone(),
         });
         
-        // Try to start if queue is running
-        self.queue_manager.try_start_next_download(self.clone(), queue_id).await?;
+        // Spawn queue start check in background (non-blocking)
+        let core_clone = self.clone();
+        tokio::spawn(async move {
+            if let Err(e) = core_clone.queue_manager.try_start_next_download(core_clone.clone(), queue_id).await {
+                tracing::warn!("Failed to auto-start download: {}", e);
+            }
+        });
         
         Ok(download)
     }
