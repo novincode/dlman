@@ -47,8 +47,8 @@ const CATEGORY_ICON_MAP: Record<string, LucideIcon> = {
   programs: Box,
 };
 
-function getCategoryIcon(categoryId: string): LucideIcon {
-  return CATEGORY_ICON_MAP[categoryId] || Folder;
+function getCategoryIcon(catId: string): LucideIcon {
+  return CATEGORY_ICON_MAP[catId] || Folder;
 }
 
 export function FolderList() {

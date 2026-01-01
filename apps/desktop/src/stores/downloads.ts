@@ -48,7 +48,7 @@ interface DownloadState {
   setSearchQuery: (query: string) => void;
   setSortBy: (field: SortField) => void;
   setSortOrder: (order: "asc" | "desc") => void;
-  moveToQueue: (ids: string[], queueId: string) => void;
+  moveToQueue: (ids: string[], queue_id: string) => void;
   setDownloads: (downloads: Download[]) => void;
 }
 
@@ -141,8 +141,8 @@ export const useDownloadStore = create<DownloadState>()(
               error,
               // When completed, set downloaded to size to ensure they match
               downloaded: status === "completed" ? (download.size ?? download.downloaded) : download.downloaded,
-              completedAt:
-                status === "completed" ? new Date().toISOString() : download.completedAt,
+              completed_at:
+                status === "completed" ? new Date().toISOString() : download.completed_at,
             });
           }
           return { downloads };
@@ -216,13 +216,13 @@ export const useDownloadStore = create<DownloadState>()(
 
       setSortOrder: (sortOrder) => set({ sortOrder }),
 
-      moveToQueue: (ids, queueId) =>
+      moveToQueue: (ids, newQueueId) =>
         set((state) => {
           const downloads = new Map(state.downloads);
           for (const id of ids) {
             const download = downloads.get(id);
             if (download) {
-              downloads.set(id, { ...download, queueId: queueId });
+              downloads.set(id, { ...download, queue_id: newQueueId });
             }
           }
           return { downloads };
@@ -365,7 +365,7 @@ export const selectFilteredDownloads = (state: DownloadState) => {
         break;
       case "date":
         comparison =
-          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
         break;
       case "status":
         comparison = a.status.localeCompare(b.status);

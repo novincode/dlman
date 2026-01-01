@@ -224,20 +224,20 @@ export function NewDownloadDialog() {
           const localDownload: DownloadType = {
             id: crypto.randomUUID(),
             url,
-            finalUrl: null,
+            final_url: null,
             filename: filename || url.split('/').pop() || 'unknown',
             destination,
             size: fileSize,
             downloaded: 0,
             status: 'pending',
             segments: [],
-            queueId: queueId,
-            categoryId: null,
+            queue_id: queueId,
+            category_id: null,
             color: null,
             error: null,
-            speedLimit: null,
-            createdAt: new Date().toISOString(),
-            completedAt: null,
+            speed_limit: null,
+            created_at: new Date().toISOString(),
+            completed_at: null,
           };
           addDownload(localDownload);
           toast.success('Download added (offline mode)');
@@ -247,20 +247,20 @@ export function NewDownloadDialog() {
         const localDownload: DownloadType = {
           id: crypto.randomUUID(),
           url,
-          finalUrl: null,
+          final_url: null,
           filename: filename || url.split('/').pop() || 'unknown',
           destination,
           size: fileSize,
           downloaded: 0,
           status: 'pending',
           segments: [],
-          queueId: queueId,
-          categoryId: null,
+          queue_id: queueId,
+          category_id: null,
           color: null,
           error: null,
-          speedLimit: null,
-          createdAt: new Date().toISOString(),
-          completedAt: null,
+          speed_limit: null,
+          created_at: new Date().toISOString(),
+          completed_at: null,
         };
         addDownload(localDownload);
         toast.success('Download added (preview mode)');

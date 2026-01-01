@@ -118,9 +118,9 @@ export function SettingsDialog() {
                   </Label>
                   <Checkbox
                     id="startOnBoot"
-                    checked={localSettings.startOnBoot}
+                    checked={localSettings.start_on_boot}
                     onCheckedChange={(checked: boolean) =>
-                      handleChange('startOnBoot', checked)
+                      handleChange('start_on_boot', checked)
                     }
                   />
                 </div>
@@ -130,9 +130,9 @@ export function SettingsDialog() {
                   </Label>
                   <Checkbox
                     id="minimizeToTray"
-                    checked={localSettings.minimizeToTray}
+                    checked={localSettings.minimize_to_tray}
                     onCheckedChange={(checked: boolean) =>
-                      handleChange('minimizeToTray', checked)
+                      handleChange('minimize_to_tray', checked)
                     }
                   />
                 </div>
@@ -163,9 +163,9 @@ export function SettingsDialog() {
               </h3>
               <div className="pl-6 space-y-2">
                 <Input
-                  value={localSettings.defaultDownloadPath}
+                  value={localSettings.default_download_path}
                   onChange={(e) =>
-                    handleChange('defaultDownloadPath', e.target.value)
+                    handleChange('default_download_path', e.target.value)
                   }
                   placeholder="/path/to/downloads"
                 />
@@ -175,9 +175,9 @@ export function SettingsDialog() {
                   </Label>
                   <Checkbox
                     id="rememberPath"
-                    checked={localSettings.rememberLastPath}
+                    checked={localSettings.remember_last_path}
                     onCheckedChange={(checked: boolean) =>
-                      handleChange('rememberLastPath', checked)
+                      handleChange('remember_last_path', checked)
                     }
                   />
                 </div>
@@ -199,10 +199,10 @@ export function SettingsDialog() {
                     type="number"
                     min={1}
                     max={10}
-                    value={localSettings.maxConcurrentDownloads}
+                    value={localSettings.max_concurrent_downloads}
                     onChange={(e) =>
                       handleChange(
-                        'maxConcurrentDownloads',
+                        'max_concurrent_downloads',
                         parseInt(e.target.value) || 1
                       )
                     }
@@ -216,10 +216,10 @@ export function SettingsDialog() {
                     type="number"
                     min={1}
                     max={16}
-                    value={localSettings.defaultSegments}
+                    value={localSettings.default_segments}
                     onChange={(e) =>
                       handleChange(
-                        'defaultSegments',
+                        'default_segments',
                         parseInt(e.target.value) || 1
                       )
                     }
@@ -235,17 +235,17 @@ export function SettingsDialog() {
                       id="speedLimit"
                       type="number"
                       min={0}
-                      value={localSettings.globalSpeedLimit ? Math.round(localSettings.globalSpeedLimit / 1024) : 0}
+                      value={localSettings.global_speed_limit ? Math.round(localSettings.global_speed_limit / 1024) : 0}
                       onChange={(e) => {
                         const kbps = parseInt(e.target.value) || 0;
-                        handleChange('globalSpeedLimit', kbps > 0 ? kbps * 1024 : null);
+                        handleChange('global_speed_limit', kbps > 0 ? kbps * 1024 : null);
                       }}
                       className="w-32"
                     />
                     <span className="text-sm text-muted-foreground">KB/s</span>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Set to 0 for unlimited speed. Current: {localSettings.globalSpeedLimit ? `${Math.round(localSettings.globalSpeedLimit / 1024)} KB/s` : 'Unlimited'}
+                    Set to 0 for unlimited speed. Current: {localSettings.global_speed_limit ? `${Math.round(localSettings.global_speed_limit / 1024)} KB/s` : 'Unlimited'}
                   </p>
                 </div>
               </div>
@@ -266,10 +266,10 @@ export function SettingsDialog() {
                     type="number"
                     min={0}
                     max={20}
-                    value={localSettings.maxRetries}
+                    value={localSettings.max_retries}
                     onChange={(e) =>
                       handleChange(
-                        'maxRetries',
+                        'max_retries',
                         parseInt(e.target.value) || 0
                       )
                     }
@@ -288,10 +288,10 @@ export function SettingsDialog() {
                     type="number"
                     min={1}
                     max={300}
-                    value={localSettings.retryDelaySeconds}
+                    value={localSettings.retry_delay_seconds}
                     onChange={(e) =>
                       handleChange(
-                        'retryDelaySeconds',
+                        'retry_delay_seconds',
                         parseInt(e.target.value) || 30
                       )
                     }
@@ -356,10 +356,10 @@ export function SettingsDialog() {
                   type="number"
                   min={1024}
                   max={65535}
-                  value={localSettings.browserIntegrationPort}
+                  value={localSettings.browser_integration_port}
                   onChange={(e) =>
                     handleChange(
-                      'browserIntegrationPort',
+                      'browser_integration_port',
                       parseInt(e.target.value) || 7899
                     )
                   }
@@ -383,9 +383,9 @@ export function SettingsDialog() {
                   </Label>
                   <Checkbox
                     id="devMode"
-                    checked={localSettings.devMode}
+                    checked={localSettings.dev_mode}
                     onCheckedChange={(checked: boolean) =>
-                      handleChange('devMode', checked)
+                      handleChange('dev_mode', checked)
                     }
                   />
                 </div>

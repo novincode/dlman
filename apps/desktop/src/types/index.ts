@@ -1,23 +1,23 @@
-// Download types - mirrors Rust types (camelCase via serde)
+// Download types - mirrors Rust types (snake_case)
 
 export interface Download {
   id: string;
   url: string;
-  finalUrl: string | null;
+  final_url: string | null;
   filename: string;
   destination: string;
   size: number | null;
   downloaded: number;
   status: DownloadStatus;
   segments: Segment[];
-  queueId: string;
-  categoryId: string | null;
+  queue_id: string;
+  category_id: string | null;
   color: string | null;
   error: string | null;
-  speedLimit: number | null;
-  createdAt: string;
-  completedAt: string | null;
-  retryCount?: number;
+  speed_limit: number | null;
+  created_at: string;
+  completed_at: string | null;
+  retry_count?: number;
 }
 
 export type DownloadStatus =
@@ -45,18 +45,18 @@ export interface Queue {
   name: string;
   color: string;
   icon: string | null;
-  maxConcurrent: number;
-  speedLimit: number | null;
-  segmentCount: number | null;
+  max_concurrent: number;
+  speed_limit: number | null;
+  segment_count: number | null;
   schedule: Schedule | null;
-  postAction: PostAction;
-  createdAt: string;
+  post_action: PostAction;
+  created_at: string;
 }
 
 export interface Schedule {
   enabled: boolean;
-  startTime: string | null;
-  stopTime: string | null;
+  start_time: string | null;
+  stop_time: string | null;
   days: string[];
 }
 
@@ -66,34 +66,34 @@ export type PostAction =
   | "sleep"
   | "hibernate"
   | "notify"
-  | { runCommand: string };
+  | { run_command: string };
 
 export interface QueueOptions {
   name?: string;
   color?: string;
   icon?: string | null;
-  maxConcurrent?: number;
-  speedLimit?: number | null;
-  segmentCount?: number | null;
+  max_concurrent?: number;
+  speed_limit?: number | null;
+  segment_count?: number | null;
   schedule?: Schedule | null;
-  postAction?: PostAction;
+  post_action?: PostAction;
 }
 
 // Settings types
 
 export interface Settings {
-  defaultDownloadPath: string;
-  maxConcurrentDownloads: number;
-  defaultSegments: number;
-  globalSpeedLimit: number | null;
+  default_download_path: string;
+  max_concurrent_downloads: number;
+  default_segments: number;
+  global_speed_limit: number | null;
   theme: Theme;
-  devMode: boolean;
-  minimizeToTray: boolean;
-  startOnBoot: boolean;
-  browserIntegrationPort: number;
-  rememberLastPath: boolean;
-  maxRetries: number;
-  retryDelaySeconds: number;
+  dev_mode: boolean;
+  minimize_to_tray: boolean;
+  start_on_boot: boolean;
+  browser_integration_port: number;
+  remember_last_path: boolean;
+  max_retries: number;
+  retry_delay_seconds: number;
 }
 
 export type Theme = "light" | "dark" | "system";
@@ -169,7 +169,7 @@ export type CoreEvent =
 
 export interface LinkInfo {
   url: string;
-  finalUrl: string | null;
+  final_url: string | null;
   filename: string;
   size: number | null;
   content_type: string | null;

@@ -33,14 +33,14 @@ export async function getDefaultBasePath(): Promise<string> {
 /**
  * Get the download path for a specific category
  */
-export async function getCategoryDownloadPath(categoryId: string | null): Promise<string> {
+export async function getCategoryDownloadPath(catId: string | null): Promise<string> {
   const basePath = await getDefaultBasePath();
   
-  if (!categoryId) {
+  if (!catId) {
     return basePath;
   }
   
-  const category = useCategoryStore.getState().categories.get(categoryId);
+  const category = useCategoryStore.getState().categories.get(catId);
   if (!category) {
     return basePath;
   }

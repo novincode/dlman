@@ -48,7 +48,7 @@ interface DownloadInfoDialogProps {
 }
 
 export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInfoDialogProps) {
-  const queue = useQueueStore((s) => download ? s.queues.get(download.queueId) : null);
+  const queue = useQueueStore((s) => download ? s.queues.get(download.queue_id) : null);
   const updateDownload = useDownloadStore((s) => s.updateDownload);
   
   // Track speed and ETA for active downloads
@@ -59,7 +59,7 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
   
   // Local speed limit state (in KB/s for UI, 0 = unlimited)
   const [speedLimitKB, setSpeedLimitKB] = useState(
-    download?.speedLimit ? Math.round(download.speedLimit / 1024) : 0
+    download?.speed_limit ? Math.round(download.speed_limit / 1024) : 0
   );
   
   // Calculate speed and ETA for active downloads
@@ -102,12 +102,12 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
     
     if (download) {
       const bytesPerSecond = kbps === 0 ? null : kbps * 1024;
-      updateDownload(download.id, { speedLimit: bytesPerSecond });
+      updateDownload(download.id, { speed_limit: bytesPerSecond });
       
       try {
         await invoke('update_download', {
           id: download.id,
-          updates: { speedLimit: bytesPerSecond },
+          updates: { speed_limit: bytesPerSecond },
         });
       } catch (err) {
         console.error('Failed to update speed limit:', err);
@@ -324,7 +324,7 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
                 <Calendar className="h-3.5 w-3.5" />
                 Started
               </p>
-              <p className="font-medium">{formatDate(download.createdAt)}</p>
+              <p className="font-medium">{formatDate(download.created_at)}</p>
             </div>
 
             <div className="space-y-1">
@@ -332,7 +332,7 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
                 <CheckCircle2 className="h-3.5 w-3.5" />
                 Completed
               </p>
-              <p className="font-medium">{formatDate(download.completedAt)}</p>
+              <p className="font-medium">{formatDate(download.completed_at)}</p>
             </div>
 
             <div className="space-y-1">

@@ -81,6 +81,8 @@ impl QueueManager {
     
     /// Update a queue
     pub async fn update_queue(&self, id: Uuid, options: QueueOptions) -> Result<Queue, DlmanError> {
+        tracing::info!("update_queue: id={}, options={:?}", id, options);
+        
         let mut queues = self.queues.write().await;
         let queue = queues.get_mut(&id).ok_or(DlmanError::NotFound(id))?;
         
@@ -101,6 +103,7 @@ impl QueueManager {
             queue.speed_limit = Some(speed_limit);
         }
         if let Some(segment_count) = options.segment_count {
+            tracing::info!("update_queue: setting segment_count to {}", segment_count);
             queue.segment_count = Some(segment_count);
         }
         if let Some(schedule) = options.schedule {
@@ -110,6 +113,7 @@ impl QueueManager {
             queue.post_action = post_action;
         }
         
+        tracing::info!("update_queue: result queue.segment_count={:?}", queue.segment_count);
         let updated = queue.clone();
         Ok(updated)
     }

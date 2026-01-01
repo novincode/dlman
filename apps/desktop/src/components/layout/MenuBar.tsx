@@ -93,7 +93,7 @@ export function MenuBar() {
           destination: d.destination,
           status: d.status,
           size: d.size,
-          queueId: d.queueId,
+          queue_id: d.queue_id,
         })),
         queues: queues,
       };
@@ -134,7 +134,7 @@ export function MenuBar() {
           await invoke('add_download', {
             url: dl.url,
             destination: dl.destination,
-            queueId: dl.queueId,
+            queue_id: dl.queue_id,
           });
         } catch (err) {
           console.error("Failed to import download:", err);
@@ -177,9 +177,9 @@ export function MenuBar() {
     });
   };
 
-  const handleStartQueue = async (queueId: string) => {
+  const handleStartQueue = async (queue_id: string) => {
     try {
-      await invoke('start_queue', { id: queueId });
+      await invoke('start_queue', { id: queue_id });
       toast.success('Queue started');
     } catch (error) {
       console.error('Failed to start queue:', error);

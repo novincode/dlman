@@ -167,9 +167,9 @@ export function SelectionToolbar({ className }: SelectionToolbarProps) {
     });
   }, [selectedIds, selectedCount, removeDownload, clearSelection, openConfirmDialog]);
 
-  const handleMoveToQueue = useCallback((queueId: string) => {
+  const handleMoveToQueue = useCallback((newQueueId: string) => {
     const ids = Array.from(selectedIds);
-    moveToQueue(ids, queueId);
+    moveToQueue(ids, newQueueId);
     toast.success(`Moved ${ids.length} download(s) to queue`);
   }, [selectedIds, moveToQueue]);
 

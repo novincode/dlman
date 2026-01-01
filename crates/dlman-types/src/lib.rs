@@ -14,7 +14,6 @@ use uuid::Uuid;
 
 /// Represents a single download task
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct Download {
     pub id: Uuid,
     pub url: String,
@@ -139,7 +138,6 @@ impl Segment {
 
 /// A download queue with scheduling and limits
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct Queue {
     pub id: Uuid,
     pub name: String,
@@ -190,7 +188,6 @@ impl Queue {
 
 /// Schedule for automatic queue start/stop
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct Schedule {
     pub enabled: bool,
     pub start_time: Option<NaiveTime>,
@@ -213,7 +210,6 @@ pub enum PostAction {
 
 /// Options for creating/updating a queue
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct QueueOptions {
     pub name: Option<String>,
     pub color: Option<String>,
@@ -231,7 +227,6 @@ pub struct QueueOptions {
 
 /// Application settings
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct Settings {
     pub default_download_path: PathBuf,
     pub max_concurrent_downloads: u32,
@@ -330,7 +325,6 @@ pub enum CoreEvent {
 
 /// Information about a link (from probing)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct LinkInfo {
     pub url: String,
     pub final_url: Option<String>,
@@ -343,7 +337,6 @@ pub struct LinkInfo {
 
 /// Result of a batch import
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ImportResult {
     pub successful: Vec<Download>,
     pub failed: Vec<ImportError>,
@@ -351,7 +344,6 @@ pub struct ImportResult {
 
 /// Error during import
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ImportError {
     pub url: String,
     pub error: String,

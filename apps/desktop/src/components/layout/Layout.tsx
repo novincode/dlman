@@ -9,7 +9,7 @@ import { useUIStore } from "@/stores/ui";
 import { cn } from "@/lib/utils";
 
 export function Layout() {
-  const devMode = useSettingsStore((s) => s.settings.devMode);
+  const devMode = useSettingsStore((s) => s.settings.dev_mode);
   const { sidebarCollapsed, setSidebarCollapsed, showDevConsole } = useUIStore();
   const [consoleCollapsed, setConsoleCollapsed] = useState(false);
 

@@ -25,12 +25,12 @@ export function MainContent() {
 
     // Filter by queue
     if (selectedQueueId !== null) {
-      filtered = filtered.filter((d) => d.queueId === selectedQueueId);
+      filtered = filtered.filter((d) => d.queue_id === selectedQueueId);
     }
 
     // Filter by category (based on assigned category_id)
     if (selectedCategoryId !== null) {
-      filtered = filtered.filter((d) => d.categoryId === selectedCategoryId);
+      filtered = filtered.filter((d) => d.category_id === selectedCategoryId);
     }
 
     return filtered;

@@ -75,23 +75,23 @@ interface DownloadItemProps {
 export function DownloadItem({ download }: DownloadItemProps) {
   const { selectedIds, toggleSelected, removeDownload, updateStatus, updateDownload, moveToQueue } = useDownloadStore();
   const isSelected = selectedIds.has(download.id);
-  const queue = useQueueStore((s) => s.queues.get(download.queueId));
+  const queue = useQueueStore((s) => s.queues.get(download.queue_id));
   const queues = useQueuesArray();
   const [showInfoDialog, setShowInfoDialog] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [speedLimitInput, setSpeedLimitInput] = useState<string>(
-    download.speedLimit ? Math.round(download.speedLimit / 1024).toString() : ""
+    download.speed_limit ? Math.round(download.speed_limit / 1024).toString() : ""
   );
 
   // Sync speedLimitInput when download changes
   useEffect(() => {
-    if (download.speedLimit) {
-      setSpeedLimitInput(Math.round(download.speedLimit / 1024).toString());
+    if (download.speed_limit) {
+      setSpeedLimitInput(Math.round(download.speed_limit / 1024).toString());
     } else {
       setSpeedLimitInput("");
     }
-  }, [download.speedLimit]);
+  }, [download.speed_limit]);
   const [fileExists, setFileExists] = useState<boolean | null>(null);
 
   const progress = download.size
@@ -99,7 +99,7 @@ export function DownloadItem({ download }: DownloadItemProps) {
     : 0;
 
   // Get effective speed limit for display
-  const effectiveSpeedLimit = download.speedLimit || null;
+  const effectiveSpeedLimit = download.speed_limit || null;
 
   // Check if file exists for completed downloads
   useEffect(() => {
@@ -273,10 +273,10 @@ export function DownloadItem({ download }: DownloadItemProps) {
       updateStatus(download.id, "pending", null);
       toast.info("Download queued for retry");
     }
-  }, [download.url, download.destination, download.queueId, download.id, updateStatus]);
+  }, [download.url, download.destination, download.queue_id, download.id, updateStatus]);
 
-  const handleMoveToQueue = useCallback((queueId: string) => {
-    moveToQueue([download.id], queueId);
+  const handleMoveToQueue = useCallback((newQueueId: string) => {
+    moveToQueue([download.id], newQueueId);
     toast.success("Moved to queue");
   }, [download.id, moveToQueue]);
 
@@ -285,14 +285,14 @@ export function DownloadItem({ download }: DownloadItemProps) {
     const limitBytes = newLimit === 0 ? 0 : newLimit ? newLimit * 1024 : null;
     
     // Update local state
-    updateDownload(download.id, { speedLimit: limitBytes });
+    updateDownload(download.id, { speed_limit: limitBytes });
     
     // Update backend
     if (isTauri()) {
       try {
         await invoke("update_download", { 
           id: download.id, 
-          updates: { speedLimit: limitBytes }
+          updates: { speed_limit: limitBytes }
         });
         toast.success(limitBytes === 0 ? "Speed limit disabled" :
                      limitBytes ? `Speed limit set to ${newLimit} KB/s` : "Using queue speed limit");
@@ -480,7 +480,7 @@ export function DownloadItem({ download }: DownloadItemProps) {
               <MenuItem
                 key={q.id}
                 onClick={() => handleMoveToQueue(q.id)}
-                className={q.id === download.queueId ? "bg-accent" : ""}
+                className={q.id === download.queue_id ? "bg-accent" : ""}
               >
                 <div
                   className="w-3 h-3 rounded-full mr-2"
@@ -791,7 +791,7 @@ export function DownloadItem({ download }: DownloadItemProps) {
                       <div>
                         <span className="text-muted-foreground">Created:</span>{" "}
                         <span className="font-medium">
-                          {new Date(download.createdAt).toLocaleString()}
+                          {new Date(download.created_at).toLocaleString()}
                         </span>
                       </div>
                       <div className="col-span-2 truncate">

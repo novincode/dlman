@@ -20,18 +20,18 @@ const getDefaultDownloadPath = (): string => {
 };
 
 const defaultSettings: Settings = {
-  defaultDownloadPath: getDefaultDownloadPath(),
-  maxConcurrentDownloads: 4,
-  defaultSegments: 4,
-  globalSpeedLimit: null,
+  default_download_path: getDefaultDownloadPath(),
+  max_concurrent_downloads: 4,
+  default_segments: 4,
+  global_speed_limit: null,
   theme: "system",
-  devMode: false,
-  minimizeToTray: true,
-  startOnBoot: false,
-  browserIntegrationPort: 7899,
-  rememberLastPath: true,
-  maxRetries: 5,
-  retryDelaySeconds: 30,
+  dev_mode: false,
+  minimize_to_tray: true,
+  start_on_boot: false,
+  browser_integration_port: 7899,
+  remember_last_path: true,
+  max_retries: 5,
+  retry_delay_seconds: 30,
 };
 
 export const useSettingsStore = create<SettingsState>()(
@@ -45,9 +45,9 @@ export const useSettingsStore = create<SettingsState>()(
         set((state) => ({
           settings: { ...state.settings, theme },
         })),
-      setDevMode: (devMode) =>
+      setDevMode: (dev_mode) =>
         set((state) => ({
-          settings: { ...state.settings, devMode },
+          settings: { ...state.settings, dev_mode },
         })),
       updateSettings: (newSettings) =>
         set((state) => ({
@@ -55,7 +55,7 @@ export const useSettingsStore = create<SettingsState>()(
         })),
       setDefaultDownloadPath: (path) =>
         set((state) => ({
-          settings: { ...state.settings, defaultDownloadPath: path },
+          settings: { ...state.settings, default_download_path: path },
         })),
     }),
     {

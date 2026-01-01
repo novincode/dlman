@@ -76,7 +76,7 @@ export function DndProvider({ children }: DndProviderProps) {
           if (category) {
             // Update local state immediately
             idsToMove.forEach((id) => {
-              updateDownload(id, { categoryId: destinationId });
+              updateDownload(id, { category_id: destinationId });
             });
             
             // Update backend
@@ -84,12 +84,12 @@ export function DndProvider({ children }: DndProviderProps) {
               try {
                 await invoke("update_download", { 
                   id, 
-                  updates: { categoryId: destinationId }
+                  updates: { category_id: destinationId }
                 });
               } catch (err) {
                 console.error("Failed to update download category:", err);
                 // Revert local state on failure
-                updateDownload(id, { categoryId: null }); // or previous value, but we don't have it
+                updateDownload(id, { category_id: null }); // or previous value, but we don't have it
                 toast.error("Failed to move item to category");
               }
             });

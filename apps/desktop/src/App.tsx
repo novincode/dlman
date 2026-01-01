@@ -24,7 +24,7 @@ const isTauri = () => typeof window !== 'undefined' && (window as any).__TAURI_I
 
 function AppContent() {
   const theme = useSettingsStore((s) => s.settings.theme);
-  const defaultDownloadPath = useSettingsStore((s) => s.settings.defaultDownloadPath);
+  const defaultDownloadPath = useSettingsStore((s) => s.settings.default_download_path);
   const setDefaultDownloadPath = useSettingsStore((s) => s.setDefaultDownloadPath);
   const { setShowNewDownloadDialog, setShowBatchImportDialog } = useUIStore();
 
