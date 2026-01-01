@@ -106,7 +106,7 @@ export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps)
         try {
           await invoke('update_queue', { 
             id: editQueue.id, 
-            updates: { name, ...options }
+            options: { name, ...options }
           });
         } catch (err) {
           console.error('Backend update failed, updating local state:', err);

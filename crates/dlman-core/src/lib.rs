@@ -174,10 +174,9 @@ impl DlmanCore {
         download.final_url = None; // Will be set when download starts
         download.status = DownloadStatus::Queued;
         
-        // Get queue speed limit
-        let queue_speed_limit = self.queue_manager.get_queue(queue_id).await
-            .and_then(|q| q.speed_limit);
-        download.speed_limit = queue_speed_limit;
+        // Note: download.speed_limit stays None - the queue's speed_limit will be used at runtime
+        // This way if queue settings change, downloads will use the new limit
+        // User can explicitly set speed_limit on a download to override
         
         // Save to database
         self.download_manager.db().upsert_download(&download).await?;

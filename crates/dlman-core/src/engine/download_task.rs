@@ -583,15 +583,29 @@ impl DownloadTask {
                     segment.index
                 )));
             }
+            info!("Segment {} temp file verified: {:?}", segment.index, temp_path);
+        }
+        
+        // Ensure destination directory exists
+        if let Err(e) = tokio::fs::create_dir_all(&self.download.destination).await {
+            error!("Failed to create destination directory {:?}: {}", self.download.destination, e);
+            return Err(DlmanError::Io(e));
         }
         
         // Create or truncate final file
-        let mut output = OpenOptions::new()
+        info!("Creating final file: {:?}", final_path);
+        let mut output = match OpenOptions::new()
             .create(true)
             .write(true)
             .truncate(true)
             .open(&final_path)
-            .await?;
+            .await {
+                Ok(f) => f,
+                Err(e) => {
+                    error!("Failed to create final file {:?}: {}", final_path, e);
+                    return Err(DlmanError::Io(e));
+                }
+            };
         
         // Copy each segment in order
         for segment in &self.download.segments {
@@ -600,17 +614,36 @@ impl DownloadTask {
                 self.download.id, segment.index
             ));
             
+            info!("Copying segment {} from {:?}", segment.index, temp_path);
+            
             // Temp file should exist (we checked above), but handle gracefully
-            let mut input = File::open(&temp_path).await?;
+            let mut input = match File::open(&temp_path).await {
+                Ok(f) => f,
+                Err(e) => {
+                    error!("Failed to open temp file {:?}: {}", temp_path, e);
+                    return Err(DlmanError::Io(e));
+                }
+            };
             let mut buffer = vec![0u8; 1024 * 1024]; // 1MB buffer
             
             loop {
-                let n = input.read(&mut buffer).await?;
+                let n = match input.read(&mut buffer).await {
+                    Ok(n) => n,
+                    Err(e) => {
+                        error!("Failed to read from temp file {:?}: {}", temp_path, e);
+                        return Err(DlmanError::Io(e));
+                    }
+                };
                 if n == 0 {
                     break;
                 }
-                output.write_all(&buffer[..n]).await?;
+                if let Err(e) = output.write_all(&buffer[..n]).await {
+                    error!("Failed to write to final file {:?}: {}", final_path, e);
+                    return Err(DlmanError::Io(e));
+                }
             }
+            
+            info!("Segment {} copied successfully", segment.index);
             
             // Delete temp file
             if let Err(e) = tokio::fs::remove_file(&temp_path).await {

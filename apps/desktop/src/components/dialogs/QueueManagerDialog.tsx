@@ -174,7 +174,7 @@ export function QueueManagerDialog() {
           try {
             await invoke('update_queue', { 
               id: selectedQueueId, 
-              updates: { name, ...options }
+              options: { name, ...options }
             });
           } catch (err) {
             console.error('Backend update failed:', err);
