@@ -3,6 +3,7 @@
 //! Tauri-based desktop application for DLMan.
 
 mod commands;
+mod log_forward;
 mod state;
 
 use state::AppState;
@@ -12,9 +13,18 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Initialize logging
+    let filter = tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+        if cfg!(debug_assertions) {
+            tracing_subscriber::EnvFilter::new("debug")
+        } else {
+            tracing_subscriber::EnvFilter::new("info")
+        }
+    });
+
     tracing_subscriber::registry()
+        .with(filter)
         .with(tracing_subscriber::fmt::layer())
-        .with(tracing_subscriber::EnvFilter::from_default_env())
+        .with(log_forward::TauriLogForwardLayer::default())
         .init();
 
     tauri::Builder::default()
@@ -22,6 +32,9 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
+            // Enable forwarding Rust logs to the frontend Dev Console.
+            log_forward::set_app_handle(app.handle().clone());
+
             // Initialize application state synchronously using block_on
             let data_dir = app
                 .path()

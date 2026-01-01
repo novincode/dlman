@@ -1,8 +1,15 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Terminal, Trash2, AlertCircle, AlertTriangle, Bug, MessageSquare, ChevronUp, ChevronDown, X } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { useUIStore } from "@/stores/ui";
 import { useSettingsStore } from "@/stores/settings";
 import { cn } from "@/lib/utils";
@@ -18,6 +25,8 @@ export function DevConsole({ isCollapsed = false, onToggleCollapse }: DevConsole
   const { consoleLogs, clearConsoleLogs } = useUIStore();
   const { setDevMode } = useSettingsStore();
   const [filter, setFilter] = useState<LogLevel>("all");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [anchorId, setAnchorId] = useState<string | null>(null);
 
   // Close console by disabling dev mode in settings
   const handleClose = () => {
@@ -50,9 +59,79 @@ export function DevConsole({ isCollapsed = false, onToggleCollapse }: DevConsole
     }
   };
 
-  const filteredLogs = filter === "all" 
-    ? consoleLogs 
-    : consoleLogs.filter(log => log.level === filter);
+  const filteredLogs = useMemo(() => {
+    return filter === "all" ? consoleLogs : consoleLogs.filter((log) => log.level === filter);
+  }, [consoleLogs, filter]);
+
+  const filteredIndexById = useMemo(() => {
+    const map = new Map<string, number>();
+    filteredLogs.forEach((l, idx) => map.set(l.id, idx));
+    return map;
+  }, [filteredLogs]);
+
+  const normalizeSelectionToFiltered = (next: Set<string>) => {
+    // Drop selections that aren't currently visible (due to filter).
+    const pruned = new Set<string>();
+    for (const id of next) {
+      if (filteredIndexById.has(id)) pruned.add(id);
+    }
+    return pruned;
+  };
+
+  const selectSingle = (id: string) => {
+    setSelectedIds(new Set([id]));
+    setAnchorId(id);
+  };
+
+  const toggleOne = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return normalizeSelectionToFiltered(next);
+    });
+    setAnchorId(id);
+  };
+
+  const selectRange = (toId: string) => {
+    const anchor = anchorId && filteredIndexById.has(anchorId) ? anchorId : toId;
+    const a = filteredIndexById.get(anchor);
+    const b = filteredIndexById.get(toId);
+    if (a === undefined || b === undefined) {
+      selectSingle(toId);
+      return;
+    }
+    const start = Math.min(a, b);
+    const end = Math.max(a, b);
+    const next = new Set<string>();
+    for (let i = start; i <= end; i++) next.add(filteredLogs[i].id);
+    setSelectedIds(next);
+    setAnchorId(anchor);
+  };
+
+  const copyText = async (text: string) => {
+    await navigator.clipboard.writeText(text);
+  };
+
+  const getLogLine = (log: (typeof consoleLogs)[number]) => {
+    const t = log.timestamp.toLocaleTimeString();
+    const base = `[${t}] ${log.level.toUpperCase()} ${log.message}`;
+    if (log.data === undefined) return base;
+    const dataStr = typeof log.data === "object" ? JSON.stringify(log.data) : String(log.data);
+    return `${base} ${dataStr}`;
+  };
+
+  const copySelected = async (fallbackLog?: (typeof consoleLogs)[number]) => {
+    const ids = selectedIds.size > 0 ? selectedIds : fallbackLog ? new Set([fallbackLog.id]) : new Set<string>();
+    if (ids.size === 0) return;
+    const lines = filteredLogs.filter((l) => ids.has(l.id)).map(getLogLine);
+    await copyText(lines.join("\n"));
+  };
+
+  const copyAll = async () => {
+    const lines = filteredLogs.map(getLogLine);
+    await copyText(lines.join("\n"));
+  };
 
   const errorCount = consoleLogs.filter(l => l.level === "error").length;
   const warnCount = consoleLogs.filter(l => l.level === "warn").length;
@@ -178,8 +257,25 @@ export function DevConsole({ isCollapsed = false, onToggleCollapse }: DevConsole
       </div>
 
       {/* Logs */}
-      <ScrollArea className="flex-1 min-h-0">
-        <div className="p-2 font-mono text-xs space-y-0.5">
+      <div
+        className="flex-1 min-h-0 overflow-hidden"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
+            e.preventDefault();
+            // Select all visible logs
+            const allIds = new Set(filteredLogs.map(l => l.id));
+            setSelectedIds(allIds);
+            if (filteredLogs.length > 0) {
+              setAnchorId(filteredLogs[0].id);
+            }
+          }
+        }}
+      >
+      <ScrollArea 
+        className="h-full"
+      >
+        <div className="p-2 font-mono text-xs space-y-1">
           {filteredLogs.length === 0 ? (
             <div className="text-muted-foreground italic py-4 text-center">
               {filter === "all" 
@@ -187,40 +283,101 @@ export function DevConsole({ isCollapsed = false, onToggleCollapse }: DevConsole
                 : `No ${filter} logs.`}
             </div>
           ) : (
-            filteredLogs.map((log) => (
-              <div 
-                key={log.id} 
-                className={cn(
-                  "flex gap-2 py-0.5 px-1 rounded hover:bg-muted/50",
-                  log.level === "error" && "bg-red-500/5",
-                  log.level === "warn" && "bg-yellow-500/5"
-                )}
-              >
-                <span className="text-muted-foreground shrink-0">
-                  [{log.timestamp.toLocaleTimeString()}]
-                </span>
-                <span
-                  className={cn(
-                    "shrink-0 w-14 flex items-center gap-1",
-                    getLevelColor(log.level)
-                  )}
-                >
-                  {getLevelIcon(log.level)}
-                  <span className="uppercase text-[10px]">{log.level}</span>
-                </span>
-                <span className="break-all flex-1">{log.message}</span>
-                {log.data !== undefined && (
-                  <code className="text-muted-foreground text-[10px] bg-muted px-1 rounded">
-                    {typeof log.data === 'object' 
-                      ? JSON.stringify(log.data) 
-                      : String(log.data)}
-                  </code>
-                )}
-              </div>
-            ))
+            filteredLogs.map((log) => {
+              const isSelected = selectedIds.has(log.id);
+
+              return (
+                <ContextMenu key={log.id}>
+                  <ContextMenuTrigger asChild>
+                    <div
+                      className={cn(
+                        "py-1 px-2 rounded hover:bg-muted/50 cursor-default transition-colors",
+                        log.level === "error" && "bg-red-500/5",
+                        log.level === "warn" && "bg-yellow-500/5",
+                        isSelected && "bg-muted"
+                      )}
+                      onClick={(e) => {
+                        const isRange = e.shiftKey;
+                        const isToggle = e.metaKey || e.ctrlKey;
+
+                        if (isRange) {
+                          selectRange(log.id);
+                          return;
+                        }
+                        if (isToggle) {
+                          toggleOne(log.id);
+                          return;
+                        }
+                        selectSingle(log.id);
+                      }}
+                      onContextMenu={() => {
+                        // Right-clicking a row should at least focus it.
+                        if (!selectedIds.has(log.id)) {
+                          selectSingle(log.id);
+                        }
+                      }}
+                    >
+                      {/* First line: time + level */}
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="text-muted-foreground shrink-0 text-[11px]">
+                          {log.timestamp.toLocaleTimeString()}
+                        </span>
+                        <span
+                          className={cn(
+                            "shrink-0 flex items-center gap-1",
+                            getLevelColor(log.level)
+                          )}
+                        >
+                          {getLevelIcon(log.level)}
+                          <span className="uppercase text-[9px] font-semibold">{log.level}</span>
+                        </span>
+                      </div>
+                      
+                      {/* Second line: message + data */}
+                      <div className="ml-2 space-y-0.5">
+                        <div className="break-all select-text leading-relaxed">
+                          {log.message}
+                        </div>
+                        {log.data !== undefined && (
+                          <div className="text-muted-foreground text-[10px] bg-muted/60 px-1.5 py-1 rounded max-w-full overflow-x-auto select-text leading-relaxed">
+                            {typeof log.data === "object" ? JSON.stringify(log.data, null, 2) : String(log.data)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </ContextMenuTrigger>
+
+                  <ContextMenuContent>
+                    <ContextMenuItem
+                      onClick={async () => {
+                        await copyText(getLogLine(log));
+                      }}
+                    >
+                      Copy message
+                    </ContextMenuItem>
+                    <ContextMenuItem
+                      onClick={async () => {
+                        await copySelected(log);
+                      }}
+                    >
+                      Copy selected
+                    </ContextMenuItem>
+                    <ContextMenuSeparator />
+                    <ContextMenuItem
+                      onClick={async () => {
+                        await copyAll();
+                      }}
+                    >
+                      Copy all messages
+                    </ContextMenuItem>
+                  </ContextMenuContent>
+                </ContextMenu>
+              );
+            })
           )}
         </div>
       </ScrollArea>
+      </div>
     </div>
   );
 }

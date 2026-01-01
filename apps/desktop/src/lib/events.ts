@@ -56,6 +56,57 @@ export function setupEventListeners(): () => void {
     }
   }).then((fn) => unlisten.push(fn)).catch(console.error);
 
+  // Listen for core errors
+  listen<CoreEvent>("core-error", (event) => {
+    const data = event.payload;
+    if (data.type === "Error") {
+      useUIStore.getState().addConsoleLog({
+        level: "error",
+        message: data.payload.context
+          ? `${data.payload.message} (${data.payload.context})`
+          : data.payload.message,
+        data: data.payload.context ? { context: data.payload.context } : undefined,
+      });
+    }
+  })
+    .then((fn) => unlisten.push(fn))
+    .catch((err) => {
+      useUIStore.getState().addConsoleLog({
+        level: "error",
+        message: `Failed to listen for core-error: ${String(err)}`,
+      });
+    });
+
+  // Listen for backend logs (Rust tracing)
+  listen<{
+    level: "info" | "warn" | "error" | "debug";
+    message: string;
+    target?: string;
+    module?: string | null;
+    file?: string | null;
+    line?: number | null;
+    fields?: Record<string, unknown>;
+  }>("backend-log", (event) => {
+    const p = event.payload;
+    useUIStore.getState().addConsoleLog({
+      level: p.level,
+      message: p.target ? `[${p.target}] ${p.message}` : p.message,
+      data: {
+        module: p.module,
+        file: p.file,
+        line: p.line,
+        fields: p.fields,
+      },
+    });
+  })
+    .then((fn) => unlisten.push(fn))
+    .catch((err) => {
+      useUIStore.getState().addConsoleLog({
+        level: "error",
+        message: `Failed to listen for backend-log: ${String(err)}`,
+      });
+    });
+
   // Listen for segment progress
   listen<CoreEvent>("segment-progress", (event) => {
     const data = event.payload;
