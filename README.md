@@ -1,123 +1,123 @@
-# DLMan
+<p align="center">
+  <img src="apps/desktop/src-tauri/icons/128x128@2x.png" alt="DLMan" width="128" height="128">
+</p>
 
-> A modern, open-source download manager that makes IDM obsolete.
+<h1 align="center">DLMan</h1>
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Release](https://img.shields.io/github/v/release/novincode/dlman)](https://github.com/novincode/dlman/releases)
-[![Rust](https://img.shields.io/badge/Rust-1.75+-orange.svg)](https://www.rust-lang.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
+<p align="center">
+  <strong>The open-source download manager that makes IDM obsolete.</strong>
+</p>
 
-## ✨ Features
+<p align="center">
+  <a href="https://github.com/novincode/dlman/releases">
+    <img src="https://img.shields.io/github/v/release/novincode/dlman?style=flat-square" alt="Release">
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square" alt="License">
+  </a>
+  <a href="https://github.com/novincode/dlman/stargazers">
+    <img src="https://img.shields.io/github/stars/novincode/dlman?style=flat-square" alt="Stars">
+  </a>
+</p>
 
-- 🚀 **Multi-segment downloads** - Maximize your bandwidth with parallel connections (configurable 1-32 segments)
-- ⏸️ **Pause/Resume** - Never lose progress, even after crashes
-- 📦 **Queue management** - Organize downloads with speed limits and scheduling
-- 🎛️ **Per-download controls** - Override queue settings for individual downloads
-- 🔄 **Auto-retry** - Failed downloads retry automatically
-- 🎨 **Modern UI** - Beautiful, responsive, dark/light themes
-- 🖱️ **Drag & Drop** - Drop links or files anywhere
-- 💻 **CLI included** - Same power from the terminal
-- 📊 **Segment visualization** - See each connection's progress in real-time
-- 🌐 **Cross-platform** - Windows, macOS, Linux
-- 💾 **SQLite storage** - Reliable, crash-safe persistence
+<p align="center">
+  <a href="https://github.com/novincode/dlman/releases"><strong>📥 Download</strong></a> •
+  <a href="docs/INSTALL.md"><strong>📖 Install Guide</strong></a> •
+  <a href="#features"><strong>✨ Features</strong></a> •
+  <a href="CHANGELOG.md"><strong>📋 Changelog</strong></a>
+</p>
 
-## 📦 Installation
+---
 
-### Desktop App
+## Why DLMan?
 
-Download the latest version from [Releases](https://github.com/novincode/dlman/releases).
+**Free. Fast. Modern.** DLMan is a cross-platform download manager built with Rust and React. Multi-segment downloads, queue management, and a clean UI — everything you need, nothing you don't.
 
-See [INSTALL.md](INSTALL.md) for detailed installation instructions for each platform.
+| | IDM | DLMan |
+|---|:---:|:---:|
+| Price | $25+ | **Free** |
+| Open Source | ❌ | ✅ |
+| Cross Platform | Windows | **Win/Mac/Linux** |
+| CLI Tool | ❌ | ✅ |
 
-#### Quick Start
+---
 
-| Platform | Download |
-|----------|----------|
-| Windows | `.msi` or `.exe` installer |
-| macOS Intel | `.dmg` for x64 |
-| macOS Apple Silicon | `.dmg` for aarch64 |
-| Linux | `.deb`, `.rpm`, or `.AppImage` |
+## Features
 
-**macOS users:** You'll need to remove the quarantine attribute. See [INSTALL.md](INSTALL.md#macos) for instructions.
+- **Multi-segment downloads** — Split files into parallel connections for maximum speed
+- **Pause & Resume** — Pick up where you left off, even after crashes
+- **Queue management** — Organize downloads with speed limits and scheduling
+- **Modern UI** — Clean, responsive interface with dark/light themes
+- **CLI included** — Full power from your terminal
+- **Cross-platform** — Windows, macOS, and Linux
 
-### CLI
+---
+
+## Download
+
+Get the latest release for your platform:
+
+<p align="center">
+  <a href="https://github.com/novincode/dlman/releases/latest">
+    <img src="https://img.shields.io/badge/Windows-0078D6?style=for-the-badge&logo=windows&logoColor=white" alt="Windows">
+  </a>
+  <a href="https://github.com/novincode/dlman/releases/latest">
+    <img src="https://img.shields.io/badge/macOS-000000?style=for-the-badge&logo=apple&logoColor=white" alt="macOS">
+  </a>
+  <a href="https://github.com/novincode/dlman/releases/latest">
+    <img src="https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Linux">
+  </a>
+</p>
+
+| Platform | File |
+|----------|------|
+| Windows | `.msi` or `.exe` |
+| macOS Intel | `.dmg` (x64) |
+| macOS Apple Silicon | `.dmg` (aarch64) |
+| Linux | `.deb` / `.rpm` / `.AppImage` |
+
+**macOS note:** Run `xattr -cr /Applications/DLMan.app` after install. See [Install Guide](docs/INSTALL.md).
+
+---
+
+## CLI
 
 ```bash
-cargo install dlman-cli
+# Download a file
+dlman https://example.com/file.zip
+
+# With options
+dlman https://example.com/file.zip -o ~/Downloads/ -s 8
+
+# Batch download
+dlman batch urls.txt -o ~/Downloads/
 ```
 
-## 🛠️ Development
+See [CLI docs](docs/CLI.md) for full usage.
 
-### Prerequisites
+---
 
-- [Node.js](https://nodejs.org/) v20+
-- [Rust](https://rustup.rs/) 1.75+
-- [pnpm](https://pnpm.io/) v8+
+## Contributing
 
-### Setup
+Want to contribute? Check out the [Development Guide](docs/DEVELOPMENT.md).
 
-```bash
-# Clone the repo
-git clone https://github.com/novincode/dlman.git
-cd dlman
+---
 
-# Install dependencies
-pnpm install
+## Support
 
-# Run the desktop app
-cd apps/desktop
-pnpm tauri dev
+If DLMan saves you time, consider supporting development:
 
-# Or run the CLI
-cargo run -p dlman-cli -- --help
-```
+<p align="center">
+  <a href="https://github.com/sponsors/novincode">
+    <img src="https://img.shields.io/badge/GitHub%20Sponsors-EA4AAA?style=for-the-badge&logo=github-sponsors&logoColor=white" alt="GitHub Sponsors">
+  </a>
+  <a href="https://buymeacoffee.com/codeideal">
+    <img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black" alt="Buy Me a Coffee">
+  </a>
+</p>
 
-### Project Structure
+---
 
-```
-dlman/
-├── apps/
-│   ├── desktop/     # Tauri + React app
-│   └── cli/         # CLI application
-├── crates/
-│   ├── dlman-core/  # Core download engine
-│   └── dlman-types/ # Shared types
-├── docs/            # Documentation
-├── scripts/         # Helper scripts
-└── README.md
-```
-
-## 🎯 Roadmap
-
-- [x] Core download engine (Rust)
-- [x] Modern UI with React
-- [x] Multi-segment downloads (configurable)
-- [x] Queue management with speed limits
-- [x] Per-download speed limit override
-- [x] Expandable download details
-- [x] SQLite-based settings storage
-- [x] Auto-retry for failed downloads
-- [x] Dev console with filtering
-- [ ] Browser extension integration
-- [ ] Plugin system
-- [ ] Scheduled downloads
-
-## ⌨️ Keyboard Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| ⌘N | New Download |
-| ⌘⇧I | Batch Import |
-| ⌘, | Settings |
-| ⌘⇧Q | Queue Manager |
-| ⌘A | Select All |
-| Esc | Clear Selection |
-| ⌘V | Paste URL |
-
-## 🤝 Contributing
-
-Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) first.
-
-## 📄 License
-
-MIT © [Novin Code](https://github.com/novincode)
+<p align="center">
+  MIT © <a href="https://github.com/novincode">Novin Code</a>
+</p>

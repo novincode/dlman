@@ -1,6 +1,8 @@
-# DLMan Architecture (v1.3.0)
+# DLMan Architecture
 
-## 📦 Project Structure
+> System design documentation for DLMan v1.3.0+
+
+## Project Structure
 
 ```
 dlman/

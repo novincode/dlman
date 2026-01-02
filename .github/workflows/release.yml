@@ -50,9 +50,25 @@ jobs:
             CHANGELOG="See CHANGELOG.md for details."
           fi
           
-          # Write to file to handle multiline content
-          echo "$CHANGELOG" > /tmp/changelog.txt
-          echo "changelog_file=/tmp/changelog.txt" >> $GITHUB_OUTPUT
+          # Build release body with install info
+          cat > /tmp/release_body.txt << 'HEADER'
+          ## Downloads
+
+          | Platform | File |
+          |----------|------|
+          | Windows | `.msi` or `.exe` |
+          | macOS Intel | `.dmg` (x64) |
+          | macOS Apple Silicon | `.dmg` (aarch64) |
+          | Linux | `.deb` / `.rpm` / `.AppImage` |
+
+          **macOS:** Run `xattr -cr /Applications/DLMan.app` after install.
+
+          ---
+
+          HEADER
+          
+          echo "$CHANGELOG" >> /tmp/release_body.txt
+          echo "changelog_file=/tmp/release_body.txt" >> $GITHUB_OUTPUT
 
       - name: Create Release
         id: create-release
@@ -62,7 +78,7 @@ jobs:
         with:
           tag_name: ${{ steps.get_version.outputs.version }}
           name: DLMan ${{ steps.get_version.outputs.version }}
-          body_path: /tmp/changelog.txt
+          body_path: /tmp/release_body.txt
           draft: false
           prerelease: false
 
