@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.3.1] - 2026-01-02
+
+### Fixed
+- Toast notifications now respect dark/light theme system preference
+- Windows "Open Folder" opening wrong directory
+- Speed limiter preventing multi-segment bursting
+- Duplicate toast notifications appearing
+- Sidebar download title overflow truncation
+- NewDownloadDialog not re-probing URL on reopen
+- Cmd+Shift+Q shortcut conflicting with macOS
+
+### Added
+- Confirmation dialog for "Clear Completed" action with blue button
+- System theme detection and reactive updates for notifications
+
 ## [1.3.0] - 2026-01-02
 
 ### Changed
