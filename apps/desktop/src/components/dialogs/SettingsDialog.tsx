@@ -11,7 +11,6 @@ import {
   Sun,
   Gauge,
   Network,
-  Bell,
   Info,
   Loader2,
   RotateCcw,
@@ -28,17 +27,16 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 import { useUIStore } from '@/stores/ui';
 import { useSettingsStore } from '@/stores/settings';
 import type { Settings as SettingsType, Theme } from '@/types';
 
-type SettingsTab = 'general' | 'downloads' | 'appearance' | 'advanced';
+type SettingsTab = 'downloads' | 'appearance' | 'advanced';
 
 const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
-  { id: 'general', label: 'General', icon: <Settings className="h-4 w-4" /> },
   { id: 'downloads', label: 'Downloads', icon: <Folder className="h-4 w-4" /> },
   { id: 'appearance', label: 'Appearance', icon: <Palette className="h-4 w-4" /> },
   { id: 'advanced', label: 'Advanced', icon: <Gauge className="h-4 w-4" /> },
@@ -48,7 +46,7 @@ export function SettingsDialog() {
   const { showSettingsDialog, setShowSettingsDialog } = useUIStore();
   const { settings, updateSettings, setTheme } = useSettingsStore();
 
-  const [activeTab, setActiveTab] = useState<SettingsTab>('general');
+  const [activeTab, setActiveTab] = useState<SettingsTab>('downloads');
   const [localSettings, setLocalSettings] = useState<SettingsType>(settings);
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
@@ -97,32 +95,13 @@ export function SettingsDialog() {
 
   const handleClose = () => {
     setShowSettingsDialog(false);
-    setActiveTab('general');
+    setActiveTab('downloads');
     setLocalSettings(settings);
     setHasChanges(false);
   };
 
   const renderTabContent = () => {
     switch (activeTab) {
-      case 'general':
-        return (
-          <div className="space-y-6">
-            {/* Startup settings removed - not yet implemented */}
-
-            <div className="space-y-4">
-              <h3 className="text-sm font-medium flex items-center gap-2">
-                <Bell className="h-4 w-4" />
-                Notifications
-              </h3>
-              <div className="space-y-3 pl-6">
-                <p className="text-sm text-muted-foreground">
-                  Notification settings coming soon...
-                </p>
-              </div>
-            </div>
-          </div>
-        );
-
       case 'downloads':
         return (
           <div className="space-y-6">
@@ -163,7 +142,7 @@ export function SettingsDialog() {
                   <Label htmlFor="rememberPath" className="cursor-pointer">
                     Remember last used path
                   </Label>
-                  <Checkbox
+                  <Switch
                     id="rememberPath"
                     checked={localSettings.remember_last_path}
                     onCheckedChange={(checked: boolean) =>
@@ -371,7 +350,7 @@ export function SettingsDialog() {
                   <Label htmlFor="devMode" className="cursor-pointer">
                     Enable developer mode
                   </Label>
-                  <Checkbox
+                  <Switch
                     id="devMode"
                     checked={localSettings.dev_mode}
                     onCheckedChange={(checked: boolean) =>

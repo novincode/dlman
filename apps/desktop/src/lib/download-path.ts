@@ -1,37 +1,49 @@
 // Utilities for determining download paths based on OS and category
 
-import { homeDir, downloadDir } from '@tauri-apps/api/path';
+import { homeDir } from '@tauri-apps/api/path';
 import { useCategoryStore, type Category } from '@/stores/categories';
+import { useSettingsStore } from '@/stores/settings';
 
 // Check if we're in Tauri context
 const isTauri = () => typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
 
 /**
- * Get the default base download path for the current OS
- * This will be something like /Users/name/Downloads/DLMan on macOS
+ * Resolve path with ~ replaced by home directory
  */
-export async function getDefaultBasePath(): Promise<string> {
+export async function resolvePath(path: string): Promise<string> {
   if (!isTauri()) {
-    return '~/Downloads/DLMan';
+    return path;
   }
   
-  try {
-    const downloads = await downloadDir();
-    return `${downloads}/DLMan`;
-  } catch (err) {
-    console.error('Failed to get download dir:', err);
+  if (path.startsWith('~')) {
     try {
       const home = await homeDir();
-      return `${home}/Downloads/DLMan`;
-    } catch (err2) {
-      console.error('Failed to get home dir:', err2);
-      return '~/Downloads/DLMan';
+      return path.replace(/^~/, home.replace(/\/$/, ''));
+    } catch (err) {
+      console.error('Failed to resolve home dir:', err);
+      return path;
     }
   }
+  
+  return path;
+}
+
+/**
+ * Get the default base download path from settings
+ * This uses the user's configured default_download_path
+ */
+export async function getDefaultBasePath(): Promise<string> {
+  const settings = useSettingsStore.getState().settings;
+  const basePath = settings.default_download_path || '~/Downloads/DLMan';
+  
+  // Resolve ~ to actual home directory
+  return await resolvePath(basePath);
 }
 
 /**
  * Get the download path for a specific category
+ * - If category has customPath set, use that
+ * - Otherwise, use settings.default_download_path + /CategoryName
  */
 export async function getCategoryDownloadPath(catId: string | null): Promise<string> {
   const basePath = await getDefaultBasePath();
@@ -45,9 +57,9 @@ export async function getCategoryDownloadPath(catId: string | null): Promise<str
     return basePath;
   }
   
-  // If category has a custom path, use it
+  // If category has a custom path, use it (resolve it too)
   if (category.customPath) {
-    return category.customPath;
+    return await resolvePath(category.customPath);
   }
   
   // Otherwise, add category folder to base path
@@ -90,25 +102,4 @@ export async function getDownloadPathForFile(filename: string, overrideCategoryI
   const path = await getCategoryDownloadPath(category?.id || null);
   
   return { path, category };
-}
-
-/**
- * Resolve path with ~ replaced by home directory
- */
-export async function resolvePath(path: string): Promise<string> {
-  if (!isTauri()) {
-    return path;
-  }
-  
-  if (path.startsWith('~')) {
-    try {
-      const home = await homeDir();
-      return path.replace(/^~/, home.replace(/\/$/, ''));
-    } catch (err) {
-      console.error('Failed to resolve home dir:', err);
-      return path;
-    }
-  }
-  
-  return path;
 }

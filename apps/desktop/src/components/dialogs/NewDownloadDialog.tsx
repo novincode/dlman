@@ -11,7 +11,8 @@ import {
   CheckCircle2,
   XCircle,
   Clipboard,
-  Tag
+  Tag,
+  Save
 } from 'lucide-react';
 
 import {
@@ -32,6 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { useUIStore } from '@/stores/ui';
 import { useQueuesArray } from '@/stores/queues';
 import { useDownloadStore } from '@/stores/downloads';
@@ -50,6 +52,7 @@ export function NewDownloadDialog() {
     () => useCategoryStore.getState().categories,
     []
   );
+  const updateCategory = useCategoryStore((s) => s.updateCategory);
   const addDownload = useDownloadStore((s) => s.addDownload);
 
   const [url, setUrl] = useState('');
@@ -61,7 +64,9 @@ export function NewDownloadDialog() {
   const [isProbing, setIsProbing] = useState(false);
   const [probeError, setProbeError] = useState<string | null>(null);
   const [isAdding, setIsAdding] = useState(false);
-  // Track if user has manually customized the path
+  const [rememberPathForCategory, setRememberPathForCategory] = useState(false);
+  const [pathCustomized, setPathCustomized] = useState(false);
+  // Track if user has manually customized the path (ref for logic, state for UI reactivity)
   const pathCustomizedRef = useRef(false);
   // Trigger to force re-probe when dialog opens (even with same URL)
   const [probeTrigger, setProbeTrigger] = useState(0);
@@ -84,6 +89,8 @@ export function NewDownloadDialog() {
       setFileSize(null);
       setProbeError(null);
       setCategoryId(null);
+      setRememberPathForCategory(false);
+      setPathCustomized(false);
       pathCustomizedRef.current = false;
       // Force re-probe even if URL is the same as before
       setProbeTrigger(prev => prev + 1);
@@ -125,6 +132,7 @@ export function NewDownloadDialog() {
   // Handle manual path change (marks as customized)
   const handleDestinationChange = (newPath: string) => {
     pathCustomizedRef.current = true;
+    setPathCustomized(true);
     setDestination(newPath);
   };
 
@@ -194,6 +202,8 @@ export function NewDownloadDialog() {
       });
 
       if (selected) {
+        pathCustomizedRef.current = true;
+        setPathCustomized(true);
         setDestination(selected as string);
       }
     } catch (err) {
@@ -270,6 +280,12 @@ export function NewDownloadDialog() {
         toast.success('Download added (preview mode)');
       }
       
+      // If user chose to remember the path for the category, update the category's customPath
+      if (rememberPathForCategory && categoryId) {
+        updateCategory(categoryId, { customPath: destination });
+        toast.success(`Path saved for ${categories.get(categoryId)?.name || 'category'}`);
+      }
+      
       setShowNewDownloadDialog(false);
     } catch (err) {
       console.error('Failed to add download:', err);
@@ -277,7 +293,7 @@ export function NewDownloadDialog() {
     } finally {
       setIsAdding(false);
     }
-  }, [url, destination, queueId, filename, fileSize, addDownload, setShowNewDownloadDialog]);
+  }, [url, destination, queueId, categoryId, filename, fileSize, addDownload, setShowNewDownloadDialog, rememberPathForCategory, updateCategory, categories]);
 
   const formatFileSize = (bytes: number) => {
     if (bytes >= 1024 * 1024 * 1024) {
@@ -410,6 +426,27 @@ export function NewDownloadDialog() {
                 Browse
               </Button>
             </div>
+            {/* Remember path for category - only show when path is customized and category is selected */}
+            <AnimatePresence>
+              {pathCustomized && categoryId && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="flex items-center gap-2 pt-1"
+                >
+                  <Switch
+                    id="remember-path"
+                    checked={rememberPathForCategory}
+                    onCheckedChange={setRememberPathForCategory}
+                  />
+                  <Label htmlFor="remember-path" className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
+                    <Save className="h-3 w-3" />
+                    Remember this path for {categories.get(categoryId)?.name || 'this category'}
+                  </Label>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Category Selection */}

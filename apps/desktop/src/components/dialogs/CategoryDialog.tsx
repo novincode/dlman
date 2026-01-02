@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
+import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { 
   Palette, 
   Save,
   Trash2,
   FileType,
   Folder,
+  FolderOpen,
   Music,
   Film,
   FileText,
@@ -262,14 +264,38 @@ export function CategoryDialog({ open, onOpenChange, editCategory }: CategoryDia
           {/* Custom Download Path */}
           <div className="grid gap-2">
             <Label htmlFor="custom-path">Custom Download Path (Optional)</Label>
-            <Input
-              id="custom-path"
-              value={customPath}
-              onChange={(e) => setCustomPath(e.target.value)}
-              placeholder="e.g., ~/Downloads/Music"
-            />
+            <div className="flex gap-2">
+              <Input
+                id="custom-path"
+                value={customPath}
+                onChange={(e) => setCustomPath(e.target.value)}
+                placeholder="Leave empty for default path + category name"
+                className="flex-1"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={async () => {
+                  try {
+                    const selected = await openDialog({
+                      directory: true,
+                      multiple: false,
+                      title: `Select Download Folder for ${name || 'Category'}`,
+                    });
+                    if (selected && typeof selected === 'string') {
+                      setCustomPath(selected);
+                    }
+                  } catch (err) {
+                    console.error('Failed to open folder picker:', err);
+                  }
+                }}
+              >
+                <FolderOpen className="h-4 w-4" />
+              </Button>
+            </div>
             <p className="text-xs text-muted-foreground">
-              Leave empty to use the default download path
+              Leave empty to use the default download path + category name
             </p>
           </div>
         </div>
