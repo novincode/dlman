@@ -1,4 +1,5 @@
-import { Download, Github, Heart, Coffee } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Download, Github, Heart, Coffee, RefreshCw, ExternalLink, Sparkles } from 'lucide-react';
 import { open as openUrl } from '@tauri-apps/plugin-shell';
 
 const GITHUB_URL = 'https://github.com/novincode/dlman';
@@ -12,9 +13,35 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useUIStore } from '@/stores/ui';
+import { getAppVersion, checkForUpdates, getReleasesPageUrl, type UpdateInfo } from '@/lib/version';
 
 export function AboutDialog() {
   const { showAboutDialog, setShowAboutDialog } = useUIStore();
+  const [version, setVersion] = useState<string>('...');
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+
+  // Fetch version when dialog opens
+  useEffect(() => {
+    if (showAboutDialog) {
+      getAppVersion().then((info) => setVersion(info.current));
+    }
+  }, [showAboutDialog]);
+
+  const handleCheckForUpdates = async () => {
+    setIsCheckingUpdate(true);
+    try {
+      const info = await checkForUpdates();
+      setUpdateInfo(info);
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
+
+  const handleOpenReleasePage = () => {
+    const url = updateInfo?.releaseUrl || getReleasesPageUrl();
+    openUrl(url);
+  };
 
   return (
     <Dialog open={showAboutDialog} onOpenChange={setShowAboutDialog}>
@@ -33,7 +60,47 @@ export function AboutDialog() {
 
         <div className="space-y-4 py-4">
           <div className="text-center">
-            <p className="text-muted-foreground text-sm">Version 0.1.0</p>
+            <p className="text-muted-foreground text-sm">Version {version}</p>
+          </div>
+
+          {/* Update Check Section */}
+          <div className="flex flex-col items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-2"
+              onClick={handleCheckForUpdates}
+              disabled={isCheckingUpdate}
+            >
+              <RefreshCw className={`h-4 w-4 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
+              {isCheckingUpdate ? 'Checking...' : 'Check for Updates'}
+            </Button>
+            
+            {updateInfo && (
+              <div className="text-center">
+                {updateInfo.hasUpdate ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-center gap-2 text-sm text-green-600 dark:text-green-400">
+                      <Sparkles className="h-4 w-4" />
+                      <span>New version available: v{updateInfo.latestVersion}</span>
+                    </div>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="gap-2"
+                      onClick={handleOpenReleasePage}
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      Download Update
+                    </Button>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    You're on the latest version!
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="text-center text-sm text-muted-foreground">
@@ -66,7 +133,7 @@ export function AboutDialog() {
             <p className="flex items-center justify-center gap-1">
               Made with <Heart className="h-3 w-3 text-red-500" /> by the DLMan Team
             </p>
-            <p className="mt-1">© 2024 DLMan. All rights reserved.</p>
+            <p className="mt-1">© 2025 DLMan. All rights reserved.</p>
           </div>
         </div>
       </DialogContent>

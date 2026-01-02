@@ -17,6 +17,7 @@ import { useSettingsStore, loadSettingsFromBackend } from "@/stores/settings";
 import { useUIStore } from "@/stores/ui";
 import { setupEventListeners, setPendingClipboardUrls } from "@/lib/events";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { useUpdateCheck } from "@/hooks/useUpdateCheck";
 import { parseUrls } from "@/lib/utils";
 
 // Check if we're in Tauri context
@@ -45,6 +46,9 @@ function AppContent() {
 
   // Enable keyboard shortcuts
   useKeyboardShortcuts();
+
+  // Check for app updates on startup
+  useUpdateCheck();
 
   // Handle system theme changes
   useEffect(() => {
