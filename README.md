@@ -9,15 +9,17 @@
 
 ## ✨ Features
 
-- 🚀 **Multi-segment downloads** - Maximize your bandwidth with parallel connections
-- ⏸️ **Pause/Resume** - Never lose progress
+- 🚀 **Multi-segment downloads** - Maximize your bandwidth with parallel connections (configurable 1-32 segments)
+- ⏸️ **Pause/Resume** - Never lose progress, even after crashes
 - 📦 **Queue management** - Organize downloads with speed limits and scheduling
 - 🎛️ **Per-download controls** - Override queue settings for individual downloads
+- 🔄 **Auto-retry** - Failed downloads retry automatically
 - 🎨 **Modern UI** - Beautiful, responsive, dark/light themes
 - 🖱️ **Drag & Drop** - Drop links or files anywhere
 - 💻 **CLI included** - Same power from the terminal
-- 📊 **Segment visualization** - See each connection's progress
+- 📊 **Segment visualization** - See each connection's progress in real-time
 - 🌐 **Cross-platform** - Windows, macOS, Linux
+- 💾 **SQLite storage** - Reliable, crash-safe persistence
 
 ## 📦 Installation
 
@@ -89,13 +91,28 @@ dlman/
 
 - [x] Core download engine (Rust)
 - [x] Modern UI with React
-- [x] Multi-segment downloads
+- [x] Multi-segment downloads (configurable)
 - [x] Queue management with speed limits
 - [x] Per-download speed limit override
 - [x] Expandable download details
+- [x] SQLite-based settings storage
+- [x] Auto-retry for failed downloads
 - [x] Dev console with filtering
 - [ ] Browser extension integration
 - [ ] Plugin system
+- [ ] Scheduled downloads
+
+## ⌨️ Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| ⌘N | New Download |
+| ⌘⇧I | Batch Import |
+| ⌘, | Settings |
+| ⌘⇧Q | Queue Manager |
+| ⌘A | Select All |
+| Esc | Clear Selection |
+| ⌘V | Paste URL |
 
 ## 🤝 Contributing
 

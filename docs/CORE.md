@@ -1,4 +1,4 @@
-# DLMan Core - Download Engine
+# DLMan Core - Download Engine (v1.3.0)
 
 ## Overview
 
@@ -8,24 +8,28 @@ The `dlman-core` crate is the heart of DLMan. It handles all download operations
 
 ### Multi-Segment Downloads
 - Splits large files into segments for parallel downloading
-- Adaptive segment sizing based on file size
+- **Configurable segment count** via app settings (default: 4)
+- Each segment downloads independently with its own HTTP connection
 - Automatic fallback for servers without range support
 
 ### Pause/Resume
-- Saves progress to `.dlman.meta` files
-- Resumes from exact byte position
+- **SQLite-based persistence** - all progress saved atomically
+- Resumes from exact byte position per segment
 - Handles partial segment completion
+- Crash-safe: can resume after unexpected shutdown
 
 ### Queue Management
 - Priority-based scheduling
 - Time-based scheduling (start/stop times)
 - Concurrent download limits per queue
+- Per-queue speed limits
 - Post-completion actions (shutdown, sleep, etc.)
 
 ### Speed Control
-- Per-download speed limits
-- Global speed limit
-- Adaptive throttling using token bucket
+- Per-download speed limits (override queue limit)
+- Per-queue speed limits
+- Token bucket rate limiting (smooth throttling)
+- Real-time speed limit updates for active downloads
 
 ## API
 
@@ -131,31 +135,70 @@ Mark segment complete
 
 ### 4. Resume Download
 ```
-Read .dlman.meta file
+Load download from SQLite
     ↓
-Check completed segments
+Check existing segments in database
     ↓
-Resume incomplete segments
+Resume incomplete segments from last byte
     ↓
-Continue from last byte position
+Continue downloading
 ```
 
-## File Formats
+## Database Schema (SQLite)
 
-### Meta File (.dlman.meta)
-```json
-{
-  "id": "uuid",
-  "url": "original-url",
-  "final_url": "after-redirects",
-  "filename": "file.zip",
-  "size": 1048576,
-  "segments": [
-    { "start": 0, "end": 262143, "downloaded": 262144, "complete": true },
-    { "start": 262144, "end": 524287, "downloaded": 100000, "complete": false }
-  ],
-  "created_at": "2025-01-01T00:00:00Z"
-}
+### Downloads Table
+```sql
+CREATE TABLE downloads (
+    id TEXT PRIMARY KEY,
+    url TEXT NOT NULL,
+    final_url TEXT,
+    filename TEXT NOT NULL,
+    destination TEXT NOT NULL,
+    size INTEGER,
+    downloaded INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL,
+    queue_id TEXT NOT NULL,
+    category_id TEXT,
+    color TEXT,
+    error TEXT,
+    speed_limit INTEGER,
+    created_at TEXT NOT NULL,
+    completed_at TEXT,
+    retry_count INTEGER NOT NULL DEFAULT 0
+);
+```
+
+### Segments Table
+```sql
+CREATE TABLE segments (
+    download_id TEXT NOT NULL,
+    segment_index INTEGER NOT NULL,
+    start_byte INTEGER NOT NULL,
+    end_byte INTEGER NOT NULL,
+    downloaded_bytes INTEGER NOT NULL DEFAULT 0,
+    complete INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (download_id, segment_index),
+    FOREIGN KEY (download_id) REFERENCES downloads(id) ON DELETE CASCADE
+);
+```
+
+### Settings Table
+```sql
+CREATE TABLE settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    default_download_path TEXT NOT NULL,
+    max_concurrent_downloads INTEGER NOT NULL DEFAULT 4,
+    default_segments INTEGER NOT NULL DEFAULT 4,
+    global_speed_limit INTEGER,
+    theme TEXT NOT NULL DEFAULT 'system',
+    dev_mode INTEGER NOT NULL DEFAULT 0,
+    minimize_to_tray INTEGER NOT NULL DEFAULT 1,
+    start_on_boot INTEGER NOT NULL DEFAULT 0,
+    browser_integration_port INTEGER NOT NULL DEFAULT 7899,
+    remember_last_path INTEGER NOT NULL DEFAULT 1,
+    max_retries INTEGER NOT NULL DEFAULT 5,
+    retry_delay_seconds INTEGER NOT NULL DEFAULT 30
+);
 ```
 
 ## Configuration

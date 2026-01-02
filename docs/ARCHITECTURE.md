@@ -1,4 +1,4 @@
-# DLMan Architecture
+# DLMan Architecture (v1.3.0)
 
 ## 📦 Project Structure
 
@@ -20,8 +20,7 @@ dlman/
 │   │   │   └── styles/          # Global styles
 │   │   ├── src-tauri/           # Tauri Rust backend
 │   │   │   ├── src/
-│   │   │   │   ├── commands/    # Tauri commands
-│   │   │   │   ├── events/      # Event emitters
+│   │   │   │   ├── commands.rs  # Tauri commands
 │   │   │   │   └── lib.rs       # Main library
 │   │   │   └── Cargo.toml
 │   │   └── package.json
@@ -34,10 +33,15 @@ dlman/
 ├── crates/
 │   ├── dlman-core/              # Core download engine
 │   │   ├── src/
-│   │   │   ├── download/        # Download logic
-│   │   │   ├── queue/           # Queue management
-│   │   │   ├── segment/         # Multi-segment downloads
-│   │   │   ├── storage/         # Persistence layer
+│   │   │   ├── engine/          # Download engine
+│   │   │   │   ├── persistence.rs  # SQLite database (downloads, segments, settings)
+│   │   │   │   ├── manager.rs      # Download manager
+│   │   │   │   ├── download_task.rs
+│   │   │   │   ├── segment_worker.rs
+│   │   │   │   └── rate_limiter.rs
+│   │   │   ├── queue.rs         # Queue management
+│   │   │   ├── storage.rs       # JSON storage for queues
+│   │   │   ├── error.rs
 │   │   │   └── lib.rs
 │   │   └── Cargo.toml
 │   │
@@ -200,6 +204,9 @@ pub struct Settings {
     pub minimize_to_tray: bool,
     pub start_on_boot: bool,
     pub browser_integration_port: u16,
+    pub remember_last_path: bool,
+    pub max_retries: u32,
+    pub retry_delay_seconds: u32,
 }
 
 pub enum Theme {
@@ -208,6 +215,66 @@ pub enum Theme {
     System,
 }
 ```
+
+## 💾 Data Storage (v1.3.0+)
+
+### SQLite as Single Source of Truth
+
+All persistent data is stored in SQLite (`downloads.db`):
+
+| Table | Purpose |
+|-------|---------|
+| `downloads` | Download records with metadata |
+| `segments` | Per-download segment progress |
+| `settings` | Application settings (single row) |
+
+**Queues** are still stored as JSON files for flexibility.
+
+### Data Flow
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Frontend (React)                         │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │              Zustand Stores (in-memory)              │    │
+│  │   downloads | queues | settings (synced from SQLite) │    │
+│  └────────────────────────┬────────────────────────────┘    │
+│                           │ Tauri IPC                        │
+│  ┌────────────────────────┴────────────────────────────┐    │
+│  │                 Tauri Commands                       │    │
+│  │  get_settings() / update_settings()                  │    │
+│  │  get_downloads() / add_download() / ...              │    │
+│  └────────────────────────┬────────────────────────────┘    │
+└───────────────────────────┼─────────────────────────────────┘
+                            │
+┌───────────────────────────┼─────────────────────────────────┐
+│                     Backend (Rust)                           │
+│  ┌────────────────────────┴────────────────────────────┐    │
+│  │               DlmanCore (dlman-core)                 │    │
+│  │   ┌──────────────────────────────────────────────┐  │    │
+│  │   │        DownloadDatabase (persistence.rs)      │  │    │
+│  │   │  ┌─────────┐ ┌──────────┐ ┌──────────┐       │  │    │
+│  │   │  │downloads│ │ segments │ │ settings │       │  │    │
+│  │   │  └─────────┘ └──────────┘ └──────────┘       │  │    │
+│  │   └──────────────────────────────────────────────┘  │    │
+│  └─────────────────────────────────────────────────────┘    │
+│                           │                                  │
+│                     SQLite (downloads.db)                    │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Frontend Settings Sync
+
+On app startup:
+1. Frontend calls `get_settings()` Tauri command
+2. Backend loads settings from SQLite
+3. Frontend updates Zustand store with backend values
+4. **SQLite is always the source of truth**
+
+When user changes settings:
+1. Frontend updates Zustand store
+2. Frontend calls `update_settings()` Tauri command
+3. Backend saves to SQLite
 
 ## 🔄 Event System
 

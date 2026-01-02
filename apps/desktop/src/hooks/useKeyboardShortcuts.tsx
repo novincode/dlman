@@ -48,10 +48,11 @@ export function useKeyboardShortcuts() {
       action: () => setShowSettingsDialog(true),
       description: "Settings",
     },
-    // Queue manager
+    // Queue manager (Shift+Cmd+Q to avoid conflict with macOS Quit)
     {
       key: "q",
       metaKey: true,
+      shiftKey: true,
       action: () => setShowQueueManagerDialog(true),
       description: "Queue Manager",
     },
@@ -142,7 +143,7 @@ export function KeyboardShortcutsHelp() {
     { keys: "⌘N", description: "New Download" },
     { keys: "⌘⇧I", description: "Batch Import" },
     { keys: "⌘,", description: "Settings" },
-    { keys: "⌘Q", description: "Queue Manager" },
+    { keys: "⌘⇧Q", description: "Queue Manager" },
     { keys: "⌘A", description: "Select All" },
     { keys: "Esc", description: "Clear Selection" },
     { keys: "⌘V", description: "Paste URL" },
