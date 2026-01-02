@@ -19,6 +19,7 @@ import { setupEventListeners, setPendingClipboardUrls } from "@/lib/events";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useUpdateCheck } from "@/hooks/useUpdateCheck";
 import { parseUrls } from "@/lib/utils";
+import { initSystemIntegrations } from "@/lib/system-tray";
 
 // Check if we're in Tauri context
 const isTauri = () => typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
@@ -49,6 +50,13 @@ function AppContent() {
 
   // Check for app updates on startup
   useUpdateCheck();
+
+  // Initialize system tray, native menu, and window close handler
+  useEffect(() => {
+    if (isTauri()) {
+      initSystemIntegrations().catch(console.error);
+    }
+  }, []);
 
   // Handle system theme changes
   useEffect(() => {
