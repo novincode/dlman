@@ -247,7 +247,9 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            default_download_path: dirs::download_dir().unwrap_or_else(|| PathBuf::from(".")),
+            default_download_path: dirs::download_dir()
+                .map(|p| p.join("DLMan"))
+                .unwrap_or_else(|| PathBuf::from(".")),
             max_concurrent_downloads: 4,
             default_segments: 4,
             global_speed_limit: None,

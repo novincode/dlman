@@ -1,6 +1,7 @@
 // Tauri event listener setup
 
 import { listen } from "@tauri-apps/api/event";
+import { toast } from "sonner";
 import { useDownloadStore } from "@/stores/downloads";
 import { useUIStore } from "@/stores/ui";
 import { CoreEvent } from "@/types";
@@ -128,6 +129,17 @@ export function setupEventListeners(): () => void {
         data.payload.status,
         data.payload.error
       );
+      
+      // Show toast notification for completed/failed downloads
+      if (data.payload.status === "completed") {
+        const download = useDownloadStore.getState().downloads.get(data.payload.id);
+        toast.success(`Download completed: ${download?.filename || 'Unknown file'}`);
+      } else if (data.payload.status === "failed" && data.payload.error) {
+        const download = useDownloadStore.getState().downloads.get(data.payload.id);
+        toast.error(`Download failed: ${download?.filename || 'Unknown file'}`, {
+          description: data.payload.error,
+        });
+      }
     }
   }).then((fn) => unlisten.push(fn)).catch(console.error);
 

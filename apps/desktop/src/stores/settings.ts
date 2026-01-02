@@ -19,7 +19,7 @@ interface SettingsState {
 }
 
 const getDefaultDownloadPath = (): string => {
-  return '~/Downloads/dlman';
+  return '~/Downloads/DLMan';
 };
 
 const defaultSettings: Settings = {

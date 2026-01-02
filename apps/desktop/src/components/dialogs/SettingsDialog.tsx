@@ -1,8 +1,10 @@
 import { useState, useCallback, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-dialog';
 import {
   Settings,
   Folder,
+  FolderOpen,
   Palette,
   Monitor,
   Moon,
@@ -10,7 +12,6 @@ import {
   Gauge,
   Network,
   Bell,
-  Power,
   Info,
   Loader2,
   RotateCcw,
@@ -106,38 +107,7 @@ export function SettingsDialog() {
       case 'general':
         return (
           <div className="space-y-6">
-            <div className="space-y-4">
-              <h3 className="text-sm font-medium flex items-center gap-2">
-                <Power className="h-4 w-4" />
-                Startup
-              </h3>
-              <div className="space-y-3 pl-6">
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="startOnBoot" className="cursor-pointer">
-                    Start on system boot
-                  </Label>
-                  <Checkbox
-                    id="startOnBoot"
-                    checked={localSettings.start_on_boot}
-                    onCheckedChange={(checked: boolean) =>
-                      handleChange('start_on_boot', checked)
-                    }
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="minimizeToTray" className="cursor-pointer">
-                    Minimize to system tray
-                  </Label>
-                  <Checkbox
-                    id="minimizeToTray"
-                    checked={localSettings.minimize_to_tray}
-                    onCheckedChange={(checked: boolean) =>
-                      handleChange('minimize_to_tray', checked)
-                    }
-                  />
-                </div>
-              </div>
-            </div>
+            {/* Startup settings removed - not yet implemented */}
 
             <div className="space-y-4">
               <h3 className="text-sm font-medium flex items-center gap-2">
@@ -162,13 +132,33 @@ export function SettingsDialog() {
                 Default Location
               </h3>
               <div className="pl-6 space-y-2">
-                <Input
-                  value={localSettings.default_download_path}
-                  onChange={(e) =>
-                    handleChange('default_download_path', e.target.value)
-                  }
-                  placeholder="/path/to/downloads"
-                />
+                <div className="flex gap-2">
+                  <Input
+                    value={localSettings.default_download_path}
+                    onChange={(e) =>
+                      handleChange('default_download_path', e.target.value)
+                    }
+                    placeholder="/path/to/downloads"
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={async () => {
+                      const selected = await open({
+                        directory: true,
+                        multiple: false,
+                        title: 'Select Default Download Location',
+                      });
+                      if (selected && typeof selected === 'string') {
+                        handleChange('default_download_path', selected);
+                      }
+                    }}
+                  >
+                    <FolderOpen className="h-4 w-4" />
+                  </Button>
+                </div>
                 <div className="flex items-center justify-between">
                   <Label htmlFor="rememberPath" className="cursor-pointer">
                     Remember last used path
