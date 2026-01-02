@@ -141,11 +141,11 @@ function ActiveDownloadItem({
   }, [id, updateStatus]);
 
   return (
-    <div className="px-2 py-1.5 rounded-md bg-card border group">
+    <div className="px-2 py-1.5 rounded-md bg-card border group min-w-0">
       {/* Filename */}
-      <div className="flex items-center gap-2 mb-1">
-        <span className="text-xs truncate flex-1">{filename}</span>
-        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="flex items-center gap-2 mb-1 min-w-0">
+        <span className="text-xs truncate flex-1 min-w-0" title={filename}>{filename}</span>
+        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
           <Button 
             variant="ghost" 
             size="icon" 

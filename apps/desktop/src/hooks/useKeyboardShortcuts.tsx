@@ -48,11 +48,10 @@ export function useKeyboardShortcuts() {
       action: () => setShowSettingsDialog(true),
       description: "Settings",
     },
-    // Queue manager (Shift+Cmd+Q to avoid conflict with macOS Quit)
+    // Queue manager (Cmd+J for Jobs/Queue)
     {
-      key: "q",
+      key: "j",
       metaKey: true,
-      shiftKey: true,
       action: () => setShowQueueManagerDialog(true),
       description: "Queue Manager",
     },

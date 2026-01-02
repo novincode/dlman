@@ -201,29 +201,44 @@ export function MenuBar() {
   };
 
   const handleClearCompleted = async () => {
-    try {
-      // Get completed downloads
-      const completedDownloads = downloads.filter((d: Download) => d.status === 'completed');
-      
-      for (const download of completedDownloads) {
-        // Remove from local store
-        removeDownload(download.id);
-        
-        // Delete from backend
-        if (isTauri()) {
-          try {
-            await invoke('delete_download', { id: download.id, deleteFile: false });
-          } catch (err) {
-            console.error(`Failed to delete download ${download.id}:`, err);
-          }
-        }
-      }
-      
-      toast.success(`Cleared ${completedDownloads.length} completed download(s)`);
-    } catch (error) {
-      console.error('Failed to clear completed downloads:', error);
-      toast.error('Failed to clear completed downloads');
+    // Get completed downloads count
+    const completedDownloads = downloads.filter((d: Download) => d.status === 'completed');
+    
+    if (completedDownloads.length === 0) {
+      toast.info('No completed downloads to clear');
+      return;
     }
+    
+    // Show confirmation dialog
+    openConfirmDialog({
+      title: 'Clear Completed Downloads',
+      description: `This will remove ${completedDownloads.length} completed download(s) from the list. The downloaded files will not be deleted.`,
+      confirmLabel: 'Clear',
+      cancelLabel: 'Cancel',
+      variant: 'primary',
+      onConfirm: async () => {
+        try {
+          for (const download of completedDownloads) {
+            // Remove from local store
+            removeDownload(download.id);
+            
+            // Delete from backend
+            if (isTauri()) {
+              try {
+                await invoke('delete_download', { id: download.id, deleteFile: false });
+              } catch (err) {
+                console.error(`Failed to delete download ${download.id}:`, err);
+              }
+            }
+          }
+          
+          toast.success(`Cleared ${completedDownloads.length} completed download(s)`);
+        } catch (error) {
+          console.error('Failed to clear completed downloads:', error);
+          toast.error('Failed to clear completed downloads');
+        }
+      },
+    });
   };
 
   return (

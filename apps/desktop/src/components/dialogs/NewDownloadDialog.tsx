@@ -63,6 +63,8 @@ export function NewDownloadDialog() {
   const [isAdding, setIsAdding] = useState(false);
   // Track if user has manually customized the path
   const pathCustomizedRef = useRef(false);
+  // Trigger to force re-probe when dialog opens (even with same URL)
+  const [probeTrigger, setProbeTrigger] = useState(0);
 
   // Reset state and check for pending URLs when dialog opens
   useEffect(() => {
@@ -83,6 +85,8 @@ export function NewDownloadDialog() {
       setProbeError(null);
       setCategoryId(null);
       pathCustomizedRef.current = false;
+      // Force re-probe even if URL is the same as before
+      setProbeTrigger(prev => prev + 1);
       
       // Set default path
       initializeDefaultPath();
@@ -160,7 +164,7 @@ export function NewDownloadDialog() {
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [url, updateCategoryFromFilename]);
+  }, [url, probeTrigger, updateCategoryFromFilename]);
 
   const handlePasteFromClipboard = useCallback(async () => {
     try {

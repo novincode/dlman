@@ -1,34 +1,39 @@
 //! Token bucket rate limiter for global speed control
 //!
 //! Implements a token bucket algorithm to accurately limit download speed
-//! across all active downloads.
+//! across all active downloads and segments.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
 /// Global rate limiter using token bucket algorithm
+/// This limiter is shared across ALL segments of ALL downloads
 #[derive(Clone)]
 pub struct RateLimiter {
     state: Arc<Mutex<RateLimiterState>>,
 }
 
 struct RateLimiterState {
-    /// Maximum tokens (bytes) in the bucket
+    /// Maximum tokens (bytes) in the bucket - kept small to prevent bursting
     capacity: u64,
     /// Current available tokens
     tokens: f64,
     /// Last token refill time
     last_refill: Instant,
-    /// Tokens added per second
+    /// Tokens added per second (the speed limit)
     refill_rate: u64,
+    /// Whether this is an unlimited limiter
+    is_unlimited: bool,
 }
 
 impl RateLimiter {
     /// Create a new rate limiter with a given bytes-per-second limit
     pub fn new(bytes_per_second: u64) -> Self {
-        // Capacity is 1 second worth of bytes, allowing bursts
-        let capacity = bytes_per_second;
+        // Small capacity (100ms worth of data) to prevent large bursts
+        // This means multiple segments will all wait for tokens, not burst
+        let capacity = (bytes_per_second as f64 * 0.1) as u64;
+        let capacity = capacity.max(1024); // Minimum 1KB capacity
         
         Self {
             state: Arc::new(Mutex::new(RateLimiterState {
@@ -36,6 +41,7 @@ impl RateLimiter {
                 tokens: capacity as f64,
                 last_refill: Instant::now(),
                 refill_rate: bytes_per_second,
+                is_unlimited: false,
             })),
         }
     }
@@ -48,6 +54,7 @@ impl RateLimiter {
                 tokens: f64::MAX,
                 last_refill: Instant::now(),
                 refill_rate: u64::MAX,
+                is_unlimited: true,
             })),
         }
     }
@@ -55,49 +62,73 @@ impl RateLimiter {
     /// Update the speed limit
     pub async fn set_limit(&self, bytes_per_second: u64) {
         let mut state = self.state.lock().await;
-        state.capacity = bytes_per_second;
-        state.refill_rate = bytes_per_second;
-        // Don't reset tokens - let it drain/fill naturally
+        if bytes_per_second == 0 || bytes_per_second == u64::MAX {
+            // Unlimited
+            state.capacity = u64::MAX;
+            state.refill_rate = u64::MAX;
+            state.tokens = f64::MAX;
+            state.is_unlimited = true;
+        } else {
+            // Small capacity for tight control
+            let capacity = (bytes_per_second as f64 * 0.1) as u64;
+            let capacity = capacity.max(1024);
+            state.capacity = capacity;
+            state.refill_rate = bytes_per_second;
+            state.is_unlimited = false;
+            // Reset tokens to prevent immediate burst
+            state.tokens = (state.tokens as u64).min(capacity) as f64;
+        }
     }
     
     /// Acquire tokens for downloading `bytes` amount of data
     /// This will block until enough tokens are available
     pub async fn acquire(&self, bytes: u64) {
-        let mut state = self.state.lock().await;
-        
-        // Refill tokens based on elapsed time
-        self.refill_tokens(&mut state);
-        
-        // If we have enough tokens, consume and return immediately
-        if state.tokens >= bytes as f64 {
-            state.tokens -= bytes as f64;
-            return;
+        loop {
+            let wait_time = {
+                let mut state = self.state.lock().await;
+                
+                // Unlimited: return immediately
+                if state.is_unlimited {
+                    return;
+                }
+                
+                // Refill tokens based on elapsed time
+                self.refill_tokens(&mut state);
+                
+                // If we have enough tokens, consume and return
+                if state.tokens >= bytes as f64 {
+                    state.tokens -= bytes as f64;
+                    return;
+                }
+                
+                // Calculate how long to wait for tokens
+                let needed = bytes as f64 - state.tokens;
+                let wait_secs = needed / state.refill_rate as f64;
+                
+                // Consume all available tokens now
+                let consumed = state.tokens;
+                state.tokens = 0.0;
+                
+                // Return remaining wait time
+                Duration::from_secs_f64(wait_secs) - Duration::from_secs_f64(consumed / state.refill_rate as f64)
+            };
+            
+            // Wait outside the lock so other segments can also acquire
+            if wait_time > Duration::ZERO {
+                tokio::time::sleep(wait_time.min(Duration::from_millis(100))).await;
+            }
         }
-        
-        // Not enough tokens - calculate how long to wait
-        let needed = bytes as f64 - state.tokens;
-        let wait_duration = if state.refill_rate > 0 {
-            Duration::from_secs_f64(needed / state.refill_rate as f64)
-        } else {
-            Duration::from_millis(10) // Fallback for unlimited
-        };
-        
-        // Consume all available tokens
-        state.tokens = 0.0;
-        
-        drop(state);
-        
-        // Wait for tokens to refill
-        tokio::time::sleep(wait_duration).await;
-        
-        // After waiting, tokens should have refilled enough
-        // (We don't recurse - the next acquire will handle it)
     }
     
     /// Non-blocking try to acquire tokens
     /// Returns true if tokens were acquired, false otherwise
     pub async fn try_acquire(&self, bytes: u64) -> bool {
         let mut state = self.state.lock().await;
+        
+        if state.is_unlimited {
+            return true;
+        }
+        
         self.refill_tokens(&mut state);
         
         if state.tokens >= bytes as f64 {
@@ -110,6 +141,10 @@ impl RateLimiter {
     
     /// Refill tokens based on elapsed time
     fn refill_tokens(&self, state: &mut RateLimiterState) {
+        if state.is_unlimited {
+            return;
+        }
+        
         let now = Instant::now();
         let elapsed = now.duration_since(state.last_refill);
         

@@ -5,7 +5,7 @@
 <h1 align="center">DLMan</h1>
 
 <p align="center">
-  <strong>The open-source download manager that makes IDM obsolete.</strong>
+  <strong>A modern, open-source download manager for everyone.</strong>
 </p>
 
 <p align="center">
@@ -21,41 +21,52 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/novincode/dlman/releases"><strong>📥 Download</strong></a> •
-  <a href="docs/INSTALL.md"><strong>📖 Install Guide</strong></a> •
-  <a href="#features"><strong>✨ Features</strong></a> •
-  <a href="CHANGELOG.md"><strong>📋 Changelog</strong></a>
+  <a href="https://github.com/novincode/dlman/releases"><strong>Download</strong></a> •
+  <a href="docs/INSTALL.md"><strong>Install Guide</strong></a> •
+  <a href="CHANGELOG.md"><strong>Changelog</strong></a>
 </p>
 
 ---
 
-## Why DLMan?
+## What is DLMan?
 
-**Free. Fast. Modern.** DLMan is a cross-platform download manager built with Rust and React. Multi-segment downloads, queue management, and a clean UI — everything you need, nothing you don't.
-
-| | IDM | DLMan |
-|---|:---:|:---:|
-| Price | $25+ | **Free** |
-| Open Source | ❌ | ✅ |
-| Cross Platform | Windows | **Win/Mac/Linux** |
-| CLI Tool | ❌ | ✅ |
+DLMan is a **free, open-source download manager** that runs on Windows, macOS, and Linux. Built with Rust for speed and reliability, it helps you download files faster with multi-segment parallel connections.
 
 ---
 
 ## Features
 
-- **Multi-segment downloads** — Split files into parallel connections for maximum speed
-- **Pause & Resume** — Pick up where you left off, even after crashes
-- **Queue management** — Organize downloads with speed limits and scheduling
-- **Modern UI** — Clean, responsive interface with dark/light themes
-- **CLI included** — Full power from your terminal
-- **Cross-platform** — Windows, macOS, and Linux
+**Speed**
+- Multi-segment parallel downloads — split files into multiple connections
+- Configurable segment count (1-32 per download)
+- Per-download and per-queue speed limits
+
+**Reliability**
+- Pause and resume downloads anytime
+- Auto-resume after crashes or restarts
+- Automatic retry for failed downloads
+- SQLite-based crash-safe persistence
+
+**Organization**
+- Queue management with priorities
+- Categories with custom download folders
+- Batch import multiple URLs at once
+- Drag and drop support
+
+**Interface**
+- Modern, clean UI
+- Dark and light themes
+- Real-time progress with segment visualization
+- Desktop notifications
+
+**More**
+- CLI tool included
+- Cross-platform (Windows, macOS, Linux)
+- 100% free and open source
 
 ---
 
 ## Download
-
-Get the latest release for your platform:
 
 <p align="center">
   <a href="https://github.com/novincode/dlman/releases/latest">
@@ -69,47 +80,47 @@ Get the latest release for your platform:
   </a>
 </p>
 
-| Platform | File |
-|----------|------|
-| Windows | `.msi` or `.exe` |
-| macOS Intel | `.dmg` (x64) |
-| macOS Apple Silicon | `.dmg` (aarch64) |
-| Linux | `.deb` / `.rpm` / `.AppImage` |
+| Platform | Files |
+|----------|-------|
+| Windows | `.msi`, `.exe` |
+| macOS (Intel) | `.dmg` (x64) |
+| macOS (Apple Silicon) | `.dmg` (aarch64) |
+| Linux | `.deb`, `.rpm`, `.AppImage` |
 
-**macOS note:** Run `xattr -cr /Applications/DLMan.app` after install. See [Install Guide](docs/INSTALL.md).
+See the [Install Guide](docs/INSTALL.md) for platform-specific instructions.
 
 ---
 
 ## CLI
 
+DLMan includes a command-line interface:
+
 ```bash
-# Download a file
+# Basic download
 dlman https://example.com/file.zip
 
 # With options
 dlman https://example.com/file.zip -o ~/Downloads/ -s 8
 
-# Batch download
-dlman batch urls.txt -o ~/Downloads/
+# See all options
+dlman --help
 ```
 
-See [CLI docs](docs/CLI.md) for full usage.
+See [CLI documentation](docs/CLI.md) for more.
 
 ---
 
 ## Contributing
 
-Want to contribute? Check out the [Development Guide](docs/DEVELOPMENT.md).
+Contributions welcome! See the [Development Guide](docs/DEVELOPMENT.md).
 
 ---
 
-## Support
-
-If DLMan saves you time, consider supporting development:
+## Support the Project
 
 <p align="center">
   <a href="https://github.com/sponsors/novincode">
-    <img src="https://img.shields.io/badge/GitHub%20Sponsors-EA4AAA?style=for-the-badge&logo=github-sponsors&logoColor=white" alt="GitHub Sponsors">
+    <img src="https://img.shields.io/badge/Sponsor-GitHub-EA4AAA?style=for-the-badge&logo=github-sponsors&logoColor=white" alt="GitHub Sponsors">
   </a>
   <a href="https://buymeacoffee.com/codeideal">
     <img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black" alt="Buy Me a Coffee">
@@ -119,5 +130,5 @@ If DLMan saves you time, consider supporting development:
 ---
 
 <p align="center">
-  MIT © <a href="https://github.com/novincode">Novin Code</a>
+  MIT License © <a href="https://github.com/novincode">Novin Code</a>
 </p>

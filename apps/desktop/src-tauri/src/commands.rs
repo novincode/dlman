@@ -225,20 +225,34 @@ pub async fn import_data(state: State<'_, AppState>, data: String) -> Result<(),
 pub async fn show_in_folder(path: String) -> Result<(), String> {
     let path = PathBuf::from(&path);
     
+    // Ensure path exists, if not try parent
+    let path_to_show = if path.exists() {
+        path.clone()
+    } else if let Some(parent) = path.parent() {
+        if parent.exists() {
+            parent.to_path_buf()
+        } else {
+            return Err(format!("Path does not exist: {}", path.display()));
+        }
+    } else {
+        return Err(format!("Path does not exist: {}", path.display()));
+    };
+    
     #[cfg(target_os = "macos")]
     {
         std::process::Command::new("open")
             .arg("-R")
-            .arg(&path)
+            .arg(&path_to_show)
             .spawn()
             .map_err(|e| e.to_string())?;
     }
     
     #[cfg(target_os = "windows")]
     {
+        // On Windows, use /select with proper escaping
+        let path_str = path_to_show.to_string_lossy().replace('/', "\\");
         std::process::Command::new("explorer")
-            .arg("/select,")
-            .arg(&path)
+            .args(["/select,", &path_str])
             .spawn()
             .map_err(|e| e.to_string())?;
     }
@@ -246,7 +260,7 @@ pub async fn show_in_folder(path: String) -> Result<(), String> {
     #[cfg(target_os = "linux")]
     {
         // Try xdg-open on the parent directory
-        if let Some(parent) = path.parent() {
+        if let Some(parent) = path_to_show.parent() {
             std::process::Command::new("xdg-open")
                 .arg(parent)
                 .spawn()
@@ -261,18 +275,33 @@ pub async fn show_in_folder(path: String) -> Result<(), String> {
 pub async fn open_folder(path: String) -> Result<(), String> {
     let path = PathBuf::from(&path);
     
+    // Ensure path exists
+    if !path.exists() {
+        // Try to create the directory if it doesn't exist
+        std::fs::create_dir_all(&path).map_err(|e| format!("Failed to create directory: {}", e))?;
+    }
+    
+    // Ensure we're opening a directory, not a file
+    let folder_path = if path.is_file() {
+        path.parent().unwrap_or(&path).to_path_buf()
+    } else {
+        path.clone()
+    };
+    
     #[cfg(target_os = "macos")]
     {
         std::process::Command::new("open")
-            .arg(&path)
+            .arg(&folder_path)
             .spawn()
             .map_err(|e| e.to_string())?;
     }
     
     #[cfg(target_os = "windows")]
     {
+        // Convert forward slashes to backslashes for Windows
+        let path_str = folder_path.to_string_lossy().replace('/', "\\");
         std::process::Command::new("explorer")
-            .arg(&path)
+            .arg(&path_str)
             .spawn()
             .map_err(|e| e.to_string())?;
     }
@@ -280,7 +309,7 @@ pub async fn open_folder(path: String) -> Result<(), String> {
     #[cfg(target_os = "linux")]
     {
         std::process::Command::new("xdg-open")
-            .arg(&path)
+            .arg(&folder_path)
             .spawn()
             .map_err(|e| e.to_string())?;
     }

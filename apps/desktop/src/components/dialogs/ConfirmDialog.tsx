@@ -60,6 +60,8 @@ export function ConfirmDialog() {
             className={
               confirmDialogConfig.variant === 'destructive'
                 ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
+                : confirmDialogConfig.variant === 'primary'
+                ? 'bg-blue-600 text-white hover:bg-blue-700'
                 : undefined
             }
           >

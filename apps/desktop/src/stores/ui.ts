@@ -53,7 +53,7 @@ interface ConfirmDialogConfig {
   description: string;
   confirmLabel?: string;
   cancelLabel?: string;
-  variant?: "default" | "destructive";
+  variant?: "default" | "destructive" | "primary";
   onConfirm: () => void;
   onCancel?: () => void;
 }

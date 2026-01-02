@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useState } from "react";
 import { Toaster } from "sonner";
 import { homeDir } from "@tauri-apps/api/path";
 import { Layout } from "@/components/layout/Layout";
@@ -27,9 +27,38 @@ function AppContent() {
   const defaultDownloadPath = useSettingsStore((s) => s.settings.default_download_path);
   const setDefaultDownloadPath = useSettingsStore((s) => s.setDefaultDownloadPath);
   const { setShowNewDownloadDialog, setShowBatchImportDialog } = useUIStore();
+  const [actualTheme, setActualTheme] = useState<"light" | "dark">("light");
+
+  // Determine actual theme for Sonner (system theme needs real detection)
+  const getActualTheme = useCallback((): "light" | "dark" => {
+    if (theme !== "system") {
+      return theme as "light" | "dark";
+    }
+    // Detect system theme preference
+    if (typeof window !== "undefined" && window.matchMedia) {
+      return window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark"
+        : "light";
+    }
+    return "light";
+  }, [theme]);
 
   // Enable keyboard shortcuts
   useKeyboardShortcuts();
+
+  // Handle system theme changes
+  useEffect(() => {
+    setActualTheme(getActualTheme());
+    
+    if (typeof window !== "undefined" && window.matchMedia) {
+      const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+      const handleChange = () => {
+        setActualTheme(getActualTheme());
+      };
+      mediaQuery.addEventListener("change", handleChange);
+      return () => mediaQuery.removeEventListener("change", handleChange);
+    }
+  }, [theme, getActualTheme]);
 
   // Resolve default download path on startup
   useEffect(() => {
@@ -147,7 +176,7 @@ function AppContent() {
       <ConfirmDialog />
       
       <Toaster
-        theme={theme === "system" ? undefined : theme}
+        theme={actualTheme}
         position="bottom-right"
         richColors
         closeButton
