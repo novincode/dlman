@@ -36,6 +36,24 @@ jobs:
             echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
           fi
 
+      - name: Extract changelog for version
+        id: changelog
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          VERSION_NUM="${VERSION#v}"
+          
+          # Extract changelog section for this version
+          CHANGELOG=$(awk "/^## \[${VERSION_NUM}\]/{flag=1; next} /^## \[/{flag=0} flag" CHANGELOG.md)
+          
+          # If no changelog found, use default message
+          if [ -z "$CHANGELOG" ]; then
+            CHANGELOG="See CHANGELOG.md for details."
+          fi
+          
+          # Write to file to handle multiline content
+          echo "$CHANGELOG" > /tmp/changelog.txt
+          echo "changelog_file=/tmp/changelog.txt" >> $GITHUB_OUTPUT
+
       - name: Create Release
         id: create-release
         uses: softprops/action-gh-release@v2
@@ -44,46 +62,7 @@ jobs:
         with:
           tag_name: ${{ steps.get_version.outputs.version }}
           name: DLMan ${{ steps.get_version.outputs.version }}
-          body: |
-            ## DLMan ${{ steps.get_version.outputs.version }}
-            
-            A modern, open-source download manager with multi-segment downloads, queue management, and more.
-            
-            ### Downloads
-            
-            | Platform | Download |
-            |----------|----------|
-            | **Windows** | See assets below (.msi or .exe) |
-            | **macOS (Intel)** | See assets below (.dmg for x64) |
-            | **macOS (Apple Silicon)** | See assets below (.dmg for aarch64) |
-            | **Linux** | See assets below (.deb, .rpm, or .AppImage) |
-            
-            ### macOS Users
-            
-            Since DLMan is not signed with an Apple Developer certificate, you'll need to:
-            1. Download the .dmg file
-            2. Open it and drag DLMan to Applications
-            3. Open Terminal and run: `xattr -cr /Applications/DLMan.app`
-            4. Now you can open DLMan normally
-            
-            Or right-click the app → Open → Open (in the warning dialog)
-            
-            ### Linux Users
-            
-            For AppImage:
-            ```bash
-            chmod +x DLMan_*.AppImage
-            ./DLMan_*.AppImage
-            ```
-            
-            ### What's New
-            
-            - 🎉 First stable release!
-            - Multi-segment parallel downloads
-            - Queue management with speed limits
-            - Expandable download details with segment visualization
-            - Per-download speed limit override
-            - Modern UI with dark/light themes
+          body_path: /tmp/changelog.txt
           draft: false
           prerelease: false
 
