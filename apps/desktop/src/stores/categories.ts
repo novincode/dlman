@@ -23,45 +23,46 @@ interface CategoryState {
   setSelectedCategory: (id: string | null) => void;
 }
 
-// Default categories with icon IDs instead of emojis
+// Default categories with proper UUIDs and icon IDs
+// Using deterministic UUIDs so they're consistent across sessions
 const DEFAULT_CATEGORIES: Category[] = [
   {
-    id: 'music',
+    id: '00000000-0000-0000-0000-000000000001',
     name: 'Music',
     icon: 'music',
     color: '#22c55e',
     extensions: ['mp3', 'wav', 'flac', 'aac', 'm4a', 'ogg', 'wma'],
   },
   {
-    id: 'videos',
+    id: '00000000-0000-0000-0000-000000000002',
     name: 'Videos',
     icon: 'film',
     color: '#ef4444',
     extensions: ['mp4', 'mkv', 'avi', 'mov', 'wmv', 'flv', 'webm'],
   },
   {
-    id: 'documents',
+    id: '00000000-0000-0000-0000-000000000003',
     name: 'Documents',
     icon: 'file-text',
     color: '#3b82f6',
     extensions: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'rtf'],
   },
   {
-    id: 'images',
+    id: '00000000-0000-0000-0000-000000000004',
     name: 'Images',
     icon: 'image',
     color: '#a855f7',
     extensions: ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'webp', 'ico'],
   },
   {
-    id: 'archives',
+    id: '00000000-0000-0000-0000-000000000005',
     name: 'Archives',
     icon: 'archive',
     color: '#f59e0b',
     extensions: ['zip', 'rar', '7z', 'tar', 'gz', 'bz2', 'xz'],
   },
   {
-    id: 'programs',
+    id: '00000000-0000-0000-0000-000000000006',
     name: 'Programs',
     icon: 'box',
     color: '#06b6d4',

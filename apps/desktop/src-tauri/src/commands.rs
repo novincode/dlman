@@ -10,20 +10,54 @@ use uuid::Uuid;
 // Download Commands
 // ============================================================================
 
-#[tauri::command]
+/// Optional pre-probed info from batch import
+#[derive(serde::Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub struct ProbedInfo {
+    pub filename: Option<String>,
+    pub size: Option<u64>,
+    pub final_url: Option<String>,
+}
+
+#[tauri::command(rename_all = "snake_case")]
 pub async fn add_download(
     state: State<'_, AppState>,
     url: String,
     destination: String,
     queue_id: String,
     category_id: Option<String>,
+    probed_info: Option<ProbedInfo>,
 ) -> Result<Download, String> {
     let queue_uuid = Uuid::parse_str(&queue_id).map_err(|e| e.to_string())?;
     let category_uuid = category_id.map(|s| Uuid::parse_str(&s).map_err(|e| e.to_string())).transpose()?;
     let dest_path = PathBuf::from(destination);
 
     state
-        .with_core_async(|core| async move { core.add_download(&url, dest_path, queue_uuid, category_uuid).await })
+        .with_core_async(|core| async move { 
+            let mut download = core.add_download(&url, dest_path, queue_uuid, category_uuid).await?;
+            
+            // Apply probed info if provided (from batch import)
+            if let Some(info) = probed_info {
+                let mut updated = false;
+                if let Some(filename) = info.filename {
+                    download.filename = filename;
+                    updated = true;
+                }
+                if let Some(size) = info.size {
+                    download.size = Some(size);
+                    updated = true;
+                }
+                if let Some(final_url) = info.final_url {
+                    download.final_url = Some(final_url);
+                    updated = true;
+                }
+                if updated {
+                    core.download_manager.db().upsert_download(&download).await?;
+                }
+            }
+            
+            Ok(download)
+        })
         .await
 }
 
@@ -59,7 +93,7 @@ pub async fn cancel_download(state: State<'_, AppState>, id: String) -> Result<(
         .await
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn delete_download(
     state: State<'_, AppState>,
     id: String,
@@ -72,6 +106,7 @@ pub async fn delete_download(
 }
 
 #[derive(serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub struct DownloadUpdates {
     pub speed_limit: Option<Option<u64>>,
     pub category_id: Option<Option<String>>,

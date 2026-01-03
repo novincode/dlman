@@ -237,11 +237,19 @@ export function NewDownloadDialog() {
       // Try to add via Tauri backend
       if (isTauri()) {
         try {
+          // Build probed info if we have filename or size from probing
+          const probedInfo = (filename || fileSize) ? {
+            filename: filename || undefined,
+            size: fileSize ?? undefined,
+            final_url: undefined, // finalUrl is not tracked separately in this dialog
+          } : undefined;
+
           const download = await invoke<DownloadType>('add_download', {
             url,
             destination,
             queue_id: queueId,
-            category_id: categoryId ?? undefined,
+            category_id: categoryId || undefined,
+            probed_info: probedInfo,
           });
           // Add to local store
           addDownload(download);

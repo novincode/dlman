@@ -150,7 +150,6 @@ export function BatchImportDialog() {
     const seq = (probeSeqRef.current += 1);
 
     for (let i = 0; i < urlsToProbe.length; i += 1) {
-      if (!showBatchImportDialog) return;
       if (probeSeqRef.current !== seq) return;
 
       const url = urlsToProbe[i];
@@ -158,7 +157,6 @@ export function BatchImportDialog() {
         const res = await invoke<LinkInfo[]>('probe_links', { urls: [url] });
         const info = res?.[0] ?? null;
 
-        if (!showBatchImportDialog) return;
         if (probeSeqRef.current !== seq) return;
 
         setItems((prev) => {
@@ -170,19 +168,17 @@ export function BatchImportDialog() {
           if (!prevItem) return prev;
 
           const error = info?.error ?? null;
-          const isHtml = info?.content_type?.toLowerCase().includes('text/html') ?? false;
 
           next[idx] = {
             ...prevItem,
             info,
             loading: false,
             error,
-            checked: error ? false : (hideHtmlPages && isHtml) ? false : prevItem.checked,
+            checked: error ? false : prevItem.checked,
           };
           return next;
         });
       } catch (err) {
-        if (!showBatchImportDialog) return;
         if (probeSeqRef.current !== seq) return;
 
         setItems((prev) => {
@@ -203,7 +199,7 @@ export function BatchImportDialog() {
         });
       }
     }
-  }, [showBatchImportDialog, hideHtmlPages]);
+  }, []); // No dependencies - stable function
 
   const startNewProbe = useCallback((urls: string[], autoStepToReview: boolean) => {
     const next = urls.map<Item>((url) => ({
@@ -227,11 +223,20 @@ export function BatchImportDialog() {
     runProbe(urls).catch(() => {
       // errors are surfaced per-item
     });
-  }, [runProbe]);
+  }, []); // Stable - runProbe is also stable
 
-  // Open behavior: if we have pending URLs, skip input step and go straight to review.
+  // Open behavior: ONLY runs when dialog opens (showBatchImportDialog changes to true)
+  const hasInitializedRef = useRef(false);
   useEffect(() => {
-    if (!showBatchImportDialog) return;
+    if (!showBatchImportDialog) {
+      // Dialog closed - reset for next open
+      hasInitializedRef.current = false;
+      return;
+    }
+
+    // Only initialize once per open
+    if (hasInitializedRef.current) return;
+    hasInitializedRef.current = true;
 
     const clipboardUrls = getPendingClipboardUrls();
     const dropUrls = getPendingDropUrls();
@@ -256,7 +261,8 @@ export function BatchImportDialog() {
     setStep('input');
     setFocusedIndex(null);
     anchorIndexRef.current = null;
-  }, [showBatchImportDialog, ensureDefaultDestination, startNewProbe]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showBatchImportDialog]); // Only depend on showBatchImportDialog - other functions are stable
 
   // Hide HTML: UI-only filter. No probing.
   useEffect(() => {
@@ -395,6 +401,28 @@ export function BatchImportDialog() {
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      // Ctrl/Cmd+A to select all visible items
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        // Check if all visible items are already selected
+        const visibleItems = items.filter(
+          (it) => !(hideHtmlPages && isHtmlItem(it)) && !it.error
+        );
+        const allSelected = visibleItems.every((it) => it.checked);
+        
+        // Toggle: if all selected, deselect all; otherwise select all
+        setItems((prev) =>
+          prev.map((it) => {
+            if (it.error) return it;
+            if (hideHtmlPages && isHtmlItem(it)) return it;
+            return { ...it, checked: !allSelected };
+          })
+        );
+        return;
+      }
+
       if (e.key !== ' ') return;
       e.preventDefault();
 
@@ -449,11 +477,19 @@ export function BatchImportDialog() {
         const url = it.url;
 
         if (isTauri()) {
+          // Build probed info if available from link probing
+          const probedInfo = it.info ? {
+            filename: it.info.filename || undefined,
+            size: it.info.size ?? undefined,
+            final_url: it.info.final_url || undefined,
+          } : undefined;
+
           const download = await invoke<DownloadType>('add_download', {
             url,
             destination,
             queue_id: queueId,
-            category_id: categoryId ?? undefined,
+            category_id: categoryId || undefined,
+            probed_info: probedInfo,
           });
           addDownload(download);
         } else {
