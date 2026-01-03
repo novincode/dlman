@@ -288,15 +288,30 @@ impl DlmanCore {
     }
     
     /// Retry a failed download
+    /// This continues from existing progress when possible, rather than starting over
     pub async fn retry_download(&self, id: Uuid) -> Result<(), DlmanError> {
         let mut download = self.get_download(id).await?;
         
-        // Reset download state
-        download.status = DownloadStatus::Queued;
-        download.downloaded = 0;
-        download.error = None;
-        download.retry_count += 1;
-        download.segments.clear();
+        // Check if we can resume from existing segments
+        let has_usable_segments = !download.segments.is_empty() 
+            && download.segments.iter().any(|s| s.downloaded > 0);
+        
+        if has_usable_segments {
+            // Continue from existing progress - just reset status and error
+            info!("Retrying download {} with existing segments ({})", id, download.segments.len());
+            download.status = DownloadStatus::Queued;
+            download.error = None;
+            download.retry_count += 1;
+            // Keep segments and downloaded bytes intact!
+        } else {
+            // No usable segments, start fresh
+            info!("Retrying download {} from scratch (no existing progress)", id);
+            download.status = DownloadStatus::Queued;
+            download.downloaded = 0;
+            download.error = None;
+            download.retry_count += 1;
+            download.segments.clear();
+        }
         
         // Save to DB
         self.download_manager.db().upsert_download(&download).await?;
@@ -306,8 +321,26 @@ impl DlmanCore {
             download: download.clone(),
         });
         
-        // Try to start
-        self.queue_manager.try_start_next_download(self.clone(), download.queue_id).await?;
+        // Immediately start the download instead of relying on queue logic
+        let settings = self.settings.read().await;
+        let effective_limit = download.speed_limit;
+        let segment_count = if download.segments.is_empty() {
+            settings.default_segments
+        } else {
+            download.segments.len() as u32
+        };
+        let max_retries = settings.max_retries;
+        let retry_delay = settings.retry_delay_seconds;
+        drop(settings);
+        
+        // Start immediately
+        self.download_manager.start(
+            download,
+            effective_limit,
+            segment_count,
+            max_retries,
+            retry_delay,
+        ).await?;
         
         Ok(())
     }

@@ -79,13 +79,16 @@ impl DownloadManager {
     }
     
     /// Probe a URL for metadata
+    /// Uses HEAD request first, falls back to partial GET if HEAD doesn't return size
+    /// (some servers like GitHub don't return Content-Length for HEAD on redirected downloads)
     pub async fn probe_url(&self, url: &url::Url) -> Result<LinkInfo, DlmanError> {
         info!("Probing URL: {}", url);
         
+        // Try HEAD first
         let response = self.client.head(url.as_str()).send().await?;
         
         let final_url = response.url().to_string();
-        let size = response
+        let mut size = response
             .headers()
             .get(reqwest::header::CONTENT_LENGTH)
             .and_then(|v| v.to_str().ok())
@@ -95,12 +98,46 @@ impl DownloadManager {
             .get(reqwest::header::CONTENT_TYPE)
             .and_then(|v| v.to_str().ok())
             .map(|s| s.to_string());
-        let resumable = response
+        let mut resumable = response
             .headers()
             .get(reqwest::header::ACCEPT_RANGES)
             .and_then(|v| v.to_str().ok())
             .map(|s| s == "bytes")
             .unwrap_or(false);
+        
+        // If HEAD didn't give us size, try a GET with Range header to get more info
+        // This is needed for GitHub releases and similar CDNs
+        if size.is_none() {
+            info!("HEAD didn't return Content-Length, trying partial GET...");
+            match self.client
+                .get(&final_url)
+                .header(reqwest::header::RANGE, "bytes=0-0")
+                .send()
+                .await
+            {
+                Ok(range_response) => {
+                    // Check Content-Range header for total size: "bytes 0-0/12345"
+                    if let Some(content_range) = range_response.headers().get(reqwest::header::CONTENT_RANGE) {
+                        if let Ok(range_str) = content_range.to_str() {
+                            if let Some(total) = range_str.split('/').last() {
+                                if let Ok(total_size) = total.parse::<u64>() {
+                                    size = Some(total_size);
+                                    resumable = true; // If range works, it's resumable
+                                    info!("Got size from Content-Range: {}", total_size);
+                                }
+                            }
+                        }
+                    }
+                    // Also check if we got a 206 Partial Content - means range is supported
+                    if range_response.status() == reqwest::StatusCode::PARTIAL_CONTENT {
+                        resumable = true;
+                    }
+                }
+                Err(e) => {
+                    info!("Partial GET failed (continuing without size): {}", e);
+                }
+            }
+        }
         
         let filename = response
             .headers()

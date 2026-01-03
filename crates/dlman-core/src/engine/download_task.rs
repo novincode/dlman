@@ -498,10 +498,11 @@ impl DownloadTask {
     }
     
     /// Probe URL to determine if range requests are supported
+    /// Uses HEAD first, then falls back to partial GET for size/resumability detection
     async fn probe_url(&mut self) -> Result<bool, DlmanError> {
         let response = self.client.head(&self.download.url).send().await?;
         
-        let supports_range = response
+        let mut supports_range = response
             .headers()
             .get(reqwest::header::ACCEPT_RANGES)
             .and_then(|v| v.to_str().ok())
@@ -520,7 +521,55 @@ impl DownloadTask {
         // Update final URL if redirected
         let final_url = response.url().to_string();
         if final_url != self.download.url {
-            self.download.final_url = Some(final_url);
+            self.download.final_url = Some(final_url.clone());
+        }
+        
+        // If HEAD didn't give us size, try a partial GET request
+        // This is critical for GitHub releases and similar CDNs
+        if self.download.size.is_none() {
+            let probe_url = self.download.final_url.as_ref().unwrap_or(&self.download.url);
+            info!("HEAD didn't return Content-Length, trying partial GET on {}", probe_url);
+            
+            match self.client
+                .get(probe_url)
+                .header(reqwest::header::RANGE, "bytes=0-0")
+                .send()
+                .await
+            {
+                Ok(range_response) => {
+                    // Check for 206 Partial Content - means range is supported
+                    if range_response.status() == reqwest::StatusCode::PARTIAL_CONTENT {
+                        supports_range = true;
+                        
+                        // Parse Content-Range header for total size: "bytes 0-0/12345"
+                        if let Some(content_range) = range_response.headers().get(reqwest::header::CONTENT_RANGE) {
+                            if let Ok(range_str) = content_range.to_str() {
+                                if let Some(total) = range_str.split('/').last() {
+                                    if let Ok(total_size) = total.parse::<u64>() {
+                                        self.download.size = Some(total_size);
+                                        info!("Got size from Content-Range: {} bytes", total_size);
+                                    }
+                                }
+                            }
+                        }
+                    } else if range_response.status() == reqwest::StatusCode::OK {
+                        // Server ignored range and sent full content - get size from Content-Length
+                        if let Some(size) = range_response.headers()
+                            .get(reqwest::header::CONTENT_LENGTH)
+                            .and_then(|v| v.to_str().ok())
+                            .and_then(|s| s.parse().ok())
+                        {
+                            self.download.size = Some(size);
+                            info!("Got size from full GET response: {} bytes", size);
+                        }
+                        // Range not supported, we'll do single-segment
+                        supports_range = false;
+                    }
+                }
+                Err(e) => {
+                    warn!("Partial GET probe failed: {} - continuing without size info", e);
+                }
+            }
         }
         
         Ok(supports_range)
