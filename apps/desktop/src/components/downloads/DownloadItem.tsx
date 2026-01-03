@@ -60,6 +60,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useDownloadStore } from "@/stores/downloads";
 import { useQueueStore, useQueuesArray } from "@/stores/queues";
+import { useCategoryStore } from "@/stores/categories";
+import { getCategoryIcon } from "@/lib/categoryIcons";
 import { formatBytes, formatSpeed, formatDuration } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { DownloadInfoDialog } from "@/components/dialogs/DownloadInfoDialog";
@@ -78,6 +80,7 @@ export function DownloadItem({ download }: DownloadItemProps) {
   const isSelectionMode = selectedIds.size > 0; // Selection mode is active when any items are selected
   const queue = useQueueStore((s) => s.queues.get(download.queue_id));
   const queues = useQueuesArray();
+  const category = useCategoryStore((s) => download.category_id ? s.categories.get(download.category_id) : null);
   const [showInfoDialog, setShowInfoDialog] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -593,6 +596,23 @@ export function DownloadItem({ download }: DownloadItemProps) {
                       {Math.round(effectiveSpeedLimit / 1024)} KB/s
                     </span>
                   )}
+                  {/* Category badge */}
+                  {category && (() => {
+                    const iconConfig = getCategoryIcon(category.icon, category.name);
+                    const IconComponent = iconConfig.icon;
+                    return (
+                      <span 
+                        className="text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1 font-medium"
+                        style={{ 
+                          backgroundColor: `${category.color}15`, 
+                          color: category.color 
+                        }}
+                      >
+                        <IconComponent className="h-3 w-3" />
+                        {category.name}
+                      </span>
+                    );
+                  })()}
                 </div>
 
                 {/* Progress Bar (for active downloads) */}

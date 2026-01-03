@@ -473,31 +473,38 @@ export function BatchImportDialog() {
     try {
       setIsAdding(true);
 
-      for (const it of selected) {
-        const url = it.url;
-
-        if (isTauri()) {
-          // Build probed info if available from link probing
-          const probedInfo = it.info ? {
+      if (isTauri()) {
+        // Use batch command to add all downloads at once
+        const batchRequests = selected.map((it) => ({
+          url: it.url,
+          probed_info: it.info ? {
             filename: it.info.filename || undefined,
             size: it.info.size ?? undefined,
             final_url: it.info.final_url || undefined,
-          } : undefined;
+          } : undefined,
+        }));
 
-          const download = await invoke<DownloadType>('add_download', {
-            url,
-            destination,
-            queue_id: queueId,
-            category_id: categoryId || undefined,
-            probed_info: probedInfo,
-          });
+        const downloads = await invoke<DownloadType[]>('add_downloads_batch', {
+          downloads: batchRequests,
+          destination,
+          queue_id: queueId,
+          category_id: categoryId || undefined,
+        });
+
+        // Add all downloads to the store at once
+        for (const download of downloads) {
           addDownload(download);
-        } else {
+        }
+
+        toast.success(`Added ${downloads.length} downloads`);
+      } else {
+        // Non-Tauri fallback - add one by one
+        for (const it of selected) {
           const localDownload: DownloadType = {
             id: crypto.randomUUID(),
-            url,
+            url: it.url,
             final_url: it.info?.final_url ?? null,
-            filename: it.info?.filename || url.split('/').pop() || 'unknown',
+            filename: it.info?.filename || it.url.split('/').pop() || 'unknown',
             destination,
             size: it.info?.size ?? null,
             downloaded: 0,
@@ -513,9 +520,8 @@ export function BatchImportDialog() {
           };
           addDownload(localDownload);
         }
+        toast.success(`Added ${selected.length} downloads`);
       }
-
-      toast.success(`Added ${selected.length} downloads`);
 
       if (startImmediately) {
         toast.message('Start immediately is enabled; queue start behavior depends on your queue settings.');
@@ -823,7 +829,14 @@ export function BatchImportDialog() {
       </Dialog>
 
       <QueueDialog open={createQueueOpen} onOpenChange={setCreateQueueOpen} />
-      <CategoryDialog open={createCategoryOpen} onOpenChange={setCreateCategoryOpen} />
+      <CategoryDialog 
+        open={createCategoryOpen} 
+        onOpenChange={setCreateCategoryOpen}
+        onCategoryCreated={(newCategoryId) => {
+          // Auto-select the newly created category
+          setCategoryId(newCategoryId);
+        }}
+      />
     </>
   );
 }

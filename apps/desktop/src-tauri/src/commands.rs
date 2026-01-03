@@ -61,6 +61,67 @@ pub async fn add_download(
         .await
 }
 
+/// Request for batch adding downloads
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct BatchDownloadRequest {
+    pub url: String,
+    pub probed_info: Option<ProbedInfo>,
+}
+
+/// Add multiple downloads at once (batch import)
+#[tauri::command(rename_all = "snake_case")]
+pub async fn add_downloads_batch(
+    state: State<'_, AppState>,
+    downloads: Vec<BatchDownloadRequest>,
+    destination: String,
+    queue_id: String,
+    category_id: Option<String>,
+) -> Result<Vec<Download>, String> {
+    let queue_uuid = Uuid::parse_str(&queue_id).map_err(|e| e.to_string())?;
+    let category_uuid = category_id.map(|s| Uuid::parse_str(&s).map_err(|e| e.to_string())).transpose()?;
+    let dest_path = PathBuf::from(destination);
+
+    state
+        .with_core_async(|core| async move {
+            let mut results = Vec::with_capacity(downloads.len());
+            
+            for req in downloads {
+                match core.add_download(&req.url, dest_path.clone(), queue_uuid, category_uuid).await {
+                    Ok(mut download) => {
+                        // Apply probed info if provided
+                        if let Some(info) = req.probed_info {
+                            let mut updated = false;
+                            if let Some(filename) = info.filename {
+                                download.filename = filename;
+                                updated = true;
+                            }
+                            if let Some(size) = info.size {
+                                download.size = Some(size);
+                                updated = true;
+                            }
+                            if let Some(final_url) = info.final_url {
+                                download.final_url = Some(final_url);
+                                updated = true;
+                            }
+                            if updated {
+                                core.download_manager.db().upsert_download(&download).await?;
+                            }
+                        }
+                        results.push(download);
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to add download {}: {}", req.url, e);
+                        // Continue with other downloads
+                    }
+                }
+            }
+            
+            Ok(results)
+        })
+        .await
+}
+
 #[tauri::command]
 pub async fn pause_download(state: State<'_, AppState>, id: String) -> Result<(), String> {
     let uuid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;

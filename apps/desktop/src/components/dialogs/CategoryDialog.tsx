@@ -74,9 +74,10 @@ interface CategoryDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   editCategory?: Category | null;
+  onCategoryCreated?: (categoryId: string) => void;
 }
 
-export function CategoryDialog({ open, onOpenChange, editCategory }: CategoryDialogProps) {
+export function CategoryDialog({ open, onOpenChange, editCategory, onCategoryCreated }: CategoryDialogProps) {
   const { addCategory, updateCategory, removeCategory } = useCategoryStore();
 
   const [name, setName] = useState('');
@@ -125,6 +126,7 @@ export function CategoryDialog({ open, onOpenChange, editCategory }: CategoryDia
           extensions: extensionList,
           customPath: customPath || undefined,
         });
+        onOpenChange(false);
       } else {
         const newCategory: Category = {
           id: crypto.randomUUID(),
@@ -135,15 +137,16 @@ export function CategoryDialog({ open, onOpenChange, editCategory }: CategoryDia
           customPath: customPath || undefined,
         };
         addCategory(newCategory);
+        onOpenChange(false);
+        // Call callback with new category ID so parent can auto-select it
+        onCategoryCreated?.(newCategory.id);
       }
-
-      onOpenChange(false);
     } catch (err) {
       console.error('Failed to save category:', err);
     } finally {
       setIsSaving(false);
     }
-  }, [name, color, iconId, extensions, customPath, isEditing, editCategory, addCategory, updateCategory, onOpenChange]);
+  }, [name, color, iconId, extensions, customPath, isEditing, editCategory, addCategory, updateCategory, onOpenChange, onCategoryCreated]);
 
   const handleDelete = useCallback(() => {
     if (!editCategory) return;
