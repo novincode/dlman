@@ -13,6 +13,7 @@ interface DownloadState {
   downloads: Map<string, DownloadWithProgress>;
   selectedIds: Set<string>;
   lastSelectedId: string | null;
+  focusedId: string | null; // Currently focused download for keyboard navigation
   filter: DownloadFilter;
   searchQuery: string;
   sortBy: SortField;
@@ -44,6 +45,7 @@ interface DownloadState {
   selectRange: (fromId: string, toId: string) => void;
   selectAll: (ids?: string[]) => void;
   clearSelection: () => void;
+  setFocusedId: (id: string | null) => void;
   setFilter: (filter: DownloadFilter) => void;
   setSearchQuery: (query: string) => void;
   setSortBy: (field: SortField) => void;
@@ -69,6 +71,7 @@ export const useDownloadStore = create<DownloadState>()(
       downloads: new Map(),
       selectedIds: new Set(),
       lastSelectedId: null,
+      focusedId: null,
       filter: "all",
       searchQuery: "",
       sortBy: "date",
@@ -135,10 +138,15 @@ export const useDownloadStore = create<DownloadState>()(
           const downloads = new Map(state.downloads);
           const download = downloads.get(id);
           if (download) {
+            // Reset speed and eta when download is not actively downloading
+            const isActivelyDownloading = status === "downloading";
             downloads.set(id, {
               ...download,
               status,
               error,
+              // Reset speed to 0 when not downloading
+              speed: isActivelyDownloading ? download.speed : 0,
+              eta: isActivelyDownloading ? download.eta : null,
               // When completed, set downloaded to size to ensure they match
               downloaded: status === "completed" ? (download.size ?? download.downloaded) : download.downloaded,
               completed_at:
@@ -206,7 +214,9 @@ export const useDownloadStore = create<DownloadState>()(
           selectedIds: new Set(ids ?? state.downloads.keys()),
         })),
 
-      clearSelection: () => set({ selectedIds: new Set(), lastSelectedId: null }),
+      clearSelection: () => set({ selectedIds: new Set(), lastSelectedId: null, focusedId: null }),
+
+      setFocusedId: (focusedId) => set({ focusedId }),
 
       setFilter: (filter) => set({ filter }),
 
@@ -291,6 +301,7 @@ export const useDownloadStore = create<DownloadState>()(
         searchQuery: "",
         selectedIds: new Set<string>(),
         lastSelectedId: null,
+        focusedId: null,
         // Actions need to be included for type compatibility but won't be serialized
         addDownload: state.addDownload,
         removeDownload: state.removeDownload,
@@ -303,6 +314,7 @@ export const useDownloadStore = create<DownloadState>()(
         selectRange: state.selectRange,
         selectAll: state.selectAll,
         clearSelection: state.clearSelection,
+        setFocusedId: state.setFocusedId,
         setFilter: state.setFilter,
         setSearchQuery: state.setSearchQuery,
         setSortBy: state.setSortBy,

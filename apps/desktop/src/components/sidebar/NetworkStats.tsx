@@ -1,15 +1,21 @@
 import { useMemo } from "react";
 import { Activity } from "lucide-react";
-import { useDownloadStore, selectFilteredDownloads } from "@/stores/downloads";
-import { useShallow } from "zustand/react/shallow";
+import { useDownloadStore } from "@/stores/downloads";
 import { formatSpeed } from "@/lib/utils";
 
 export function NetworkStats() {
-  // Use the same filtered selector; we just want current download speeds.
-  const downloads = useDownloadStore(useShallow(selectFilteredDownloads));
+  // Get all downloads and calculate total speed only from actively downloading items
+  const downloads = useDownloadStore((s) => s.downloads);
 
   const totalSpeed = useMemo(() => {
-    return downloads.reduce((sum, d) => sum + (d.speed ?? 0), 0);
+    let speed = 0;
+    for (const d of downloads.values()) {
+      // Only count speed from actively downloading items
+      if (d.status === "downloading" && typeof d.speed === "number") {
+        speed += d.speed;
+      }
+    }
+    return speed;
   }, [downloads]);
 
   return (

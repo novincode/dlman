@@ -1,7 +1,6 @@
-import { Search, ArrowUpDown, SortAsc, SortDesc } from "lucide-react";
+import { Search, ArrowUpDown, SortAsc, SortDesc, Filter } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Select,
   SelectContent,
@@ -16,7 +15,7 @@ import {
 } from "@/stores/downloads";
 
 const FILTERS: { value: DownloadFilter; label: string }[] = [
-  { value: "all", label: "All" },
+  { value: "all", label: "All Downloads" },
   { value: "active", label: "Active" },
   { value: "completed", label: "Completed" },
   { value: "paused", label: "Paused" },
@@ -50,24 +49,20 @@ export function FilterBar() {
 
   return (
     <div className="flex items-center gap-3 px-4 py-2 border-b bg-card/50 flex-wrap">
-      {/* Filter Toggles */}
-      <ToggleGroup
-        type="single"
-        value={filter}
-        onValueChange={(value) => value && setFilter(value as DownloadFilter)}
-        className="gap-1"
-      >
-        {FILTERS.map(({ value, label }) => (
-          <ToggleGroupItem
-            key={value}
-            value={value}
-            size="sm"
-            className="text-xs px-3"
-          >
-            {label}
-          </ToggleGroupItem>
-        ))}
-      </ToggleGroup>
+      {/* Status Filter Select */}
+      <Select value={filter} onValueChange={(v) => setFilter(v as DownloadFilter)}>
+        <SelectTrigger className="h-8 w-[140px] text-xs">
+          <Filter className="h-3.5 w-3.5 mr-1.5" />
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {FILTERS.map(({ value, label }) => (
+            <SelectItem key={value} value={value} className="text-xs">
+              {label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
       {/* Spacer */}
       <div className="flex-1" />
