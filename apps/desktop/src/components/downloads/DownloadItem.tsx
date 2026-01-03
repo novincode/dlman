@@ -75,6 +75,7 @@ interface DownloadItemProps {
 export function DownloadItem({ download }: DownloadItemProps) {
   const { selectedIds, toggleSelected, removeDownload, updateStatus, updateDownload, moveToQueue } = useDownloadStore();
   const isSelected = selectedIds.has(download.id);
+  const isSelectionMode = selectedIds.size > 0; // Selection mode is active when any items are selected
   const queue = useQueueStore((s) => s.queues.get(download.queue_id));
   const queues = useQueuesArray();
   const [showInfoDialog, setShowInfoDialog] = useState(false);
@@ -526,7 +527,14 @@ export function DownloadItem({ download }: DownloadItemProps) {
                 const target = e.target as HTMLElement;
                 const isCheckbox = target.closest('.checkbox') || target.querySelector('.checkbox');
 
-                if (!isCheckbox) {
+                if (isCheckbox) return;
+                
+                // In selection mode, clicking selects/deselects instead of expand/collapse
+                // Also support shift-click for range selection
+                if (isSelectionMode || e.shiftKey) {
+                  e.stopPropagation();
+                  toggleSelected(download.id, e.shiftKey);
+                } else {
                   handleToggleExpand(e);
                 }
               }}

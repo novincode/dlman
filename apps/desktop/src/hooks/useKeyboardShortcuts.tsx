@@ -1,6 +1,9 @@
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useMemo } from "react";
 import { useUIStore } from "@/stores/ui";
-import { useDownloadStore, useFilteredDownloads } from "@/stores/downloads";
+import { useDownloadStore, selectFilteredDownloads } from "@/stores/downloads";
+import { useQueueStore } from "@/stores/queues";
+import { useCategoryStore } from "@/stores/categories";
+import { useShallow } from "zustand/react/shallow";
 import { parseUrls } from "@/lib/utils";
 import { setPendingClipboardUrls } from "@/lib/events";
 
@@ -23,7 +26,28 @@ export function useKeyboardShortcuts() {
   } = useUIStore();
 
   const { selectAll, clearSelection } = useDownloadStore();
-  const filteredDownloads = useFilteredDownloads();
+  const baseFilteredDownloads = useDownloadStore(useShallow(selectFilteredDownloads));
+  
+  // Get selected queue and category to filter downloads the same way MainContent does
+  const selectedQueueId = useQueueStore((s) => s.selectedQueueId);
+  const selectedCategoryId = useCategoryStore((s) => s.selectedCategoryId);
+  
+  // Apply same filtering as MainContent - visible downloads only
+  const visibleDownloads = useMemo(() => {
+    let filtered = baseFilteredDownloads;
+
+    // Filter by queue
+    if (selectedQueueId !== null) {
+      filtered = filtered.filter((d) => d.queue_id === selectedQueueId);
+    }
+
+    // Filter by category
+    if (selectedCategoryId !== null) {
+      filtered = filtered.filter((d) => d.category_id === selectedCategoryId);
+    }
+
+    return filtered;
+  }, [baseFilteredDownloads, selectedQueueId, selectedCategoryId]);
 
   const shortcuts: KeyboardShortcut[] = [
     // New download
@@ -55,11 +79,11 @@ export function useKeyboardShortcuts() {
       action: () => setShowQueueManagerDialog(true),
       description: "Queue Manager",
     },
-    // Select all (only filtered downloads)
+    // Select all (only visible downloads - respects queue/category/filter selection)
     {
       key: "a",
       metaKey: true,
-      action: () => selectAll(filteredDownloads.map(d => d.id)),
+      action: () => selectAll(visibleDownloads.map(d => d.id)),
       description: "Select All",
     },
     // Deselect all

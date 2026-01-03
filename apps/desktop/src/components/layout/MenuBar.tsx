@@ -180,10 +180,34 @@ export function MenuBar() {
   const handleStartQueue = async (queue_id: string) => {
     try {
       await invoke('start_queue', { id: queue_id });
-      toast.success('Queue started');
+      const queue = queues.find(q => q.id === queue_id);
+      toast.success(`Started ${queue?.name || 'queue'}`);
     } catch (error) {
       console.error('Failed to start queue:', error);
       toast.error('Failed to start queue');
+    }
+  };
+
+  const handleStartAllQueues = async () => {
+    try {
+      for (const queue of queues) {
+        await invoke('start_queue', { id: queue.id });
+      }
+      toast.success('All queues started');
+    } catch (error) {
+      console.error('Failed to start queues:', error);
+      toast.error('Failed to start queues');
+    }
+  };
+
+  const handlePauseQueue = async (queue_id: string) => {
+    try {
+      await invoke('stop_queue', { id: queue_id });
+      const queue = queues.find(q => q.id === queue_id);
+      toast.success(`Paused ${queue?.name || 'queue'}`);
+    } catch (error) {
+      console.error('Failed to pause queue:', error);
+      toast.error('Failed to pause queue');
     }
   };
 
@@ -296,10 +320,15 @@ export function MenuBar() {
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="sm" className="gap-2">
             <Play className="h-4 w-4" />
-            Start Queue
+            Start
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start">
+          <DropdownMenuItem onClick={handleStartAllQueues}>
+            <Play className="h-4 w-4 mr-2" />
+            Start All Queues
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           {queues.map((queue) => (
             <DropdownMenuItem
               key={queue.id}
@@ -315,16 +344,34 @@ export function MenuBar() {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {/* Pause All */}
-      <Button
-        variant="ghost"
-        size="sm"
-        className="gap-2"
-        onClick={handlePauseAll}
-      >
-        <Pause className="h-4 w-4" />
-        Pause All
-      </Button>
+      {/* Pause Queue */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="sm" className="gap-2">
+            <Pause className="h-4 w-4" />
+            Pause
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start">
+          <DropdownMenuItem onClick={handlePauseAll}>
+            <Pause className="h-4 w-4 mr-2" />
+            Pause All Queues
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          {queues.map((queue) => (
+            <DropdownMenuItem
+              key={queue.id}
+              onClick={() => handlePauseQueue(queue.id)}
+            >
+              <div
+                className="w-2.5 h-2.5 rounded-sm shrink-0 mr-2"
+                style={{ backgroundColor: queue.color }}
+              />
+              {queue.name}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
 
       {/* Clear Completed */}
       <Button
