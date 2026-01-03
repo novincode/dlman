@@ -117,9 +117,6 @@ export function BatchImportDialog() {
   const [createQueueOpen, setCreateQueueOpen] = useState(false);
   const [createCategoryOpen, setCreateCategoryOpen] = useState(false);
 
-  // Track whether we've already started probing for the current batch
-  const hasStartedProbeRef = useRef(false);
-
   const parsedUrls = useMemo(() => uniqueKeepOrder(parseUrls(rawLinks)), [rawLinks]);
 
   const visibleItems = useMemo(() => {
@@ -144,26 +141,6 @@ export function BatchImportDialog() {
       setDestination(basePath);
     } catch {
       setDestination('');
-    }
-  }, []);
-
-  const startNewProbe = useCallback((urls: string[], autoStepToReview: boolean) => {
-    const next = urls.map<Item>((url) => ({
-      url,
-      info: null,
-      loading: true,
-      error: null,
-      checked: true,
-    }));
-
-    probeSeqRef.current += 1;
-    hasStartedProbeRef.current = false; // Reset so the effect will trigger probe
-    setItems(next);
-    setFocusedIndex(next.length > 0 ? 0 : null);
-    anchorIndexRef.current = null;
-
-    if (autoStepToReview) {
-      setStep('review');
     }
   }, []);
 
@@ -228,6 +205,30 @@ export function BatchImportDialog() {
     }
   }, [showBatchImportDialog, hideHtmlPages]);
 
+  const startNewProbe = useCallback((urls: string[], autoStepToReview: boolean) => {
+    const next = urls.map<Item>((url) => ({
+      url,
+      info: null,
+      loading: true,
+      error: null,
+      checked: true,
+    }));
+
+    probeSeqRef.current += 1;
+    setItems(next);
+    setFocusedIndex(next.length > 0 ? 0 : null);
+    anchorIndexRef.current = null;
+
+    if (autoStepToReview) {
+      setStep('review');
+    }
+
+    // Start probing immediately with the URLs we have
+    runProbe(urls).catch(() => {
+      // errors are surfaced per-item
+    });
+  }, [runProbe]);
+
   // Open behavior: if we have pending URLs, skip input step and go straight to review.
   useEffect(() => {
     if (!showBatchImportDialog) return;
@@ -255,26 +256,7 @@ export function BatchImportDialog() {
     setStep('input');
     setFocusedIndex(null);
     anchorIndexRef.current = null;
-    hasStartedProbeRef.current = false;
   }, [showBatchImportDialog, ensureDefaultDestination, startNewProbe]);
-
-  // When we enter review step, probe once (and only once).
-  useEffect(() => {
-    if (!showBatchImportDialog) return;
-    if (step !== 'review') return;
-    if (items.length === 0) return;
-    if (hasStartedProbeRef.current) return; // Already started probing this batch
-
-    // Mark that we've started probing
-    hasStartedProbeRef.current = true;
-
-    const urlsToProbe = items.filter((it) => it.loading).map((it) => it.url);
-    if (urlsToProbe.length === 0) return;
-
-    runProbe(urlsToProbe).catch(() => {
-      // errors are surfaced per-item
-    });
-  }, [showBatchImportDialog, step, items.length, runProbe]);
 
   // Hide HTML: UI-only filter. No probing.
   useEffect(() => {
@@ -290,7 +272,6 @@ export function BatchImportDialog() {
 
   const handleClose = useCallback(() => {
     probeSeqRef.current += 1;
-    hasStartedProbeRef.current = false;
     setShowBatchImportDialog(false);
   }, [setShowBatchImportDialog]);
 
@@ -471,8 +452,8 @@ export function BatchImportDialog() {
           const download = await invoke<DownloadType>('add_download', {
             url,
             destination,
-            queueId,
-            categoryId,
+            queue_id: queueId,
+            category_id: categoryId ?? undefined,
           });
           addDownload(download);
         } else {

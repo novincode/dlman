@@ -240,8 +240,8 @@ export function NewDownloadDialog() {
           const download = await invoke<DownloadType>('add_download', {
             url,
             destination,
-            queueId,
-            categoryId,
+            queue_id: queueId,
+            category_id: categoryId ?? undefined,
           });
           // Add to local store
           addDownload(download);

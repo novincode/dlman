@@ -155,7 +155,7 @@ export function SelectionToolbar({ className }: SelectionToolbarProps) {
           
           if (isTauri()) {
             try {
-              await invoke('delete_download', { id, deleteFile: false });
+              await invoke('delete_download', { id, delete_file: false });
             } catch (err) {
               console.error(`Failed to delete download ${id}:`, err);
             }

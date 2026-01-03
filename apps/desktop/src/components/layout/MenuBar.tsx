@@ -165,7 +165,7 @@ export function MenuBar() {
           // Delete from backend
           if (isTauri()) {
             try {
-              await invoke('delete_download', { id, deleteFile: false });
+              await invoke('delete_download', { id, delete_file: false });
             } catch (err) {
               console.error(`Failed to delete download ${id}:`, err);
             }
@@ -225,7 +225,7 @@ export function MenuBar() {
             // Delete from backend
             if (isTauri()) {
               try {
-                await invoke('delete_download', { id: download.id, deleteFile: false });
+                await invoke('delete_download', { id: download.id, delete_file: false });
               } catch (err) {
                 console.error(`Failed to delete download ${download.id}:`, err);
               }
