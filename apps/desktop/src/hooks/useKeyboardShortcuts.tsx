@@ -1,4 +1,6 @@
 import { useEffect, useCallback, useMemo } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { toast } from "sonner";
 import { useUIStore } from "@/stores/ui";
 import { useDownloadStore, selectFilteredDownloads } from "@/stores/downloads";
 import { useQueueStore } from "@/stores/queues";
@@ -6,6 +8,9 @@ import { useCategoryStore } from "@/stores/categories";
 import { useShallow } from "zustand/react/shallow";
 import { parseUrls } from "@/lib/utils";
 import { setPendingClipboardUrls } from "@/lib/events";
+
+// Check if we're in Tauri context
+const isTauri = () => typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
 
 interface KeyboardShortcut {
   key: string;
@@ -23,9 +28,10 @@ export function useKeyboardShortcuts() {
     setShowBatchImportDialog,
     setShowSettingsDialog,
     setShowQueueManagerDialog,
+    openConfirmDialog,
   } = useUIStore();
 
-  const { selectAll, clearSelection } = useDownloadStore();
+  const { selectAll, clearSelection, selectedIds, removeDownload } = useDownloadStore();
   const baseFilteredDownloads = useDownloadStore(useShallow(selectFilteredDownloads));
   
   // Get selected queue and category to filter downloads the same way MainContent does
@@ -113,6 +119,68 @@ export function useKeyboardShortcuts() {
         }
       },
       description: "Paste URL",
+    },
+    // Delete selected downloads
+    {
+      key: "Delete",
+      action: () => {
+        if (selectedIds.size === 0) return;
+        
+        openConfirmDialog({
+          title: 'Delete Downloads',
+          description: `Are you sure you want to remove ${selectedIds.size} download(s) from the list? This will not delete the files.`,
+          confirmLabel: 'Remove',
+          variant: 'destructive',
+          onConfirm: async () => {
+            const ids = Array.from(selectedIds);
+            for (const id of ids) {
+              removeDownload(id);
+              
+              if (isTauri()) {
+                try {
+                  await invoke('delete_download', { id, delete_file: false });
+                } catch (err) {
+                  console.error(`Failed to delete download ${id}:`, err);
+                }
+              }
+            }
+            clearSelection();
+            toast.success(`Removed ${ids.length} download(s)`);
+          },
+        });
+      },
+      description: "Delete Selected",
+    },
+    // Also support Backspace for delete
+    {
+      key: "Backspace",
+      action: () => {
+        if (selectedIds.size === 0) return;
+        
+        openConfirmDialog({
+          title: 'Delete Downloads',
+          description: `Are you sure you want to remove ${selectedIds.size} download(s) from the list? This will not delete the files.`,
+          confirmLabel: 'Remove',
+          variant: 'destructive',
+          onConfirm: async () => {
+            const ids = Array.from(selectedIds);
+            for (const id of ids) {
+              removeDownload(id);
+              
+              if (isTauri()) {
+                try {
+                  await invoke('delete_download', { id, delete_file: false });
+                } catch (err) {
+                  console.error(`Failed to delete download ${id}:`, err);
+                }
+              }
+            }
+            clearSelection();
+            toast.success(`Removed ${ids.length} download(s)`);
+          },
+        });
+      },
+      description: "Delete Selected",
     },
   ];
 

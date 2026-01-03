@@ -18,6 +18,14 @@ use tokio::sync::broadcast;
 use tracing::{debug, info};
 use uuid::Uuid;
 
+/// Result of a segment download
+pub struct SegmentResult {
+    /// Path to the downloaded segment file
+    pub path: PathBuf,
+    /// Total size discovered during download (if previously unknown)
+    pub discovered_size: Option<u64>,
+}
+
 /// A segment worker that downloads a byte range to a temporary file
 pub struct SegmentWorker {
     download_id: Uuid,
@@ -69,16 +77,22 @@ impl SegmentWorker {
     }
     
     /// Run the segment download
-    pub async fn run(mut self) -> Result<PathBuf, DlmanError> {
+    pub async fn run(mut self) -> Result<SegmentResult, DlmanError> {
         info!(
             "Starting segment {} for download {} (bytes {}-{})",
             self.segment.index, self.download_id, self.segment.start, self.segment.end
         );
         
+        // Track if we discover the total size during download
+        let mut discovered_size: Option<u64> = None;
+        
         // Check if segment is already complete
         if self.segment.complete {
             info!("Segment {} already complete", self.segment.index);
-            return Ok(self.temp_file_path);
+            return Ok(SegmentResult {
+                path: self.temp_file_path,
+                discovered_size: None,
+            });
         }
         
         // Open or create temp file
@@ -121,7 +135,10 @@ impl SegmentWorker {
                     true,
                 )
                 .await?;
-            return Ok(self.temp_file_path);
+            return Ok(SegmentResult {
+                path: self.temp_file_path,
+                discovered_size: None,
+            });
         }
         
         // Build HTTP request
@@ -153,6 +170,39 @@ impl SegmentWorker {
                 status: status.as_u16(),
                 message: format!("Failed to download segment {}", self.segment.index),
             });
+        }
+        
+        // If we have unknown size, try to detect it from response headers
+        if unknown_size {
+            // Try Content-Range first (for 206 responses): "bytes 0-X/12345"
+            if let Some(content_range) = response.headers().get(reqwest::header::CONTENT_RANGE) {
+                if let Ok(range_str) = content_range.to_str() {
+                    if let Some(total) = range_str.split('/').last() {
+                        if total != "*" {
+                            if let Ok(total_size) = total.parse::<u64>() {
+                                info!("Got total size from Content-Range: {} bytes", total_size);
+                                self.segment.end = total_size.saturating_sub(1);
+                                discovered_size = Some(total_size);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Try Content-Length for 200 OK responses (full content)
+            if self.segment.end == u64::MAX {
+                if let Some(content_length) = response.headers().get(reqwest::header::CONTENT_LENGTH) {
+                    if let Ok(len_str) = content_length.to_str() {
+                        if let Ok(len) = len_str.parse::<u64>() {
+                            // If resuming, add existing downloaded to get total
+                            let total = if start_byte > 0 { start_byte + len } else { len };
+                            info!("Got total size from Content-Length: {} bytes", total);
+                            self.segment.end = total.saturating_sub(1);
+                            discovered_size = Some(total);
+                        }
+                    }
+                }
+            }
         }
         
         // Stream and write chunks
@@ -219,7 +269,10 @@ impl SegmentWorker {
             self.segment.index, self.segment.downloaded
         );
         
-        Ok(self.temp_file_path)
+        Ok(SegmentResult {
+            path: self.temp_file_path,
+            discovered_size,
+        })
     }
     
     /// Save progress to database

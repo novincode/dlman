@@ -3,7 +3,7 @@
 //! This is the main orchestrator for a single download.
 //! It spawns segment workers, monitors their progress, and merges temp files on completion.
 
-use crate::engine::{DownloadDatabase, RateLimiter, SegmentWorker};
+use crate::engine::{DownloadDatabase, RateLimiter, SegmentWorker, SegmentResult};
 use crate::error::DlmanError;
 use dlman_types::{CoreEvent, Download, DownloadStatus, Segment};
 use reqwest::Client;
@@ -228,7 +228,7 @@ impl DownloadTask {
     }
     
     /// Download with a single segment
-    async fn download_single_segment(&self) -> Result<(), DlmanError> {
+    async fn download_single_segment(&mut self) -> Result<(), DlmanError> {
         let segment = self.download.segments[0].clone();
         
         // Check if already complete
@@ -260,8 +260,21 @@ impl DownloadTask {
         self.cancelled.store(true, Ordering::Release);
         let _ = progress_handle.await;
         
-        // Propagate pause/cancel errors
-        result.map(|_| ())
+        // Handle result - update size if discovered
+        match result {
+            Ok(segment_result) => {
+                if let Some(size) = segment_result.discovered_size {
+                    self.download.size = Some(size);
+                    self.db.upsert_download(&self.download).await?;
+                    let _ = self.event_tx.send(CoreEvent::DownloadUpdated {
+                        download: self.download.clone(),
+                    });
+                    info!("Updated download size to {} bytes (discovered during download)", size);
+                }
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
     }
     
     /// Download with multiple parallel segments
@@ -324,8 +337,13 @@ impl DownloadTask {
             // Wait for all segments to complete
             while let Some(result) = join_set.join_next().await {
                 match result {
-                    Ok((segment_idx, Ok(_path))) => {
+                    Ok((segment_idx, Ok(segment_result))) => {
                         info!("Segment {} completed", segment_idx);
+                        // Note: For multi-segment, size should already be known
+                        // but if somehow discovered, we could update here
+                        if segment_result.discovered_size.is_some() {
+                            info!("Segment {} discovered size (unusual for multi-segment)", segment_idx);
+                        }
                     }
                     Ok((segment_idx, Err(DlmanError::Paused))) => {
                         info!("Segment {} paused", segment_idx);
@@ -537,22 +555,28 @@ impl DownloadTask {
                 .await
             {
                 Ok(range_response) => {
+                    let status = range_response.status();
+                    info!("Partial GET status: {}", status);
+                    
                     // Check for 206 Partial Content - means range is supported
-                    if range_response.status() == reqwest::StatusCode::PARTIAL_CONTENT {
+                    if status == reqwest::StatusCode::PARTIAL_CONTENT {
                         supports_range = true;
                         
                         // Parse Content-Range header for total size: "bytes 0-0/12345"
                         if let Some(content_range) = range_response.headers().get(reqwest::header::CONTENT_RANGE) {
                             if let Ok(range_str) = content_range.to_str() {
+                                info!("Content-Range: {}", range_str);
                                 if let Some(total) = range_str.split('/').last() {
-                                    if let Ok(total_size) = total.parse::<u64>() {
-                                        self.download.size = Some(total_size);
-                                        info!("Got size from Content-Range: {} bytes", total_size);
+                                    if total != "*" { // "*" means unknown size
+                                        if let Ok(total_size) = total.parse::<u64>() {
+                                            self.download.size = Some(total_size);
+                                            info!("Got size from Content-Range: {} bytes", total_size);
+                                        }
                                     }
                                 }
                             }
                         }
-                    } else if range_response.status() == reqwest::StatusCode::OK {
+                    } else if status == reqwest::StatusCode::OK {
                         // Server ignored range and sent full content - get size from Content-Length
                         if let Some(size) = range_response.headers()
                             .get(reqwest::header::CONTENT_LENGTH)

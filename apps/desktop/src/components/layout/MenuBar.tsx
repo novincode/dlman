@@ -12,12 +12,12 @@ import {
   Play,
   Pause,
   CheckCircle,
+  AlertCircle,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { save, open } from "@tauri-apps/plugin-dialog";
 import { writeTextFile, readTextFile } from "@tauri-apps/plugin-fs";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,9 +31,45 @@ import { useQueuesArray } from "@/stores/queues";
 import { parseUrls } from "@/lib/utils";
 import { setPendingClipboardUrls } from "@/lib/events";
 import type { Download } from "@/types";
+import { cn } from "@/lib/utils";
 
 // Check if we're in Tauri context
 const isTauri = () => typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
+
+interface MenuButtonProps {
+  icon: React.ElementType;
+  label: string;
+  onClick?: () => void;
+  disabled?: boolean;
+  variant?: "default" | "destructive" | "success" | "warning" | "info";
+  className?: string;
+}
+
+function MenuButton({ icon: Icon, label, onClick, disabled, variant = "default", className }: MenuButtonProps) {
+  const colors = {
+    default: "text-foreground hover:bg-accent hover:text-accent-foreground",
+    destructive: "text-destructive hover:bg-destructive/10",
+    success: "text-green-600 hover:bg-green-500/10 dark:text-green-400",
+    warning: "text-orange-600 hover:bg-orange-500/10 dark:text-orange-400",
+    info: "text-blue-600 hover:bg-blue-500/10 dark:text-blue-400",
+  };
+
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-md transition-colors min-w-[60px]",
+        "disabled:opacity-40 disabled:cursor-not-allowed",
+        colors[variant],
+        className
+      )}
+    >
+      <Icon className="h-6 w-6" strokeWidth={1.5} />
+      <span className="text-[10px] font-medium">{label}</span>
+    </button>
+  );
+}
 
 export function MenuBar() {
   const {
@@ -48,6 +84,13 @@ export function MenuBar() {
   const downloads = useFilteredDownloads();
   const queues = useQueuesArray();
 
+  // Computed states for button disabling
+  const hasActiveDownloads = downloads.some(d => d.status === 'downloading' || d.status === 'queued');
+  const hasPausedDownloads = downloads.some(d => d.status === 'paused');
+  const hasCompletedDownloads = downloads.some(d => d.status === 'completed');
+  const hasFailedDownloads = downloads.some(d => d.status === 'failed');
+  const hasSelection = selectedIds.size > 0;
+
   const handleAddFromClipboard = async () => {
     try {
       const text = await navigator.clipboard.readText();
@@ -56,7 +99,6 @@ export function MenuBar() {
         toast.info("No valid URLs found in clipboard");
         return;
       }
-      // Store the URLs so the dialogs can read them
       setPendingClipboardUrls(urls);
       
       if (urls.length === 1) {
@@ -128,7 +170,6 @@ export function MenuBar() {
         return;
       }
 
-      // Import downloads
       for (const dl of importData.downloads) {
         try {
           await invoke('add_download', {
@@ -159,10 +200,7 @@ export function MenuBar() {
       onConfirm: async () => {
         const ids = Array.from(selectedIds);
         for (const id of ids) {
-          // Remove from local store
           removeDownload(id);
-          
-          // Delete from backend
           if (isTauri()) {
             try {
               await invoke('delete_download', { id, delete_file: false });
@@ -177,17 +215,6 @@ export function MenuBar() {
     });
   };
 
-  const handleStartQueue = async (queue_id: string) => {
-    try {
-      await invoke('start_queue', { id: queue_id });
-      const queue = queues.find(q => q.id === queue_id);
-      toast.success(`Started ${queue?.name || 'queue'}`);
-    } catch (error) {
-      console.error('Failed to start queue:', error);
-      toast.error('Failed to start queue');
-    }
-  };
-
   const handleStartAllQueues = async () => {
     try {
       for (const queue of queues) {
@@ -200,20 +227,8 @@ export function MenuBar() {
     }
   };
 
-  const handlePauseQueue = async (queue_id: string) => {
-    try {
-      await invoke('stop_queue', { id: queue_id });
-      const queue = queues.find(q => q.id === queue_id);
-      toast.success(`Paused ${queue?.name || 'queue'}`);
-    } catch (error) {
-      console.error('Failed to pause queue:', error);
-      toast.error('Failed to pause queue');
-    }
-  };
-
   const handlePauseAll = async () => {
     try {
-      // Stop all running queues
       for (const queue of queues) {
         await invoke('stop_queue', { id: queue.id });
       }
@@ -225,15 +240,9 @@ export function MenuBar() {
   };
 
   const handleClearCompleted = async () => {
-    // Get completed downloads count
     const completedDownloads = downloads.filter((d: Download) => d.status === 'completed');
+    if (completedDownloads.length === 0) return;
     
-    if (completedDownloads.length === 0) {
-      toast.info('No completed downloads to clear');
-      return;
-    }
-    
-    // Show confirmation dialog
     openConfirmDialog({
       title: 'Clear Completed Downloads',
       description: `This will remove ${completedDownloads.length} completed download(s) from the list. The downloaded files will not be deleted.`,
@@ -243,10 +252,7 @@ export function MenuBar() {
       onConfirm: async () => {
         try {
           for (const download of completedDownloads) {
-            // Remove from local store
             removeDownload(download.id);
-            
-            // Delete from backend
             if (isTauri()) {
               try {
                 await invoke('delete_download', { id: download.id, delete_file: false });
@@ -255,7 +261,6 @@ export function MenuBar() {
               }
             }
           }
-          
           toast.success(`Cleared ${completedDownloads.length} completed download(s)`);
         } catch (error) {
           console.error('Failed to clear completed downloads:', error);
@@ -265,161 +270,227 @@ export function MenuBar() {
     });
   };
 
+  const handleClearFailed = async () => {
+    const failedDownloads = downloads.filter((d: Download) => d.status === 'failed');
+    if (failedDownloads.length === 0) return;
+    
+    openConfirmDialog({
+      title: 'Clear Failed Downloads',
+      description: `This will remove ${failedDownloads.length} failed download(s) from the list.`,
+      confirmLabel: 'Clear',
+      cancelLabel: 'Cancel',
+      variant: 'destructive',
+      onConfirm: async () => {
+        try {
+          for (const download of failedDownloads) {
+            removeDownload(download.id);
+            if (isTauri()) {
+              try {
+                await invoke('delete_download', { id: download.id, delete_file: false });
+              } catch (err) {
+                console.error(`Failed to delete download ${download.id}:`, err);
+              }
+            }
+          }
+          toast.success(`Cleared ${failedDownloads.length} failed download(s)`);
+        } catch (error) {
+          console.error('Failed to clear failed downloads:', error);
+          toast.error('Failed to clear failed downloads');
+        }
+      },
+    });
+  };
+
   return (
-    <div className="flex items-center gap-1 px-2 py-1.5 border-b bg-card">
-      {/* Add Download */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm" className="gap-2">
-            <Plus className="h-4 w-4" />
-            Add
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start">
-          <DropdownMenuItem onClick={() => setShowNewDownloadDialog(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            New Download
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={handleAddFromClipboard}>
-            <ClipboardPaste className="h-4 w-4 mr-2" />
-            From Clipboard
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => setShowBatchImportDialog(true)}>
-            <FolderDown className="h-4 w-4 mr-2" />
-            Import Links
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      {/* Remove */}
-      <Button
-        variant="ghost"
-        size="sm"
-        className="gap-2"
-        onClick={handleDeleteSelected}
-        disabled={selectedIds.size === 0}
-      >
-        <Trash2 className="h-4 w-4" />
-        Remove
-      </Button>
-
-      {/* Queues */}
-      <Button
-        variant="ghost"
-        size="sm"
-        className="gap-2"
-        onClick={() => setShowQueueManagerDialog(true)}
-      >
-        <ListTodo className="h-4 w-4" />
-        Queues
-      </Button>
-
-      {/* Start Queue */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm" className="gap-2">
-            <Play className="h-4 w-4" />
-            Start
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start">
-          <DropdownMenuItem onClick={handleStartAllQueues}>
-            <Play className="h-4 w-4 mr-2" />
-            Start All Queues
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          {queues.map((queue) => (
-            <DropdownMenuItem
-              key={queue.id}
-              onClick={() => handleStartQueue(queue.id)}
-            >
-              <div
-                className="w-2.5 h-2.5 rounded-sm shrink-0 mr-2"
-                style={{ backgroundColor: queue.color }}
-              />
-              {queue.name}
+    <div className="flex items-center gap-1 px-4 py-2 border-b bg-card/50 backdrop-blur-sm">
+      {/* Add Group */}
+      <div className="flex items-center gap-1 pr-2 border-r">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <div>
+              <MenuButton icon={Plus} label="Add URL" variant="success" />
+            </div>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuItem onClick={() => setShowNewDownloadDialog(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              New Download
             </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      {/* Pause Queue */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="sm" className="gap-2">
-            <Pause className="h-4 w-4" />
-            Pause
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start">
-          <DropdownMenuItem onClick={handlePauseAll}>
-            <Pause className="h-4 w-4 mr-2" />
-            Pause All Queues
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          {queues.map((queue) => (
-            <DropdownMenuItem
-              key={queue.id}
-              onClick={() => handlePauseQueue(queue.id)}
-            >
-              <div
-                className="w-2.5 h-2.5 rounded-sm shrink-0 mr-2"
-                style={{ backgroundColor: queue.color }}
-              />
-              {queue.name}
+            <DropdownMenuItem onClick={handleAddFromClipboard}>
+              <ClipboardPaste className="h-4 w-4 mr-2" />
+              From Clipboard
             </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setShowBatchImportDialog(true)}>
+              <FolderDown className="h-4 w-4 mr-2" />
+              Import Links
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
 
-      {/* Clear Completed */}
-      <Button
-        variant="ghost"
-        size="sm"
-        className="gap-2"
-        onClick={handleClearCompleted}
-      >
-        <CheckCircle className="h-4 w-4" />
-        Clear Completed
-      </Button>
+      {/* Control Group */}
+      <div className="flex items-center gap-1 px-2 border-r">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <div>
+              <MenuButton 
+                icon={Play} 
+                label="Start" 
+                disabled={!hasPausedDownloads && !hasActiveDownloads && queues.length === 0}
+                variant="info"
+              />
+            </div>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuItem onClick={handleStartAllQueues}>
+              <Play className="h-4 w-4 mr-2" />
+              Start All Queues
+            </DropdownMenuItem>
+            {queues.length > 0 && (
+              <>
+                <DropdownMenuSeparator />
+                {queues.map((queue) => (
+                  <DropdownMenuItem 
+                    key={queue.id} 
+                    onClick={async () => {
+                      try {
+                        await invoke('start_queue', { id: queue.id });
+                        toast.success(`Started queue: ${queue.name}`);
+                      } catch (error) {
+                        console.error('Failed to start queue:', error);
+                        toast.error(`Failed to start queue: ${queue.name}`);
+                      }
+                    }}
+                  >
+                    <div 
+                      className="h-3 w-3 rounded-full mr-2" 
+                      style={{ backgroundColor: queue.color || '#6b7280' }} 
+                    />
+                    Start "{queue.name}"
+                  </DropdownMenuItem>
+                ))}
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <div>
+              <MenuButton 
+                icon={Pause} 
+                label="Pause" 
+                disabled={!hasActiveDownloads && queues.length === 0}
+                variant="warning"
+              />
+            </div>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuItem onClick={handlePauseAll}>
+              <Pause className="h-4 w-4 mr-2" />
+              Pause All Queues
+            </DropdownMenuItem>
+            {queues.length > 0 && (
+              <>
+                <DropdownMenuSeparator />
+                {queues.map((queue) => (
+                  <DropdownMenuItem 
+                    key={queue.id} 
+                    onClick={async () => {
+                      try {
+                        await invoke('stop_queue', { id: queue.id });
+                        toast.success(`Paused queue: ${queue.name}`);
+                      } catch (error) {
+                        console.error('Failed to pause queue:', error);
+                        toast.error(`Failed to pause queue: ${queue.name}`);
+                      }
+                    }}
+                  >
+                    <div 
+                      className="h-3 w-3 rounded-full mr-2" 
+                      style={{ backgroundColor: queue.color || '#6b7280' }} 
+                    />
+                    Pause "{queue.name}"
+                  </DropdownMenuItem>
+                ))}
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      {/* Management Group */}
+      <div className="flex items-center gap-1 px-2 border-r">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <div>
+              <MenuButton 
+                icon={Trash2} 
+                label="Delete" 
+                disabled={!hasSelection && !hasCompletedDownloads && !hasFailedDownloads}
+                variant="destructive"
+              />
+            </div>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            <DropdownMenuItem onClick={handleDeleteSelected} disabled={!hasSelection}>
+              <Trash2 className="h-4 w-4 mr-2" />
+              Delete Selected
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={handleClearCompleted} disabled={!hasCompletedDownloads}>
+              <CheckCircle className="h-4 w-4 mr-2 text-green-500" />
+              Clear Completed
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleClearFailed} disabled={!hasFailedDownloads}>
+              <AlertCircle className="h-4 w-4 mr-2 text-red-500" />
+              Clear Failed
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <MenuButton 
+          icon={ListTodo} 
+          label="Queues" 
+          onClick={() => setShowQueueManagerDialog(true)}
+        />
+      </div>
 
       {/* Spacer */}
       <div className="flex-1" />
 
-      {/* More Actions */}
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="h-8 w-8">
-            <MoreHorizontal className="h-4 w-4" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem onClick={handleExportData}>
-            <DownloadIcon className="h-4 w-4 mr-2" />
-            Export Data
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={handleImportData}>
-            <Upload className="h-4 w-4 mr-2" />
-            Import Data
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => setShowAboutDialog(true)}>
-            <Info className="h-4 w-4 mr-2" />
-            About DLMan
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      {/* Tools Group */}
+      <div className="flex items-center gap-1 pl-2 border-l">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <div>
+              <MenuButton icon={MoreHorizontal} label="Tools" />
+            </div>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={handleExportData}>
+              <DownloadIcon className="h-4 w-4 mr-2" />
+              Export Data
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleImportData}>
+              <Upload className="h-4 w-4 mr-2" />
+              Import Data
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setShowAboutDialog(true)}>
+              <Info className="h-4 w-4 mr-2" />
+              About DLMan
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
-      {/* Settings */}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-8 w-8"
-        onClick={() => setShowSettingsDialog(true)}
-      >
-        <Settings className="h-4 w-4" />
-      </Button>
+        <MenuButton 
+          icon={Settings} 
+          label="Settings" 
+          onClick={() => setShowSettingsDialog(true)}
+        />
+      </div>
     </div>
   );
 }

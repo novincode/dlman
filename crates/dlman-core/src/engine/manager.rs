@@ -116,21 +116,46 @@ impl DownloadManager {
                 .await
             {
                 Ok(range_response) => {
+                    let status = range_response.status();
+                    info!("Partial GET response status: {}", status);
+                    
                     // Check Content-Range header for total size: "bytes 0-0/12345"
                     if let Some(content_range) = range_response.headers().get(reqwest::header::CONTENT_RANGE) {
                         if let Ok(range_str) = content_range.to_str() {
+                            info!("Content-Range header: {}", range_str);
                             if let Some(total) = range_str.split('/').last() {
-                                if let Ok(total_size) = total.parse::<u64>() {
-                                    size = Some(total_size);
-                                    resumable = true; // If range works, it's resumable
-                                    info!("Got size from Content-Range: {}", total_size);
+                                if total != "*" { // "*" means unknown size
+                                    if let Ok(total_size) = total.parse::<u64>() {
+                                        size = Some(total_size);
+                                        resumable = true;
+                                        info!("Got size from Content-Range: {} bytes", total_size);
+                                    }
                                 }
                             }
                         }
                     }
-                    // Also check if we got a 206 Partial Content - means range is supported
-                    if range_response.status() == reqwest::StatusCode::PARTIAL_CONTENT {
+                    
+                    // Check if we got a 206 Partial Content - means range is supported
+                    if status == reqwest::StatusCode::PARTIAL_CONTENT {
                         resumable = true;
+                    } else if status == reqwest::StatusCode::OK {
+                        // Server ignored Range header - likely streaming/dynamic content
+                        // Try to get Content-Length from this response
+                        if let Some(len) = range_response.headers()
+                            .get(reqwest::header::CONTENT_LENGTH)
+                            .and_then(|v| v.to_str().ok())
+                            .and_then(|s| s.parse::<u64>().ok())
+                        {
+                            // Only use this if it's a reasonable size (> 1KB)
+                            // Some streaming servers return chunked encoding with no real length
+                            if len > 1024 {
+                                size = Some(len);
+                                info!("Got size from full GET Content-Length: {} bytes", len);
+                            }
+                        }
+                        // No range support for this URL
+                        resumable = false;
+                        info!("Server doesn't support Range requests (likely streaming/dynamic content)");
                     }
                 }
                 Err(e) => {
