@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Download, Link } from 'lucide-react';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { useUIStore } from '@/stores/ui';
+import { parseUrls } from '@/lib/utils';
 
 // Check if we're in Tauri context
 const isTauri = () => typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
@@ -84,22 +85,46 @@ export function DropZoneOverlay({ onDrop }: DropZoneOverlayProps) {
       resetOverlay();
 
       const urls: string[] = [];
-      
-      // Try to get URL from text/uri-list
+
+      // 1) text/uri-list (often provided by browsers for link drags)
       const uriList = e.dataTransfer?.getData('text/uri-list');
       if (uriList) {
-        const lines = uriList.split('\n').filter(line => line.trim() && !line.startsWith('#'));
-        urls.push(...lines);
-      }
-      
-      // Also check for plain text that looks like a URL
-      const text = e.dataTransfer?.getData('text/plain');
-      if (text && text.match(/^https?:\/\//) && !urls.includes(text)) {
-        urls.push(text);
+        const lines = uriList
+          .split('\n')
+          .map((l) => l.trim())
+          .filter((line) => line && !line.startsWith('#'));
+        urls.push(...lines.filter((u) => u.startsWith('http://') || u.startsWith('https://')));
       }
 
-      if (urls.length > 0) {
-        onDrop(urls);
+      // 2) text/plain (can contain multiple URLs when user drags selected text)
+      const text = e.dataTransfer?.getData('text/plain');
+      if (text) {
+        urls.push(...parseUrls(text));
+      }
+
+      // 3) text/html (common when dragging selected anchors from a page)
+      const html = e.dataTransfer?.getData('text/html');
+      if (html) {
+        try {
+          const doc = new DOMParser().parseFromString(html, 'text/html');
+          const hrefs = Array.from(doc.querySelectorAll('a'))
+            .map((a) => a.getAttribute('href'))
+            .filter((href): href is string => !!href)
+            .filter((href) => href.startsWith('http://') || href.startsWith('https://'));
+          urls.push(...hrefs);
+        } catch {
+          // ignore
+        }
+
+        // Also run regex extraction over raw HTML in case of unusual markup
+        urls.push(...parseUrls(html));
+      }
+
+      // De-dupe while preserving order
+      const uniqueUrls = Array.from(new Set(urls));
+
+      if (uniqueUrls.length > 0) {
+        onDrop(uniqueUrls);
       }
     };
 

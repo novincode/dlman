@@ -138,6 +138,10 @@ export function NewDownloadDialog() {
 
   // Probe URL when it changes (debounced)
   useEffect(() => {
+    if (!showNewDownloadDialog) {
+      return;
+    }
+
     if (!url) {
       setFilename('');
       setFileSize(null);
@@ -145,12 +149,16 @@ export function NewDownloadDialog() {
       return;
     }
 
+    let cancelled = false;
+
     const timer = setTimeout(async () => {
       try {
+        if (cancelled) return;
         setIsProbing(true);
         setProbeError(null);
 
         const results = await invoke<LinkInfo[]>('probe_links', { urls: [url] });
+        if (cancelled) return;
         const info = results[0];
 
         if (info?.error) {
@@ -165,14 +173,19 @@ export function NewDownloadDialog() {
           updateCategoryFromFilename(info.filename);
         }
       } catch (err) {
+        if (cancelled) return;
         setProbeError(err instanceof Error ? err.message : 'Failed to probe URL');
       } finally {
+        if (cancelled) return;
         setIsProbing(false);
       }
     }, 500);
 
-    return () => clearTimeout(timer);
-  }, [url, probeTrigger, updateCategoryFromFilename]);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [url, probeTrigger, updateCategoryFromFilename, showNewDownloadDialog]);
 
   const handlePasteFromClipboard = useCallback(async () => {
     try {
@@ -228,6 +241,7 @@ export function NewDownloadDialog() {
             url,
             destination,
             queueId,
+            categoryId,
           });
           // Add to local store
           addDownload(download);
@@ -246,7 +260,7 @@ export function NewDownloadDialog() {
             status: 'pending',
             segments: [],
             queue_id: queueId,
-            category_id: null,
+            category_id: categoryId,
             color: null,
             error: null,
             speed_limit: null,
@@ -269,7 +283,7 @@ export function NewDownloadDialog() {
           status: 'pending',
           segments: [],
           queue_id: queueId,
-          category_id: null,
+          category_id: categoryId,
           color: null,
           error: null,
           speed_limit: null,

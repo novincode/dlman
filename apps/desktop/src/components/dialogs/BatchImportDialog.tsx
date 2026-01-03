@@ -1,31 +1,29 @@
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
-import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import {
-  ListPlus,
-  Loader2,
-  CheckCircle2,
-  XCircle,
-  FileText,
-  Trash2,
+  ArrowLeft,
   Download,
   Folder,
+  ListPlus,
+  Loader2,
+  RefreshCw,
+  Trash2,
 } from 'lucide-react';
 
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Select,
@@ -34,110 +32,284 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+
+import { QueueDialog } from '@/components/dialogs/QueueDialog';
+import { CategoryDialog } from '@/components/dialogs/CategoryDialog';
 
 import { useUIStore } from '@/stores/ui';
-import { useQueuesArray } from '@/stores/queues';
+import { useQueuesArray, DEFAULT_QUEUE_ID } from '@/stores/queues';
 import { useDownloadStore } from '@/stores/downloads';
 import { useCategoryStore } from '@/stores/categories';
-import { getPendingClipboardUrls, getPendingDropUrls } from '@/lib/events';
-import { getDefaultBasePath, getCategoryDownloadPath } from '@/lib/download-path';
-import type { LinkInfo, Download as DownloadType } from '@/types';
+import { useBatchImportPrefsStore } from '@/stores/batch-import';
 
-// Check if we're in Tauri context
+import { getPendingClipboardUrls, getPendingDropUrls } from '@/lib/events';
+import { parseUrls } from '@/lib/utils';
+import { getCategoryDownloadPath, getDefaultBasePath } from '@/lib/download-path';
+import { cn, formatBytes } from '@/lib/utils';
+import type { Download as DownloadType, LinkInfo } from '@/types';
+
 const isTauri = () => typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
 
-interface ParsedLink {
+type Step = 'input' | 'review';
+
+type Item = {
   url: string;
   info: LinkInfo | null;
-  isLoading: boolean;
+  loading: boolean;
   error: string | null;
-  selected: boolean;
+  checked: boolean;
+};
+
+function uniqueKeepOrder(urls: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const u of urls) {
+    const v = u.trim();
+    if (!v) continue;
+    if (seen.has(v)) continue;
+    seen.add(v);
+    out.push(v);
+  }
+  return out;
+}
+
+function looksLikeHtmlUrl(url: string): boolean {
+  const lower = url.toLowerCase();
+  return lower.endsWith('/') || lower.endsWith('.html') || lower.endsWith('.htm');
+}
+
+function isHtmlItem(item: Item): boolean {
+  const ct = item.info?.content_type?.toLowerCase();
+  if (ct && ct.includes('text/html')) return true;
+  return looksLikeHtmlUrl(item.url);
 }
 
 export function BatchImportDialog() {
   const { showBatchImportDialog, setShowBatchImportDialog } = useUIStore();
-  const queues = useQueuesArray();
-  const categoriesArray = useMemo(
-    () => Array.from(useCategoryStore.getState().categories.values()),
-    []
-  );
   const addDownload = useDownloadStore((s) => s.addDownload);
 
+  const queues = useQueuesArray();
+  const categoriesMap = useCategoryStore((s) => s.categories);
+  const categories = useMemo(() => Array.from(categoriesMap.values()), [categoriesMap]);
+
+  const hideHtmlPages = useBatchImportPrefsStore((s) => s.hideHtmlPages);
+  const startImmediately = useBatchImportPrefsStore((s) => s.startImmediately);
+  const setHideHtmlPages = useBatchImportPrefsStore((s) => s.setHideHtmlPages);
+  const setStartImmediately = useBatchImportPrefsStore((s) => s.setStartImmediately);
+
+  const [step, setStep] = useState<Step>('input');
+
   const [rawLinks, setRawLinks] = useState('');
-  const [parsedLinks, setParsedLinks] = useState<ParsedLink[]>([]);
+  const [items, setItems] = useState<Item[]>([]);
   const [destination, setDestination] = useState('');
-  const [queueId, setQueueId] = useState('00000000-0000-0000-0000-000000000000');
+  const [queueId, setQueueId] = useState(DEFAULT_QUEUE_ID);
   const [categoryId, setCategoryId] = useState<string | null>(null);
-  const [isProbing, setIsProbing] = useState(false);
+
   const [isAdding, setIsAdding] = useState(false);
-  const [step, setStep] = useState<'input' | 'review'>('input');
-  // Track if user has manually customized the path
+
+  const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
+  const anchorIndexRef = useRef<number | null>(null);
+
   const pathCustomizedRef = useRef(false);
+  const probeSeqRef = useRef(0);
 
-  // Reset state and check for pending URLs when dialog opens
-  useEffect(() => {
-    if (showBatchImportDialog) {
-      // Check for pending clipboard/drop URLs
-      const clipboardUrls = getPendingClipboardUrls();
-      const dropUrls = getPendingDropUrls();
-      const pendingUrls = clipboardUrls.length > 0 ? clipboardUrls : dropUrls;
-      
-      if (pendingUrls.length > 0) {
-        setRawLinks(pendingUrls.join('\n'));
-      } else {
-        setRawLinks('');
+  const [createQueueOpen, setCreateQueueOpen] = useState(false);
+  const [createCategoryOpen, setCreateCategoryOpen] = useState(false);
+
+  // Track whether we've already started probing for the current batch
+  const hasStartedProbeRef = useRef(false);
+
+  const parsedUrls = useMemo(() => uniqueKeepOrder(parseUrls(rawLinks)), [rawLinks]);
+
+  const visibleItems = useMemo(() => {
+    if (!hideHtmlPages) return items;
+    return items.filter((it) => !isHtmlItem(it));
+  }, [items, hideHtmlPages]);
+
+  const checkedCount = useMemo(
+    () => visibleItems.filter((it) => it.checked && !it.error).length,
+    [visibleItems]
+  );
+
+  const totalBytes = useMemo(() => {
+    return visibleItems
+      .filter((it) => it.checked && !it.error)
+      .reduce((sum, it) => sum + (it.info?.size ?? 0), 0);
+  }, [visibleItems]);
+
+  const ensureDefaultDestination = useCallback(async () => {
+    try {
+      const basePath = await getDefaultBasePath();
+      setDestination(basePath);
+    } catch {
+      setDestination('');
+    }
+  }, []);
+
+  const startNewProbe = useCallback((urls: string[], autoStepToReview: boolean) => {
+    const next = urls.map<Item>((url) => ({
+      url,
+      info: null,
+      loading: true,
+      error: null,
+      checked: true,
+    }));
+
+    probeSeqRef.current += 1;
+    hasStartedProbeRef.current = false; // Reset so the effect will trigger probe
+    setItems(next);
+    setFocusedIndex(next.length > 0 ? 0 : null);
+    anchorIndexRef.current = null;
+
+    if (autoStepToReview) {
+      setStep('review');
+    }
+  }, []);
+
+  const runProbe = useCallback(async (urlsToProbe: string[]) => {
+    if (urlsToProbe.length === 0) return;
+
+    const seq = (probeSeqRef.current += 1);
+
+    for (let i = 0; i < urlsToProbe.length; i += 1) {
+      if (!showBatchImportDialog) return;
+      if (probeSeqRef.current !== seq) return;
+
+      const url = urlsToProbe[i];
+      try {
+        const res = await invoke<LinkInfo[]>('probe_links', { urls: [url] });
+        const info = res?.[0] ?? null;
+
+        if (!showBatchImportDialog) return;
+        if (probeSeqRef.current !== seq) return;
+
+        setItems((prev) => {
+          const idx = prev.findIndex((it) => it.url === url);
+          if (idx === -1) return prev;
+
+          const next = [...prev];
+          const prevItem = next[idx];
+          if (!prevItem) return prev;
+
+          const error = info?.error ?? null;
+          const isHtml = info?.content_type?.toLowerCase().includes('text/html') ?? false;
+
+          next[idx] = {
+            ...prevItem,
+            info,
+            loading: false,
+            error,
+            checked: error ? false : (hideHtmlPages && isHtml) ? false : prevItem.checked,
+          };
+          return next;
+        });
+      } catch (err) {
+        if (!showBatchImportDialog) return;
+        if (probeSeqRef.current !== seq) return;
+
+        setItems((prev) => {
+          const idx = prev.findIndex((it) => it.url === url);
+          if (idx === -1) return prev;
+
+          const next = [...prev];
+          const prevItem = next[idx];
+          if (!prevItem) return prev;
+          next[idx] = {
+            ...prevItem,
+            info: null,
+            loading: false,
+            error: err instanceof Error ? err.message : 'Failed to probe',
+            checked: false,
+          };
+          return next;
+        });
       }
-      
-      setParsedLinks([]);
-      setStep('input');
-      setCategoryId(null);
-      pathCustomizedRef.current = false;
-      
-      // Set default path
-      initializeDefaultPath();
     }
-  }, [showBatchImportDialog]);
+  }, [showBatchImportDialog, hideHtmlPages]);
 
-  const initializeDefaultPath = async () => {
-    const basePath = await getDefaultBasePath();
-    setDestination(basePath);
-  };
+  // Open behavior: if we have pending URLs, skip input step and go straight to review.
+  useEffect(() => {
+    if (!showBatchImportDialog) return;
 
-  // Handle manual category change
-  const handleCategoryChange = async (newCategoryId: string) => {
-    const id = newCategoryId === 'none' ? null : newCategoryId;
-    setCategoryId(id);
-    // Only update path if user hasn't customized it
-    if (!pathCustomizedRef.current) {
-      const newPath = await getCategoryDownloadPath(id);
-      setDestination(newPath);
+    const clipboardUrls = getPendingClipboardUrls();
+    const dropUrls = getPendingDropUrls();
+    const pending = clipboardUrls.length > 0 ? clipboardUrls : dropUrls;
+
+    setQueueId(DEFAULT_QUEUE_ID);
+    setCategoryId(null);
+    pathCustomizedRef.current = false;
+
+    ensureDefaultDestination();
+
+    if (pending.length > 0) {
+      const urls = uniqueKeepOrder(pending);
+      setRawLinks(urls.join('\n'));
+      startNewProbe(urls, true);
+      return;
     }
-  };
 
-  // Handle manual path change (marks as customized)
-  const handleDestinationChange = (newPath: string) => {
-    pathCustomizedRef.current = true;
-    setDestination(newPath);
-  };
+    // Manual open: show input step.
+    setRawLinks('');
+    setItems([]);
+    setStep('input');
+    setFocusedIndex(null);
+    anchorIndexRef.current = null;
+    hasStartedProbeRef.current = false;
+  }, [showBatchImportDialog, ensureDefaultDestination, startNewProbe]);
+
+  // When we enter review step, probe once (and only once).
+  useEffect(() => {
+    if (!showBatchImportDialog) return;
+    if (step !== 'review') return;
+    if (items.length === 0) return;
+    if (hasStartedProbeRef.current) return; // Already started probing this batch
+
+    // Mark that we've started probing
+    hasStartedProbeRef.current = true;
+
+    const urlsToProbe = items.filter((it) => it.loading).map((it) => it.url);
+    if (urlsToProbe.length === 0) return;
+
+    runProbe(urlsToProbe).catch(() => {
+      // errors are surfaced per-item
+    });
+  }, [showBatchImportDialog, step, items.length, runProbe]);
+
+  // Hide HTML: UI-only filter. No probing.
+  useEffect(() => {
+    if (!hideHtmlPages) return;
+
+    setItems((prev) =>
+      prev.map((it) => {
+        if (!isHtmlItem(it)) return it;
+        return { ...it, checked: false };
+      })
+    );
+  }, [hideHtmlPages]);
+
+  const handleClose = useCallback(() => {
+    probeSeqRef.current += 1;
+    hasStartedProbeRef.current = false;
+    setShowBatchImportDialog(false);
+  }, [setShowBatchImportDialog]);
 
   const handleBrowseDestination = useCallback(async () => {
-    // Check if we're in Tauri context
     if (!isTauri()) {
       toast.error('Browse is only available in the desktop app');
       return;
     }
-    
+
     try {
       const selected = await openDialog({
         directory: true,
         multiple: false,
-        defaultPath: destination.startsWith('~') 
-          ? undefined // Let Tauri use default
-          : destination,
+        defaultPath: destination.startsWith('~') ? undefined : destination,
       });
 
-      if (selected) {
-        setDestination(selected as string);
+      if (selected && typeof selected === 'string') {
+        pathCustomizedRef.current = true;
+        setDestination(selected);
       }
     } catch (err) {
       console.error('Failed to open directory picker:', err);
@@ -145,416 +317,496 @@ export function BatchImportDialog() {
     }
   }, [destination]);
 
-  const parseLinks = useCallback((text: string): string[] => {
-    const urlPattern = /https?:\/\/[^\s<>"{}|\\^\[\]`]+/gi;
-    const matches = text.match(urlPattern) || [];
-    return [...new Set(matches)]; // Remove duplicates
-  }, []);
-
-  const handleParseAndProbe = useCallback(async () => {
-    const urls = parseLinks(rawLinks);
-    if (urls.length === 0) return;
-
-    setParsedLinks(
-      urls.map((url) => ({
-        url,
-        info: null,
-        isLoading: true,
-        error: null,
-        selected: true,
-      }))
-    );
-    setStep('review');
-    setIsProbing(true);
-
-    try {
-      const results = await invoke<LinkInfo[]>('probe_links', { urls });
-
-      setParsedLinks((prev) =>
-        prev.map((link, index) => ({
-          ...link,
-          info: results[index] || null,
-          isLoading: false,
-          error: results[index]?.error || null,
-          selected: !results[index]?.error,
-        }))
-      );
-    } catch (err) {
-      setParsedLinks((prev) =>
-        prev.map((link) => ({
-          ...link,
-          isLoading: false,
-          error: err instanceof Error ? err.message : 'Failed to probe',
-          selected: false,
-        }))
-      );
-    } finally {
-      setIsProbing(false);
+  const handleCategoryChange = useCallback(async (value: string) => {
+    if (value === '__create__') {
+      setCreateCategoryOpen(true);
+      return;
     }
-  }, [rawLinks, parseLinks]);
 
-  const handleToggleLink = useCallback((index: number) => {
-    setParsedLinks((prev) =>
-      prev.map((link, i) =>
-        i === index ? { ...link, selected: !link.selected } : link
-      )
+    const id = value === 'none' ? null : value;
+    setCategoryId(id);
+
+    if (!pathCustomizedRef.current) {
+      const newPath = await getCategoryDownloadPath(id);
+      setDestination(newPath);
+    }
+  }, []);
+
+  const handleQueueChange = useCallback((value: string) => {
+    if (value === '__create__') {
+      setCreateQueueOpen(true);
+      return;
+    }
+    setQueueId(value);
+  }, []);
+
+  const handleDestinationChange = useCallback((v: string) => {
+    pathCustomizedRef.current = true;
+    setDestination(v);
+  }, []);
+
+  const handleGoToReview = useCallback(() => {
+    const urls = parsedUrls;
+    if (urls.length === 0) {
+      toast.error('No URLs found');
+      return;
+    }
+
+    startNewProbe(urls, true);
+  }, [parsedUrls, startNewProbe]);
+
+  const setCheckedRange = useCallback((from: number, to: number, checked: boolean) => {
+    const start = Math.min(from, to);
+    const end = Math.max(from, to);
+
+    setItems((prev) =>
+      prev.map((it, idx) => {
+        if (idx < start || idx > end) return it;
+        if (it.error) return it;
+        if (hideHtmlPages && isHtmlItem(it)) return it;
+        return { ...it, checked };
+      })
     );
-  }, []);
+  }, [hideHtmlPages]);
 
-  const handleToggleAll = useCallback((selected: boolean) => {
-    setParsedLinks((prev) =>
-      prev.map((link) =>
-        link.error ? link : { ...link, selected }
-      )
+  const toggleItem = useCallback((index: number, shiftKey: boolean) => {
+    setItems((prev) => {
+      const it = prev[index];
+      if (!it) return prev;
+      if (it.error) return prev;
+      if (hideHtmlPages && isHtmlItem(it)) return prev;
+
+      if (shiftKey && anchorIndexRef.current !== null) {
+        return prev; // range handled outside in setCheckedRange
+      }
+
+      const next = [...prev];
+      next[index] = { ...it, checked: !it.checked };
+      return next;
+    });
+  }, [hideHtmlPages]);
+
+  const handleRowClick = useCallback((index: number, shiftKey: boolean) => {
+    setFocusedIndex(index);
+
+    if (shiftKey && anchorIndexRef.current !== null) {
+      setCheckedRange(anchorIndexRef.current, index, true);
+      return;
+    }
+
+    anchorIndexRef.current = index;
+    toggleItem(index, shiftKey);
+  }, [setCheckedRange, toggleItem]);
+
+  const handleToggleAllVisible = useCallback((checked: boolean) => {
+    setItems((prev) =>
+      prev.map((it) => {
+        if (it.error) return it;
+        if (hideHtmlPages && isHtmlItem(it)) return it;
+        return { ...it, checked };
+      })
     );
+  }, [hideHtmlPages]);
+
+  const handleRemove = useCallback((url: string) => {
+    setItems((prev) => prev.filter((it) => it.url !== url));
   }, []);
 
-  const handleRemoveLink = useCallback((index: number) => {
-    setParsedLinks((prev) => prev.filter((_, i) => i !== index));
-  }, []);
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key !== ' ') return;
+      e.preventDefault();
+
+      const visibleIndexes = items
+        .map((it, idx) => ({ it, idx }))
+        .filter(({ it }) => !(hideHtmlPages && isHtmlItem(it)))
+        .filter(({ it }) => !it.error)
+        .map(({ idx }) => idx);
+
+      if (visibleIndexes.length === 0) return;
+
+      const checkedIndexes = visibleIndexes.filter((idx) => items[idx]?.checked);
+
+      // If multiple are checked, space toggles the whole checked group.
+      if (checkedIndexes.length > 1) {
+        const allChecked = checkedIndexes.every((idx) => items[idx]?.checked);
+        const nextChecked = !allChecked;
+        setItems((prev) =>
+          prev.map((it, idx) => {
+            if (!checkedIndexes.includes(idx)) return it;
+            return { ...it, checked: nextChecked };
+          })
+        );
+        return;
+      }
+
+      // Otherwise toggle focused row (or first visible)
+      const idx = focusedIndex ?? visibleIndexes[0];
+      anchorIndexRef.current = idx;
+      toggleItem(idx, false);
+    },
+    [items, hideHtmlPages, focusedIndex, toggleItem]
+  );
 
   const handleAddSelected = useCallback(async () => {
-    const selectedLinks = parsedLinks.filter((l) => l.selected && !l.error);
-    if (selectedLinks.length === 0) return;
+    const selected = items.filter((it) => it.checked && !it.error).filter((it) => !(hideHtmlPages && isHtmlItem(it)));
 
-    setIsAdding(true);
-    let successCount = 0;
-    let failCount = 0;
+    if (selected.length === 0) {
+      toast.error('Nothing selected');
+      return;
+    }
+
+    if (!destination) {
+      toast.error('Please choose a destination');
+      return;
+    }
 
     try {
-      for (const link of selectedLinks) {
-        try {
-          if (isTauri()) {
-            const download = await invoke<DownloadType>('add_download', {
-              url: link.url,
-              destination,
-              queueId,
-            });
-            addDownload(download);
-            successCount++;
-          } else {
-            // Fallback for non-Tauri environment
-            const localDownload: DownloadType = {
-              id: crypto.randomUUID(),
-              url: link.url,
-              final_url: link.info?.final_url || null,
-              filename: link.info?.filename || link.url.split('/').pop() || 'unknown',
-              destination,
-              size: link.info?.size || null,
-              downloaded: 0,
-              status: 'pending',
-              segments: [],
-              queue_id: queueId,
-              category_id: null,
-              color: null,
-              error: null,
-              speed_limit: null,
-              created_at: new Date().toISOString(),
-              completed_at: null,
-            };
-            addDownload(localDownload);
-            successCount++;
-          }
-        } catch (err) {
-          console.error(`Failed to add download for ${link.url}:`, err);
-          failCount++;
+      setIsAdding(true);
+
+      for (const it of selected) {
+        const url = it.url;
+
+        if (isTauri()) {
+          const download = await invoke<DownloadType>('add_download', {
+            url,
+            destination,
+            queueId,
+            categoryId,
+          });
+          addDownload(download);
+        } else {
+          const localDownload: DownloadType = {
+            id: crypto.randomUUID(),
+            url,
+            final_url: it.info?.final_url ?? null,
+            filename: it.info?.filename || url.split('/').pop() || 'unknown',
+            destination,
+            size: it.info?.size ?? null,
+            downloaded: 0,
+            status: 'pending',
+            segments: [],
+            queue_id: queueId,
+            category_id: categoryId,
+            color: null,
+            error: null,
+            speed_limit: null,
+            created_at: new Date().toISOString(),
+            completed_at: null,
+          };
+          addDownload(localDownload);
         }
       }
-      
-      if (successCount > 0) {
-        toast.success(`Added ${successCount} download(s)${failCount > 0 ? `, ${failCount} failed` : ''}`);
-      } else {
-        toast.error('Failed to add downloads');
+
+      toast.success(`Added ${selected.length} downloads`);
+
+      if (startImmediately) {
+        toast.message('Start immediately is enabled; queue start behavior depends on your queue settings.');
       }
-      
-      setShowBatchImportDialog(false);
-      setStep('input');
-      setRawLinks('');
-      setParsedLinks([]);
+
+      handleClose();
     } catch (err) {
-      console.error('Failed to add downloads:', err);
+      console.error('Failed to add batch downloads:', err);
       toast.error('Failed to add downloads');
     } finally {
       setIsAdding(false);
     }
-  }, [parsedLinks, destination, queueId, addDownload, setShowBatchImportDialog]);
-
-  const selectedCount = useMemo(
-    () => parsedLinks.filter((l) => l.selected && !l.error).length,
-    [parsedLinks]
-  );
-
-  const totalSize = useMemo(
-    () =>
-      parsedLinks
-        .filter((l) => l.selected && !l.error && l.info?.size)
-        .reduce((sum, l) => sum + (l.info?.size || 0), 0),
-    [parsedLinks]
-  );
-
-  const formatFileSize = (bytes: number) => {
-    if (bytes >= 1024 * 1024 * 1024) {
-      return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-    }
-    if (bytes >= 1024 * 1024) {
-      return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-    }
-    if (bytes >= 1024) {
-      return `${(bytes / 1024).toFixed(2)} KB`;
-    }
-    return `${bytes} B`;
-  };
-
-  const handleClose = () => {
-    setShowBatchImportDialog(false);
-    setStep('input');
-    setRawLinks('');
-    setParsedLinks([]);
-  };
+  }, [items, hideHtmlPages, destination, queueId, categoryId, addDownload, startImmediately, handleClose]);
 
   return (
-    <Dialog open={showBatchImportDialog} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[600px] max-h-[80vh] flex flex-col">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <ListPlus className="h-5 w-5" />
-            Batch Import
-          </DialogTitle>
-          <DialogDescription>
-            {step === 'input'
-              ? 'Paste multiple URLs (one per line or mixed with text).'
-              : `Review ${parsedLinks.length} links before downloading.`}
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={showBatchImportDialog} onOpenChange={(open) => (!open ? handleClose() : undefined)}>
+        <DialogContent className="w-[80vw] max-w-none h-[80vh] max-h-[80vh] flex flex-col">
+          <DialogHeader className="shrink-0">
+            <DialogTitle className="flex items-center gap-2">
+              <ListPlus className="h-5 w-5" />
+              Batch Import
+            </DialogTitle>
+            <DialogDescription>
+              {step === 'input'
+                ? 'Paste URLs (any text works). Then review and choose what to add.'
+                : 'Review, select, and add downloads.'}
+            </DialogDescription>
+          </DialogHeader>
 
-        {step === 'input' ? (
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="links">Links</Label>
-              <textarea
-                id="links"
-                value={rawLinks}
-                onChange={(e) => setRawLinks(e.target.value)}
-                placeholder="Paste URLs here...&#10;https://example.com/file1.zip&#10;https://example.com/file2.zip"
-                className="min-h-[200px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring font-mono"
-              />
-            </div>
-
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <FileText className="h-4 w-4" />
-              {parseLinks(rawLinks).length} URLs detected
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-col min-h-0 py-4 gap-4">
-            {/* Toolbar */}
-            <div className="flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleToggleAll(true)}
-                >
-                  Select All
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleToggleAll(false)}
-                >
-                  Deselect All
-                </Button>
+          {step === 'input' ? (
+            <div className="flex-1 min-h-0 flex flex-col gap-3 py-2">
+              <div className="flex-1 min-h-0">
+                <Label htmlFor="batch-links">Links</Label>
+                <textarea
+                  id="batch-links"
+                  value={rawLinks}
+                  onChange={(e) => setRawLinks(e.target.value)}
+                  placeholder="Paste URLs here…"
+                  className="mt-2 h-full min-h-[240px] w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                />
               </div>
-              <span className="text-sm text-muted-foreground">
-                {selectedCount} selected
-                {totalSize > 0 && ` • ${formatFileSize(totalSize)}`}
-              </span>
-            </div>
 
-            {/* Links List - flexible height */}
-            <ScrollArea className="flex-1 min-h-[150px] max-h-[300px] rounded-md border">
-              <div className="p-2 space-y-2">
-                <AnimatePresence>
-                  {parsedLinks.map((link, index) => (
-                    <motion.div
-                      key={link.url}
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, x: -20 }}
-                      className={`flex items-center gap-3 rounded-md border p-2 ${
-                        link.error
-                          ? 'border-destructive/50 bg-destructive/10'
-                          : link.selected
-                          ? 'border-primary/50 bg-primary/5'
-                          : 'border-border'
-                      }`}
+              <div className="text-sm text-muted-foreground">
+                Found {parsedUrls.length} URL{parsedUrls.length === 1 ? '' : 's'}
+              </div>
+
+              <DialogFooter className="shrink-0">
+                <Button variant="outline" onClick={handleClose}>
+                  Cancel
+                </Button>
+                <Button onClick={handleGoToReview} disabled={parsedUrls.length === 0}>
+                  Review
+                </Button>
+              </DialogFooter>
+            </div>
+          ) : (
+            <div className="flex-1 min-h-0 flex flex-col gap-4 py-2">
+              <div className="shrink-0 grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="batch-destination">Save to</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="batch-destination"
+                      value={destination}
+                      onChange={(e) => handleDestinationChange(e.target.value)}
+                      placeholder="/path/to/downloads"
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={handleBrowseDestination}
+                      title="Browse"
                     >
-                      <Checkbox
-                        checked={link.selected}
-                        onCheckedChange={() => handleToggleLink(index)}
-                        disabled={!!link.error || link.isLoading}
-                      />
+                      <Folder className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
 
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          {link.isLoading ? (
-                            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                          ) : link.error ? (
-                            <XCircle className="h-4 w-4 text-destructive" />
-                          ) : (
-                            <CheckCircle2 className="h-4 w-4 text-green-500" />
-                          )}
-                          <span className="text-sm font-medium truncate">
-                            {link.info?.filename || link.url}
-                          </span>
-                        </div>
-                        {link.error && (
-                          <p className="text-xs text-destructive mt-1">
-                            {link.error}
-                          </p>
-                        )}
-                      </div>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Category</Label>
+                    <Select value={categoryId ?? 'none'} onValueChange={handleCategoryChange}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">
+                          <span className="text-muted-foreground">No category</span>
+                        </SelectItem>
+                        <SelectItem value="__create__">Create new…</SelectItem>
+                        {categories.map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            <div className="flex items-center gap-2">
+                              <div className="h-3 w-3 rounded-full" style={{ backgroundColor: c.color }} />
+                              {c.name}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                      {link.info?.size && (
-                        <span className="text-xs text-muted-foreground whitespace-nowrap">
-                          {formatFileSize(link.info.size)}
-                        </span>
-                      )}
-
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => handleRemoveLink(index)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </motion.div>
-                  ))}
-                </AnimatePresence>
-              </div>
-            </ScrollArea>
-
-            {/* Destination, Category & Queue - fixed at bottom */}
-            <div className="grid grid-cols-3 gap-4 shrink-0">
-              <div className="space-y-2">
-                <Label htmlFor="destination">Save to</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="destination"
-                    value={destination}
-                    onChange={(e) => handleDestinationChange(e.target.value)}
-                    placeholder="/path/to/downloads"
-                    className="flex-1"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={handleBrowseDestination}
-                    className="shrink-0"
-                    title="Browse..."
-                  >
-                    <Folder className="h-4 w-4" />
-                  </Button>
+                  <div className="space-y-2">
+                    <Label>Queue</Label>
+                    <Select value={queueId} onValueChange={handleQueueChange}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select queue" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__create__">Create new…</SelectItem>
+                        {queues.map((q) => (
+                          <SelectItem key={q.id} value={q.id}>
+                            <div className="flex items-center gap-2">
+                              <div className="h-3 w-3 rounded-full" style={{ backgroundColor: q.color }} />
+                              {q.name}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="category" className="flex items-center gap-2">
-                  Category
-                </Label>
-                <Select value={categoryId || 'none'} onValueChange={handleCategoryChange}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">
-                      <span className="text-muted-foreground">None</span>
-                    </SelectItem>
-                    {Array.from(categoriesArray.values()).map((category) => (
-                      <SelectItem key={category.id} value={category.id}>
-                        <div className="flex items-center gap-2">
-                          <div
-                            className="h-3 w-3 rounded-full"
-                            style={{ backgroundColor: category.color }}
-                          />
-                          {category.name}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="shrink-0 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button variant="outline" size="sm" onClick={() => setStep('input')}>
+                    <ArrowLeft className="mr-2 h-4 w-4" />
+                    Edit Links
+                  </Button>
+
+                  <Button variant="outline" size="sm" onClick={() => handleToggleAllVisible(true)}>
+                    Select all
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => handleToggleAllVisible(false)}>
+                    Select none
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      // Reset all items to loading and re-probe
+                      probeSeqRef.current += 1;
+                      const currentUrls = items.map((it) => it.url);
+                      setItems((prev) => prev.map((it) => ({ ...it, info: null, error: null, loading: true, checked: true })));
+                      runProbe(currentUrls).catch(() => {});
+                    }}
+                  >
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Re-probe
+                  </Button>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <Switch id="hide-html" checked={hideHtmlPages} onCheckedChange={setHideHtmlPages} />
+                    <Label htmlFor="hide-html" className="text-sm text-muted-foreground cursor-pointer">
+                      Hide HTML
+                    </Label>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      id="start-immediately"
+                      checked={startImmediately}
+                      onCheckedChange={setStartImmediately}
+                    />
+                    <Label
+                      htmlFor="start-immediately"
+                      className="text-sm text-muted-foreground cursor-pointer"
+                    >
+                      Start immediately
+                    </Label>
+                  </div>
+
+                  <div className="text-sm text-muted-foreground">
+                    {checkedCount} selected{totalBytes > 0 ? ` • ${formatBytes(totalBytes)}` : ''}
+                  </div>
+                </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="queue">Queue</Label>
-                <Select value={queueId} onValueChange={setQueueId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a queue" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {queues.map((queue) => (
-                      <SelectItem key={queue.id} value={queue.id}>
-                        <div className="flex items-center gap-2">
+              <div
+                className="flex-1 min-h-0 rounded-md border border-border"
+                tabIndex={0}
+                onKeyDown={handleKeyDown}
+              >
+                <ScrollArea className="h-full">
+                  <div className="divide-y divide-border">
+                    {visibleItems.length === 0 ? (
+                      <div className="p-4 text-sm text-muted-foreground">
+                        No items.
+                      </div>
+                    ) : (
+                      visibleItems.map((it) => {
+                        const absoluteIdx = items.findIndex((x) => x.url === it.url);
+                        const focused = absoluteIdx === focusedIndex;
+                        const disabled = !!it.error;
+                        const html = isHtmlItem(it);
+
+                        return (
                           <div
-                            className="h-3 w-3 rounded-full"
-                            style={{ backgroundColor: queue.color }}
-                          />
-                          {queue.name}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                            key={it.url}
+                            className={cn(
+                              'p-3 cursor-pointer select-none',
+                              it.checked && !disabled ? 'bg-accent/40' : 'bg-background',
+                              focused ? 'ring-2 ring-ring ring-inset' : ''
+                            )}
+                            onClick={(e) => {
+                              handleRowClick(absoluteIdx, e.shiftKey);
+                            }}
+                          >
+                            <div className="flex items-start gap-3">
+                              <div
+                                className="pt-0.5"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRowClick(absoluteIdx, (e as any).shiftKey ?? false);
+                                }}
+                              >
+                                <Checkbox checked={it.checked} disabled={disabled} />
+                              </div>
+
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  {it.loading ? (
+                                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                                  ) : null}
+
+                                  <div className="min-w-0 flex-1">
+                                    <div className="text-sm font-medium truncate">
+                                      {it.info?.filename || it.url}
+                                    </div>
+
+                                    <div className="mt-1 overflow-x-auto">
+                                      <div className="inline-flex max-w-full rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground whitespace-nowrap">
+                                        {it.url}
+                                      </div>
+                                    </div>
+
+                                    {it.error ? (
+                                      <div className="mt-1 text-xs text-destructive">{it.error}</div>
+                                    ) : null}
+
+                                    {!it.loading && !it.error && html ? (
+                                      <div className="mt-1 text-xs text-muted-foreground">HTML page</div>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="shrink-0 flex items-center gap-3">
+                                {!it.error && typeof it.info?.size === 'number' ? (
+                                  <div className="text-xs text-muted-foreground whitespace-nowrap">
+                                    {formatBytes(it.info.size)}
+                                  </div>
+                                ) : null}
+
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRemove(it.url);
+                                  }}
+                                  title="Remove"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </ScrollArea>
               </div>
+
+              <DialogFooter className="shrink-0">
+                <Button variant="outline" onClick={handleClose} disabled={isAdding}>
+                  Cancel
+                </Button>
+                <Button onClick={handleAddSelected} disabled={checkedCount === 0 || isAdding}>
+                  {isAdding ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Adding…
+                    </>
+                  ) : (
+                    <>
+                      <Download className="mr-2 h-4 w-4" />
+                      Add {checkedCount}
+                    </>
+                  )}
+                </Button>
+              </DialogFooter>
             </div>
-          </div>
-        )}
-
-        <DialogFooter>
-          {step === 'input' ? (
-            <>
-              <Button variant="outline" onClick={handleClose}>
-                Cancel
-              </Button>
-              <Button
-                onClick={handleParseAndProbe}
-                disabled={parseLinks(rawLinks).length === 0}
-              >
-                <ListPlus className="mr-2 h-4 w-4" />
-                Parse & Review
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button
-                variant="outline"
-                onClick={() => setStep('input')}
-                disabled={isProbing || isAdding}
-              >
-                Back
-              </Button>
-              <Button
-                onClick={handleAddSelected}
-                disabled={selectedCount === 0 || isProbing || isAdding}
-              >
-                {isAdding ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Adding...
-                  </>
-                ) : (
-                  <>
-                    <Download className="mr-2 h-4 w-4" />
-                    Add {selectedCount} Downloads
-                  </>
-                )}
-              </Button>
-            </>
           )}
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+
+      <QueueDialog open={createQueueOpen} onOpenChange={setCreateQueueOpen} />
+      <CategoryDialog open={createCategoryOpen} onOpenChange={setCreateCategoryOpen} />
+    </>
   );
 }
