@@ -1,3 +1,4 @@
+import React from "react";
 import {
   Plus,
   Trash2,
@@ -28,48 +29,53 @@ import {
 import { useUIStore } from "@/stores/ui";
 import { useDownloadStore, useFilteredDownloads } from "@/stores/downloads";
 import { useQueuesArray } from "@/stores/queues";
-import { parseUrls } from "@/lib/utils";
+import { parseUrls, cn } from "@/lib/utils";
 import { setPendingClipboardUrls } from "@/lib/events";
 import type { Download } from "@/types";
-import { cn } from "@/lib/utils";
 
-// Check if we're in Tauri context
-const isTauri = () => typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
+const isTauri = () =>
+  typeof window !== "undefined" &&
+  (window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ !==
+    undefined;
 
-interface MenuButtonProps {
+type MenuVariant = "default" | "destructive" | "success" | "warning" | "info";
+
+interface MenuButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   icon: React.ElementType;
   label: string;
-  onClick?: () => void;
-  disabled?: boolean;
-  variant?: "default" | "destructive" | "success" | "warning" | "info";
-  className?: string;
+  variant?: MenuVariant;
 }
 
-function MenuButton({ icon: Icon, label, onClick, disabled, variant = "default", className }: MenuButtonProps) {
-  const colors = {
-    default: "text-foreground hover:bg-accent hover:text-accent-foreground",
-    destructive: "text-destructive hover:bg-destructive/10",
-    success: "text-green-600 hover:bg-green-500/10 dark:text-green-400",
-    warning: "text-orange-600 hover:bg-orange-500/10 dark:text-orange-400",
-    info: "text-blue-600 hover:bg-blue-500/10 dark:text-blue-400",
-  };
+const MenuButton = React.forwardRef<HTMLButtonElement, MenuButtonProps>(
+  ({ icon: Icon, label, disabled, variant = "default", className, ...props }, ref) => {
+    const colors: Record<MenuVariant, string> = {
+      default: "text-foreground hover:bg-accent hover:text-accent-foreground",
+      destructive: "text-destructive hover:bg-destructive/10",
+      success: "text-green-600 hover:bg-green-500/10 dark:text-green-400",
+      warning: "text-orange-600 hover:bg-orange-500/10 dark:text-orange-400",
+      info: "text-blue-600 hover:bg-blue-500/10 dark:text-blue-400",
+    };
 
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={cn(
-        "flex flex-col items-center justify-center gap-1 px-3 py-2 rounded-md transition-colors min-w-[60px]",
-        "disabled:opacity-40 disabled:cursor-not-allowed",
-        colors[variant],
-        className
-      )}
-    >
-      <Icon className="h-6 w-6" strokeWidth={1.5} />
-      <span className="text-[10px] font-medium">{label}</span>
-    </button>
-  );
-}
+    return (
+      <button
+        ref={ref}
+        type="button"
+        disabled={disabled}
+        className={cn(
+          "flex flex-col items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-md transition-colors min-w-[68px]",
+          "disabled:opacity-40 disabled:cursor-not-allowed",
+          colors[variant],
+          className
+        )}
+        {...props}
+      >
+        <Icon className="h-7 w-7" strokeWidth={1.5} />
+        <span className="text-[11px] font-medium leading-none">{label}</span>
+      </button>
+    );
+  }
+);
+MenuButton.displayName = "MenuButton";
 
 export function MenuBar() {
   const {
@@ -80,15 +86,29 @@ export function MenuBar() {
     setShowAboutDialog,
     openConfirmDialog,
   } = useUIStore();
+
   const { selectedIds, clearSelection, removeDownload } = useDownloadStore();
   const downloads = useFilteredDownloads();
   const queues = useQueuesArray();
 
-  // Computed states for button disabling
-  const hasActiveDownloads = downloads.some(d => d.status === 'downloading' || d.status === 'queued');
-  const hasPausedDownloads = downloads.some(d => d.status === 'paused');
-  const hasCompletedDownloads = downloads.some(d => d.status === 'completed');
-  const hasFailedDownloads = downloads.some(d => d.status === 'failed');
+  const canStartAny = downloads.some(
+    (d) => d.status === "paused" || d.status === "queued" || d.status === "pending"
+  );
+  const canPauseAny = downloads.some((d) => d.status === "downloading");
+
+  const startableQueues = queues.filter((q) =>
+    downloads.some(
+      (d) =>
+        d.queue_id === q.id &&
+        (d.status === "paused" || d.status === "queued" || d.status === "pending")
+    )
+  );
+  const pausableQueues = queues.filter((q) =>
+    downloads.some((d) => d.queue_id === q.id && d.status === "downloading")
+  );
+
+  const hasCompletedDownloads = downloads.some((d) => d.status === "completed");
+  const hasFailedDownloads = downloads.some((d) => d.status === "failed");
   const hasSelection = selectedIds.size > 0;
 
   const handleAddFromClipboard = async () => {
@@ -100,7 +120,7 @@ export function MenuBar() {
         return;
       }
       setPendingClipboardUrls(urls);
-      
+
       if (urls.length === 1) {
         setShowNewDownloadDialog(true);
       } else {
@@ -120,8 +140,8 @@ export function MenuBar() {
 
     try {
       const filePath = await save({
-        filters: [{ name: 'JSON', extensions: ['json'] }],
-        defaultPath: 'dlman-export.json',
+        filters: [{ name: "JSON", extensions: ["json"] }],
+        defaultPath: "dlman-export.json",
       });
 
       if (!filePath) return;
@@ -137,7 +157,7 @@ export function MenuBar() {
           size: d.size,
           queue_id: d.queue_id,
         })),
-        queues: queues,
+        queues,
       };
 
       await writeTextFile(filePath, JSON.stringify(exportData, null, 2));
@@ -156,7 +176,7 @@ export function MenuBar() {
 
     try {
       const filePath = await open({
-        filters: [{ name: 'JSON', extensions: ['json'] }],
+        filters: [{ name: "JSON", extensions: ["json"] }],
         multiple: false,
       });
 
@@ -172,7 +192,7 @@ export function MenuBar() {
 
       for (const dl of importData.downloads) {
         try {
-          await invoke('add_download', {
+          await invoke("add_download", {
             url: dl.url,
             destination: dl.destination,
             queue_id: dl.queue_id,
@@ -203,7 +223,7 @@ export function MenuBar() {
           removeDownload(id);
           if (isTauri()) {
             try {
-              await invoke('delete_download', { id, delete_file: false });
+              await invoke("delete_download", { id, delete_file: false });
             } catch (err) {
               console.error(`Failed to delete download ${id}:`, err);
             }
@@ -215,101 +235,110 @@ export function MenuBar() {
     });
   };
 
-  const handleStartAllQueues = async () => {
+  const startQueue = async (id: string, name: string) => {
     try {
-      for (const queue of queues) {
-        await invoke('start_queue', { id: queue.id });
-      }
-      toast.success('All queues started');
+      await invoke("start_queue", { id });
+      toast.success(`Started queue: ${name}`);
     } catch (error) {
-      console.error('Failed to start queues:', error);
-      toast.error('Failed to start queues');
+      console.error("Failed to start queue:", error);
+      toast.error(`Failed to start queue: ${name}`);
+    }
+  };
+
+  const pauseQueue = async (id: string, name: string) => {
+    try {
+      await invoke("stop_queue", { id });
+      toast.success(`Paused queue: ${name}`);
+    } catch (error) {
+      console.error("Failed to pause queue:", error);
+      toast.error(`Failed to pause queue: ${name}`);
+    }
+  };
+
+  const handleStartAll = async () => {
+    const targets = startableQueues;
+    if (targets.length === 0) return;
+
+    for (const q of targets) {
+      // eslint-disable-next-line no-await-in-loop
+      await startQueue(q.id, q.name);
     }
   };
 
   const handlePauseAll = async () => {
-    try {
-      for (const queue of queues) {
-        await invoke('stop_queue', { id: queue.id });
-      }
-      toast.success('All queues paused');
-    } catch (error) {
-      console.error('Failed to pause queues:', error);
-      toast.error('Failed to pause queues');
+    const targets = pausableQueues;
+    if (targets.length === 0) return;
+
+    for (const q of targets) {
+      // eslint-disable-next-line no-await-in-loop
+      await pauseQueue(q.id, q.name);
     }
   };
 
   const handleClearCompleted = async () => {
-    const completedDownloads = downloads.filter((d: Download) => d.status === 'completed');
+    const completedDownloads = downloads.filter((d) => d.status === "completed");
     if (completedDownloads.length === 0) return;
-    
+
     openConfirmDialog({
-      title: 'Clear Completed Downloads',
+      title: "Clear Completed Downloads",
       description: `This will remove ${completedDownloads.length} completed download(s) from the list. The downloaded files will not be deleted.`,
-      confirmLabel: 'Clear',
-      cancelLabel: 'Cancel',
-      variant: 'primary',
+      confirmLabel: "Clear",
+      cancelLabel: "Cancel",
+      variant: "primary",
       onConfirm: async () => {
-        try {
-          for (const download of completedDownloads) {
-            removeDownload(download.id);
-            if (isTauri()) {
-              try {
-                await invoke('delete_download', { id: download.id, delete_file: false });
-              } catch (err) {
-                console.error(`Failed to delete download ${download.id}:`, err);
-              }
+        for (const d of completedDownloads) {
+          removeDownload(d.id);
+          if (isTauri()) {
+            try {
+              // eslint-disable-next-line no-await-in-loop
+              await invoke("delete_download", { id: d.id, delete_file: false });
+            } catch (err) {
+              console.error(`Failed to delete download ${d.id}:`, err);
             }
           }
-          toast.success(`Cleared ${completedDownloads.length} completed download(s)`);
-        } catch (error) {
-          console.error('Failed to clear completed downloads:', error);
-          toast.error('Failed to clear completed downloads');
         }
+        toast.success(`Cleared ${completedDownloads.length} completed download(s)`);
       },
     });
   };
 
   const handleClearFailed = async () => {
-    const failedDownloads = downloads.filter((d: Download) => d.status === 'failed');
+    const failedDownloads = downloads.filter((d) => d.status === "failed");
     if (failedDownloads.length === 0) return;
-    
+
     openConfirmDialog({
-      title: 'Clear Failed Downloads',
+      title: "Clear Failed Downloads",
       description: `This will remove ${failedDownloads.length} failed download(s) from the list.`,
-      confirmLabel: 'Clear',
-      cancelLabel: 'Cancel',
-      variant: 'destructive',
+      confirmLabel: "Clear",
+      cancelLabel: "Cancel",
+      variant: "destructive",
       onConfirm: async () => {
-        try {
-          for (const download of failedDownloads) {
-            removeDownload(download.id);
-            if (isTauri()) {
-              try {
-                await invoke('delete_download', { id: download.id, delete_file: false });
-              } catch (err) {
-                console.error(`Failed to delete download ${download.id}:`, err);
-              }
+        for (const d of failedDownloads) {
+          removeDownload(d.id);
+          if (isTauri()) {
+            try {
+              // eslint-disable-next-line no-await-in-loop
+              await invoke("delete_download", { id: d.id, delete_file: false });
+            } catch (err) {
+              console.error(`Failed to delete download ${d.id}:`, err);
             }
           }
-          toast.success(`Cleared ${failedDownloads.length} failed download(s)`);
-        } catch (error) {
-          console.error('Failed to clear failed downloads:', error);
-          toast.error('Failed to clear failed downloads');
         }
+        toast.success(`Cleared ${failedDownloads.length} failed download(s)`);
       },
     });
   };
 
+  const startDisabled = !canStartAny || startableQueues.length === 0;
+  const pauseDisabled = !canPauseAny || pausableQueues.length === 0;
+
   return (
     <div className="flex items-center gap-1 px-4 py-2 border-b bg-card/50 backdrop-blur-sm">
-      {/* Add Group */}
+      {/* Add */}
       <div className="flex items-center gap-1 pr-2 border-r">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <div>
-              <MenuButton icon={Plus} label="Add URL" variant="success" />
-            </div>
+            <MenuButton icon={Plus} label="Add" variant="success" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
             <DropdownMenuItem onClick={() => setShowNewDownloadDialog(true)}>
@@ -329,45 +358,32 @@ export function MenuBar() {
         </DropdownMenu>
       </div>
 
-      {/* Control Group */}
+      {/* Start/Pause */}
       <div className="flex items-center gap-1 px-2 border-r">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <div>
-              <MenuButton 
-                icon={Play} 
-                label="Start" 
-                disabled={!hasPausedDownloads && !hasActiveDownloads && queues.length === 0}
-                variant="info"
-              />
-            </div>
+            <MenuButton
+              icon={Play}
+              label="Start"
+              variant="info"
+              disabled={startDisabled}
+            />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
-            <DropdownMenuItem onClick={handleStartAllQueues}>
+            <DropdownMenuItem onClick={handleStartAll} disabled={startableQueues.length === 0}>
               <Play className="h-4 w-4 mr-2" />
-              Start All Queues
+              Start All
             </DropdownMenuItem>
-            {queues.length > 0 && (
+            {startableQueues.length > 0 && (
               <>
                 <DropdownMenuSeparator />
-                {queues.map((queue) => (
-                  <DropdownMenuItem 
-                    key={queue.id} 
-                    onClick={async () => {
-                      try {
-                        await invoke('start_queue', { id: queue.id });
-                        toast.success(`Started queue: ${queue.name}`);
-                      } catch (error) {
-                        console.error('Failed to start queue:', error);
-                        toast.error(`Failed to start queue: ${queue.name}`);
-                      }
-                    }}
-                  >
-                    <div 
-                      className="h-3 w-3 rounded-full mr-2" 
-                      style={{ backgroundColor: queue.color || '#6b7280' }} 
+                {startableQueues.map((q) => (
+                  <DropdownMenuItem key={q.id} onClick={() => startQueue(q.id, q.name)}>
+                    <div
+                      className="h-3 w-3 rounded-full mr-2 bg-muted"
+                      style={{ backgroundColor: q.color || undefined }}
                     />
-                    Start "{queue.name}"
+                    Start "{q.name}"
                   </DropdownMenuItem>
                 ))}
               </>
@@ -377,41 +393,28 @@ export function MenuBar() {
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <div>
-              <MenuButton 
-                icon={Pause} 
-                label="Pause" 
-                disabled={!hasActiveDownloads && queues.length === 0}
-                variant="warning"
-              />
-            </div>
+            <MenuButton
+              icon={Pause}
+              label="Pause"
+              variant="warning"
+              disabled={pauseDisabled}
+            />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
-            <DropdownMenuItem onClick={handlePauseAll}>
+            <DropdownMenuItem onClick={handlePauseAll} disabled={pausableQueues.length === 0}>
               <Pause className="h-4 w-4 mr-2" />
-              Pause All Queues
+              Pause All
             </DropdownMenuItem>
-            {queues.length > 0 && (
+            {pausableQueues.length > 0 && (
               <>
                 <DropdownMenuSeparator />
-                {queues.map((queue) => (
-                  <DropdownMenuItem 
-                    key={queue.id} 
-                    onClick={async () => {
-                      try {
-                        await invoke('stop_queue', { id: queue.id });
-                        toast.success(`Paused queue: ${queue.name}`);
-                      } catch (error) {
-                        console.error('Failed to pause queue:', error);
-                        toast.error(`Failed to pause queue: ${queue.name}`);
-                      }
-                    }}
-                  >
-                    <div 
-                      className="h-3 w-3 rounded-full mr-2" 
-                      style={{ backgroundColor: queue.color || '#6b7280' }} 
+                {pausableQueues.map((q) => (
+                  <DropdownMenuItem key={q.id} onClick={() => pauseQueue(q.id, q.name)}>
+                    <div
+                      className="h-3 w-3 rounded-full mr-2 bg-muted"
+                      style={{ backgroundColor: q.color || undefined }}
                     />
-                    Pause "{queue.name}"
+                    Pause "{q.name}"
                   </DropdownMenuItem>
                 ))}
               </>
@@ -420,23 +423,21 @@ export function MenuBar() {
         </DropdownMenu>
       </div>
 
-      {/* Management Group */}
+      {/* Delete/Clear + Queues */}
       <div className="flex items-center gap-1 px-2 border-r">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <div>
-              <MenuButton 
-                icon={Trash2} 
-                label="Delete" 
-                disabled={!hasSelection && !hasCompletedDownloads && !hasFailedDownloads}
-                variant="destructive"
-              />
-            </div>
+            <MenuButton
+              icon={Trash2}
+              label="Remove"
+              variant="destructive"
+              disabled={!hasSelection && !hasCompletedDownloads && !hasFailedDownloads}
+            />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
             <DropdownMenuItem onClick={handleDeleteSelected} disabled={!hasSelection}>
               <Trash2 className="h-4 w-4 mr-2" />
-              Delete Selected
+              Remove Selected
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleClearCompleted} disabled={!hasCompletedDownloads}>
@@ -450,23 +451,16 @@ export function MenuBar() {
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <MenuButton 
-          icon={ListTodo} 
-          label="Queues" 
-          onClick={() => setShowQueueManagerDialog(true)}
-        />
+        <MenuButton icon={ListTodo} label="Queues" onClick={() => setShowQueueManagerDialog(true)} />
       </div>
 
-      {/* Spacer */}
       <div className="flex-1" />
 
-      {/* Tools Group */}
+      {/* Tools + About + Settings */}
       <div className="flex items-center gap-1 pl-2 border-l">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <div>
-              <MenuButton icon={MoreHorizontal} label="Tools" />
-            </div>
+            <MenuButton icon={MoreHorizontal} label="Tools" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={handleExportData}>
@@ -477,19 +471,12 @@ export function MenuBar() {
               <Upload className="h-4 w-4 mr-2" />
               Import Data
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => setShowAboutDialog(true)}>
-              <Info className="h-4 w-4 mr-2" />
-              About DLMan
-            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <MenuButton 
-          icon={Settings} 
-          label="Settings" 
-          onClick={() => setShowSettingsDialog(true)}
-        />
+        <MenuButton icon={Info} label="About" onClick={() => setShowAboutDialog(true)} />
+
+        <MenuButton icon={Settings} label="Settings" onClick={() => setShowSettingsDialog(true)} />
       </div>
     </div>
   );

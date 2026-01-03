@@ -2,6 +2,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { QueueList } from "./QueueList";
 import { ActiveDownloads } from "./ActiveDownloads";
 import { FolderList } from "./FolderList";
+import { NetworkStats } from "./NetworkStats";
 
 export function Sidebar() {
   return (
@@ -18,6 +19,8 @@ export function Sidebar() {
           <FolderList />
         </div>
       </ScrollArea>
+
+      <NetworkStats />
     </div>
   );
 }
