@@ -216,36 +216,10 @@ jobs:
           sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${VERSION_NUM}\"/" package.json
           sed -i "s/version: '[^']*'/version: '${VERSION_NUM}'/" wxt.config.ts
 
-      - name: Build Chrome Extension
-        run: pnpm ext:build
-
-      - name: Build Firefox Extension
-        run: pnpm ext:build:firefox
-
-      - name: Create Chrome zip
-        run: |
-          cd apps/extension/dist
-          zip -r ../dlman-extension-chrome-${{ steps.get_version.outputs.version }}.zip chrome-mv3
-
-      - name: Create Firefox zip
-        run: |
-          cd apps/extension/dist
-          zip -r ../dlman-extension-firefox-${{ steps.get_version.outputs.version }}.zip firefox-mv2
-
-      - name: Upload Chrome Extension
+      - name: Upload release notes and source
         uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ steps.get_version.outputs.version }}
-          files: |
-            apps/extension/dlman-extension-chrome-${{ steps.get_version.outputs.version }}.zip
-
-      - name: Upload Firefox Extension
-        uses: softprops/action-gh-release@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ steps.get_version.outputs.version }}
-          files: |
-            apps/extension/dlman-extension-firefox-${{ steps.get_version.outputs.version }}.zip
+          body: "v${{ steps.get_version.outputs.version }} release"

@@ -52,18 +52,6 @@ jobs:
       - name: Build Firefox extension
         run: pnpm --filter @dlman/extension run build:firefox
       
-      - name: Create Chrome extension ZIP
-        run: |
-          cd apps/extension/dist/chrome-mv3
-          zip -r ../../dlman-extension-chrome.zip .
-          cd ../../../
-      
-      - name: Create Firefox extension ZIP
-        run: |
-          cd apps/extension/dist/firefox-mv2
-          zip -r ../../dlman-extension-firefox.zip .
-          cd ../../../
-      
       - name: Get version
         id: version
         run: |
@@ -73,12 +61,24 @@ jobs:
             echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
           fi
       
+      - name: Create Chrome extension ZIP
+        run: |
+          cd apps/extension/dist/chrome-mv3
+          zip -r ../../dlman-extension-chrome-${{ steps.version.outputs.tag }}.zip .
+          cd ../../../
+      
+      - name: Create Firefox extension ZIP
+        run: |
+          cd apps/extension/dist/firefox-mv2
+          zip -r ../../dlman-extension-firefox-${{ steps.version.outputs.tag }}.zip .
+          cd ../../../
+      
       - name: Upload to existing release
         uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
-            apps/extension/dlman-extension-chrome.zip
-            apps/extension/dlman-extension-firefox.zip
+            apps/extension/dlman-extension-chrome-${{ steps.version.outputs.tag }}.zip
+            apps/extension/dlman-extension-firefox-${{ steps.version.outputs.tag }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
