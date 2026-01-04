@@ -342,6 +342,31 @@ export class DlmanClient {
   }
 
   /**
+   * Show the new download dialog in the app
+   * Returns a deep link URL that will open the app's dialog
+   */
+  async showDownloadDialog(url: string, referrer?: string, filename?: string): Promise<{ success: boolean; deepLink?: string; error?: string }> {
+    try {
+      const response = await this.httpRequest<{ success: boolean; deep_link: string; error?: string }>(
+        'POST',
+        '/api/show-dialog',
+        { url, referrer, filename }
+      );
+      return {
+        success: response.success,
+        deepLink: response.deep_link,
+        error: response.error,
+      };
+    } catch (error) {
+      console.error('[DLMan] Failed to show dialog:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  /**
    * Pause a download
    */
   async pauseDownload(id: string): Promise<{ success: boolean; error?: string }> {

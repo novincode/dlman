@@ -27,14 +27,20 @@ pub async fn add_download(
     queue_id: String,
     category_id: Option<String>,
     probed_info: Option<ProbedInfo>,
+    start_later: Option<bool>,
 ) -> Result<Download, String> {
     let queue_uuid = Uuid::parse_str(&queue_id).map_err(|e| e.to_string())?;
     let category_uuid = category_id.map(|s| Uuid::parse_str(&s).map_err(|e| e.to_string())).transpose()?;
     let dest_path = PathBuf::from(destination);
+    let should_start_later = start_later.unwrap_or(false);
 
     state
         .with_core_async(|core| async move { 
-            let mut download = core.add_download(&url, dest_path, queue_uuid, category_uuid).await?;
+            let mut download = if should_start_later {
+                core.add_download_queued(&url, dest_path, queue_uuid, category_uuid).await?
+            } else {
+                core.add_download(&url, dest_path, queue_uuid, category_uuid).await?
+            };
             
             // Apply probed info if provided (from batch import)
             if let Some(info) = probed_info {

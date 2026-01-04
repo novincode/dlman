@@ -29,20 +29,20 @@ export function ActiveDownloads() {
   }
 
   return (
-    <div>
+    <div className="min-w-0 overflow-hidden">
       {/* Header */}
       <button
         onClick={() => setExpanded(!expanded)}
         className="flex items-center gap-1 w-full px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
       >
         {expanded ? (
-          <ChevronDown className="h-3 w-3" />
+          <ChevronDown className="h-3 w-3 flex-shrink-0" />
         ) : (
-          <ChevronRight className="h-3 w-3" />
+          <ChevronRight className="h-3 w-3 flex-shrink-0" />
         )}
-        <Download className="h-3 w-3 mr-1" />
-        ACTIVE
-        <span className="ml-auto text-xs opacity-60">{activeDownloads.length}</span>
+        <Download className="h-3 w-3 mr-1 flex-shrink-0" />
+        <span className="truncate">ACTIVE</span>
+        <span className="ml-auto text-xs opacity-60 flex-shrink-0">{activeDownloads.length}</span>
       </button>
 
       {/* Active Downloads */}
@@ -55,7 +55,7 @@ export function ActiveDownloads() {
             transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
-            <div className="mt-1 space-y-1">
+            <div className="mt-1 space-y-1 min-w-0 overflow-hidden">
               {activeDownloads.map((download) => (
                 <ActiveDownloadItem
                   key={download.id}
@@ -141,10 +141,10 @@ function ActiveDownloadItem({
   }, [id, updateStatus]);
 
   return (
-    <div className="px-2 py-1.5 rounded-md bg-card border group min-w-0">
+    <div className="px-2 py-1.5 rounded-md bg-card border group min-w-0 overflow-hidden">
       {/* Filename */}
-      <div className="flex items-center gap-2 mb-1 min-w-0">
-        <span className="text-xs truncate flex-1 min-w-0" title={filename}>{filename}</span>
+      <div className="flex items-center gap-2 mb-1 min-w-0 overflow-hidden">
+        <span className="text-xs truncate flex-1 min-w-0 block" title={filename}>{filename}</span>
         <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
           <Button 
             variant="ghost" 
@@ -176,8 +176,8 @@ function ActiveDownloadItem({
 
       {/* Stats */}
       <div className="flex items-center justify-between mt-1 text-[10px] text-muted-foreground">
-        <span>{Math.round(progress)}%</span>
-        <span className={cn(isPaused && "text-yellow-500")}>
+        <span className="flex-shrink-0">{Math.round(progress)}%</span>
+        <span className={cn("truncate ml-2", isPaused && "text-yellow-500")}>
           {isPaused ? "Paused" : formatSpeed(speed)}
         </span>
       </div>

@@ -1,9 +1,15 @@
-import { useRef, useCallback, useEffect } from "react";
+import { useRef, useCallback, useEffect, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { invoke } from "@tauri-apps/api/core";
+import { toast } from "sonner";
 import { DraggableDownloadItem } from "@/components/dnd/DraggableDownloadItem";
 import { DownloadItem } from "@/components/downloads/DownloadItem";
 import { useDownloadStore } from "@/stores/downloads";
+import { DeleteConfirmDialog } from "@/components/dialogs/DeleteConfirmDialog";
 import type { Download } from "@/types";
+
+// Check if we're in Tauri context
+const isTauri = () => typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
 
 interface DownloadListProps {
   downloads: Download[];
@@ -14,6 +20,11 @@ export function DownloadList({ downloads }: DownloadListProps) {
   const focusedId = useDownloadStore((s) => s.focusedId);
   const setFocusedId = useDownloadStore((s) => s.setFocusedId);
   const toggleSelected = useDownloadStore((s) => s.toggleSelected);
+  const removeDownload = useDownloadStore((s) => s.removeDownload);
+
+  // Delete confirmation dialog state
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [downloadToDelete, setDownloadToDelete] = useState<Download | null>(null);
 
   const virtualizer = useVirtualizer({
     count: downloads.length,
@@ -85,42 +96,93 @@ export function DownloadList({ downloads }: DownloadListProps) {
         if (downloads.length > 0) {
           setFocusedId(downloads[downloads.length - 1].id);
         }
+      } else if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        // Delete focused item
+        if (focusedId) {
+          const download = downloads.find((d) => d.id === focusedId);
+          if (download) {
+            setDownloadToDelete(download);
+            setShowDeleteDialog(true);
+          }
+        }
       }
     },
     [downloads, focusedId, focusedIndex, setFocusedId, toggleSelected]
   );
 
+  // Handle delete confirmation
+  const handleConfirmDelete = useCallback(async (deleteFile: boolean) => {
+    if (!downloadToDelete) return;
+    
+    setShowDeleteDialog(false);
+    
+    // Remove from store first
+    removeDownload(downloadToDelete.id);
+    
+    if (isTauri()) {
+      try {
+        // If user chose to also delete the file, use delete_file: true
+        await invoke("delete_download", { id: downloadToDelete.id, deleteFile });
+        if (deleteFile) {
+          toast.success("Download removed and file deleted");
+        } else {
+          toast.success("Download removed");
+        }
+      } catch (err) {
+        console.error("Failed to delete download:", err);
+        toast.error("Failed to remove download");
+      }
+    } else {
+      toast.success("Download removed");
+    }
+    
+    setDownloadToDelete(null);
+  }, [downloadToDelete, removeDownload]);
+
   return (
-    <div
-      ref={parentRef}
-      className="h-full overflow-auto focus:outline-none"
-      tabIndex={0}
-      onKeyDown={handleKeyDown}
-    >
+    <>
       <div
-        className="relative w-full"
-        style={{ height: `${virtualizer.getTotalSize()}px` }}
+        ref={parentRef}
+        className="h-full overflow-auto focus:outline-none"
+        tabIndex={0}
+        onKeyDown={handleKeyDown}
       >
-        {virtualizer.getVirtualItems().map((virtualItem) => {
-          const download = downloads[virtualItem.index];
-          const isFocused = download.id === focusedId;
-          return (
-            <div
-              key={virtualItem.key}
-              data-index={virtualItem.index}
-              ref={virtualizer.measureElement}
-              className="absolute top-0 left-0 w-full"
-              style={{
-                transform: `translateY(${virtualItem.start}px)`,
-              }}
-            >
-              <DraggableDownloadItem id={download.id} data={download}>
-                <DownloadItem download={download} isFocused={isFocused} />
-              </DraggableDownloadItem>
-            </div>
-          );
-        })}
+        <div
+          className="relative w-full"
+          style={{ height: `${virtualizer.getTotalSize()}px` }}
+        >
+          {virtualizer.getVirtualItems().map((virtualItem) => {
+            const download = downloads[virtualItem.index];
+            const isFocused = download.id === focusedId;
+            return (
+              <div
+                key={virtualItem.key}
+                data-index={virtualItem.index}
+                ref={virtualizer.measureElement}
+                className="absolute top-0 left-0 w-full"
+                style={{
+                  transform: `translateY(${virtualItem.start}px)`,
+                }}
+              >
+                <DraggableDownloadItem id={download.id} data={download}>
+                  <DownloadItem download={download} isFocused={isFocused} />
+                </DraggableDownloadItem>
+              </div>
+            );
+          })}
+        </div>
       </div>
-    </div>
+      
+      {/* Delete Confirmation Dialog */}
+      {downloadToDelete && (
+        <DeleteConfirmDialog
+          open={showDeleteDialog}
+          onOpenChange={setShowDeleteDialog}
+          download={downloadToDelete}
+          onConfirm={handleConfirmDelete}
+        />
+      )}
+    </>
   );
 }

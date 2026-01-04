@@ -48,16 +48,7 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { DeleteConfirmDialog } from "@/components/dialogs/DeleteConfirmDialog";
 import { useDownloadStore } from "@/stores/downloads";
 import { useQueueStore, useQueuesArray } from "@/stores/queues";
 import { useCategoryStore } from "@/stores/categories";
@@ -85,7 +76,6 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
   const [showInfoDialog, setShowInfoDialog] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [showRemoveDialog, setShowRemoveDialog] = useState(false);
-  const [deleteFileFromSystem, setDeleteFileFromSystem] = useState(false);
   const [speedLimitInput, setSpeedLimitInput] = useState<string>(
     download.speed_limit ? Math.round(download.speed_limit / 1024).toString() : ""
   );
@@ -178,37 +168,9 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
 
   const handleRemove = useCallback(async (e?: React.MouseEvent) => {
     e?.stopPropagation();
-    // Reset the delete file option and show the dialog
-    setDeleteFileFromSystem(false);
+    // Show the dialog
     setShowRemoveDialog(true);
   }, []);
-
-  const handleConfirmRemove = useCallback(async () => {
-    setShowRemoveDialog(false);
-    
-    // Remove from store first
-    removeDownload(download.id);
-    
-    if (isTauri()) {
-      try {
-        // If user chose to also delete the file, use delete_file: true
-        await invoke("delete_download", { id: download.id, delete_file: deleteFileFromSystem });
-        if (deleteFileFromSystem) {
-          toast.success("Download removed and file deleted");
-        } else {
-          toast.success("Download removed");
-        }
-      } catch (err) {
-        console.error("Failed to delete download:", err);
-        toast.error("Failed to remove download");
-      }
-    } else {
-      toast.success("Download removed");
-    }
-    
-    // Reset the checkbox
-    setDeleteFileFromSystem(false);
-  }, [download.id, removeDownload, deleteFileFromSystem]);
 
   const handleCopyUrl = useCallback(async (e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -514,25 +476,30 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
               isSelected && "border-primary bg-primary/5",
               isFocused && "ring-2 ring-ring ring-inset",
             )}
-            onClick={() => setFocusedId(download.id)}
+            onClick={() => {
+              // ALWAYS set focus when clicking anywhere on the item
+              setFocusedId(download.id);
+            }}
           >
             {/* Main Row */}
             <div
               className="flex items-center gap-3 p-3 cursor-pointer"
               onClick={(e) => {
-                // Don't toggle expand if clicking on checkbox
+                // Don't toggle expand if clicking on checkbox or buttons
                 const target = e.target as HTMLElement;
-                const isCheckbox = target.closest('.checkbox') || target.querySelector('.checkbox');
+                const isCheckbox = target.closest('.checkbox') || target.closest('[role="checkbox"]');
+                const isButton = target.closest('button');
+                const isDropdown = target.closest('[data-radix-dropdown-menu-trigger]');
 
-                if (isCheckbox) return;
+                if (isCheckbox || isButton || isDropdown) return;
                 
                 // In selection mode, clicking selects/deselects instead of expand/collapse
                 // Also support shift-click for range selection
                 if (isSelectionMode || e.shiftKey) {
-                  e.stopPropagation();
                   toggleSelected(download.id, e.shiftKey);
                 } else {
-                  handleToggleExpand(e);
+                  // Toggle expand on regular click (not on buttons/checkbox)
+                  setIsExpanded(!isExpanded);
                 }
               }}
             >
@@ -841,53 +808,34 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
         download={download}
       />
 
-      {/* Remove Confirmation Dialog */}
-      <AlertDialog open={showRemoveDialog} onOpenChange={setShowRemoveDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remove Download</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to remove "{download.filename}" from the download list?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
+      {/* Remove Confirmation Dialog - now using the smart DeleteConfirmDialog */}
+      <DeleteConfirmDialog
+        open={showRemoveDialog}
+        onOpenChange={setShowRemoveDialog}
+        download={download}
+        onConfirm={async (deleteFile) => {
+          setShowRemoveDialog(false);
           
-          {/* Danger Zone - Delete file option */}
-          <div className="rounded-lg border border-destructive/50 bg-destructive/5 p-4 my-2">
-            <div className="flex items-start gap-3">
-              <Checkbox
-                id="delete-file-checkbox"
-                checked={deleteFileFromSystem}
-                onCheckedChange={(checked) => setDeleteFileFromSystem(checked === true)}
-                className="mt-0.5 border-destructive data-[state=checked]:bg-destructive data-[state=checked]:border-destructive"
-              />
-              <div className="space-y-1">
-                <Label 
-                  htmlFor="delete-file-checkbox" 
-                  className="text-sm font-medium text-destructive cursor-pointer"
-                >
-                  Also delete file from system
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  This will permanently delete the downloaded file. This action cannot be undone.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setDeleteFileFromSystem(false)}>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={handleConfirmRemove} 
-              className={deleteFileFromSystem 
-                ? "bg-destructive text-destructive-foreground hover:bg-destructive/90" 
-                : ""
+          // Remove from store first
+          removeDownload(download.id);
+          
+          if (isTauri()) {
+            try {
+              await invoke("delete_download", { id: download.id, deleteFile });
+              if (deleteFile) {
+                toast.success("Download removed and file deleted");
+              } else {
+                toast.success("Download removed");
               }
-            >
-              {deleteFileFromSystem ? "Remove & Delete File" : "Remove"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            } catch (err) {
+              console.error("Failed to delete download:", err);
+              toast.error("Failed to remove download");
+            }
+          } else {
+            toast.success("Download removed");
+          }
+        }}
+      />
     </>
   );
 }

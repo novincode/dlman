@@ -12,7 +12,8 @@ import {
   XCircle,
   Clipboard,
   Tag,
-  Save
+  Save,
+  Clock
 } from 'lucide-react';
 
 import {
@@ -232,7 +233,7 @@ export function NewDownloadDialog() {
     }
   }, [destination]);
 
-  const handleAddDownload = useCallback(async () => {
+  const handleAddDownload = useCallback(async (startLater: boolean = false) => {
     if (!url || !destination) {
       toast.error('Please enter a URL and destination');
       return;
@@ -257,10 +258,16 @@ export function NewDownloadDialog() {
             queue_id: queueId,
             category_id: categoryId || undefined,
             probed_info: probedInfo,
+            start_later: startLater, // Pass to backend to control auto-start
           });
           // Add to local store
           addDownload(download);
-          toast.success('Download added successfully');
+          
+          if (startLater) {
+            toast.success('Download added to queue');
+          } else {
+            toast.success('Download started');
+          }
         } catch (err) {
           console.error('Backend add_download failed:', err);
           // Fallback: create local download
@@ -272,7 +279,7 @@ export function NewDownloadDialog() {
             destination,
             size: fileSize,
             downloaded: 0,
-            status: 'pending',
+            status: startLater ? 'queued' : 'pending',
             segments: [],
             queue_id: queueId,
             category_id: categoryId,
@@ -295,7 +302,7 @@ export function NewDownloadDialog() {
           destination,
           size: fileSize,
           downloaded: 0,
-          status: 'pending',
+          status: startLater ? 'queued' : 'pending',
           segments: [],
           queue_id: queueId,
           category_id: categoryId,
@@ -536,7 +543,7 @@ export function NewDownloadDialog() {
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="gap-2 sm:gap-0">
           <Button
             variant="outline"
             onClick={() => setShowNewDownloadDialog(false)}
@@ -544,7 +551,16 @@ export function NewDownloadDialog() {
             Cancel
           </Button>
           <Button
-            onClick={handleAddDownload}
+            variant="secondary"
+            onClick={() => handleAddDownload(true)}
+            disabled={!url || !destination || isProbing || !!probeError || isAdding}
+            title="Add to queue without starting"
+          >
+            <Clock className="mr-2 h-4 w-4" />
+            Download Later
+          </Button>
+          <Button
+            onClick={() => handleAddDownload(false)}
             disabled={!url || !destination || isProbing || !!probeError || isAdding}
           >
             {isAdding ? (
@@ -555,7 +571,7 @@ export function NewDownloadDialog() {
             ) : (
               <>
                 <Download className="mr-2 h-4 w-4" />
-                Add Download
+                Start Download
               </>
             )}
           </Button>

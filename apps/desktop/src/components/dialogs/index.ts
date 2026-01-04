@@ -7,3 +7,4 @@ export { CategoryDialog } from './CategoryDialog';
 export { DownloadInfoDialog } from './DownloadInfoDialog';
 export { AboutDialog } from './AboutDialog';
 export { ConfirmDialog } from './ConfirmDialog';
+export { DeleteConfirmDialog } from './DeleteConfirmDialog';

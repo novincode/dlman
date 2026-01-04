@@ -31,6 +31,16 @@ pub struct AddDownloadRequest {
     pub referrer: Option<String>,
     pub cookies: Option<String>,
     pub headers: Option<HashMap<String, String>>,
+    /// If true, show a dialog instead of adding directly
+    #[serde(default)]
+    pub show_dialog: bool,
+    /// If true, start the download immediately after adding
+    #[serde(default = "default_auto_start")]
+    pub auto_start: bool,
+}
+
+fn default_auto_start() -> bool {
+    true
 }
 
 /// Response after adding a download
@@ -134,6 +144,8 @@ impl BrowserServer {
             .route("/api/queues", get(handle_get_queues))
             .route("/api/downloads", get(handle_get_downloads))
             .route("/api/downloads", post(handle_add_download))
+            // Show dialog endpoint - returns deep link URL
+            .route("/api/show-dialog", post(handle_show_dialog))
             // Download control endpoints
             .route("/api/downloads/:id/pause", post(handle_pause_download))
             .route("/api/downloads/:id/resume", post(handle_resume_download))
@@ -212,6 +224,19 @@ async fn handle_add_download(
     State(state): axum::extract::State<SharedState>,
     axum::Json(req): axum::Json<AddDownloadRequest>,
 ) -> impl axum::response::IntoResponse {
+    // If show_dialog is true, return deep link URL instead of adding
+    if req.show_dialog {
+        let encoded_url = urlencoding::encode(&req.url);
+        let _deep_link = format!("dlman://add-download?url={}", encoded_url);
+        // NOTE: We return success but the actual dialog opening is handled by the extension
+        // via the /api/show-dialog endpoint. This flag is here for backwards compatibility.
+        return axum::Json(AddDownloadResponse {
+            success: true,
+            download: None,
+            error: None,
+        });
+    }
+
     let core = state.write().await;
     
     let queue_id = req.queue_id
@@ -235,6 +260,37 @@ async fn handle_add_download(
             error: Some(e.to_string()),
         }),
     }
+}
+
+/// Request to show the download dialog
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShowDialogRequest {
+    pub url: String,
+    pub referrer: Option<String>,
+    pub filename: Option<String>,
+}
+
+/// Response for show dialog request
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShowDialogResponse {
+    pub success: bool,
+    /// Deep link URL to open the app dialog
+    pub deep_link: String,
+    pub error: Option<String>,
+}
+
+/// Handle request to show the new download dialog
+async fn handle_show_dialog(
+    axum::Json(req): axum::Json<ShowDialogRequest>,
+) -> impl axum::response::IntoResponse {
+    let encoded_url = urlencoding::encode(&req.url);
+    let deep_link = format!("dlman://add-download?url={}", encoded_url);
+    
+    axum::Json(ShowDialogResponse {
+        success: true,
+        deep_link,
+        error: None,
+    })
 }
 
 /// Simple response for control operations

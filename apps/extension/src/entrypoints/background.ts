@@ -258,30 +258,76 @@ export default defineBackground(() => {
       return;
     }
 
-    // Send to DLMan
-    const result = await client.addDownload({
+    // Show the download dialog in the app instead of adding directly
+    const dialogResult = await client.showDownloadDialog(
       url,
-      filename: suggestedFilename || extractFilename(url),
       referrer,
-      queue_id: currentSettings?.defaultQueueId || undefined,
-    });
+      suggestedFilename || extractFilename(url)
+    );
 
-    if (result.success) {
-      if (currentSettings?.showNotifications) {
-        browser.notifications.create({
-          type: 'basic',
-          iconUrl: 'icon/128.png',
-          title: 'Download Added',
-          message: result.download?.filename || extractFilename(url),
+    if (dialogResult.success && dialogResult.deepLink) {
+      // Open the deep link to show the dialog
+      try {
+        // Use browser extension API to open the deep link
+        // This will trigger the desktop app to open its New Download dialog
+        await openDeepLink(dialogResult.deepLink);
+        
+        if (currentSettings?.showNotifications) {
+          browser.notifications.create({
+            type: 'basic',
+            iconUrl: 'icon/128.png',
+            title: 'Download Dialog Opened',
+            message: 'Configure your download in DLMan',
+          });
+        }
+      } catch (error) {
+        console.error('[DLMan] Failed to open deep link:', error);
+        // Fallback: try to add directly
+        const result = await client.addDownload({
+          url,
+          filename: suggestedFilename || extractFilename(url),
+          referrer,
+          queue_id: currentSettings?.defaultQueueId || undefined,
         });
+        
+        if (result.success && currentSettings?.showNotifications) {
+          browser.notifications.create({
+            type: 'basic',
+            iconUrl: 'icon/128.png',
+            title: 'Download Added',
+            message: result.download?.filename || extractFilename(url),
+          });
+        }
       }
     } else {
       browser.notifications.create({
         type: 'basic',
         iconUrl: 'icon/128.png',
         title: 'Download Failed',
-        message: result.error || 'Unknown error',
+        message: dialogResult.error || 'Unknown error',
       });
+    }
+  }
+
+  /**
+   * Open a deep link URL to trigger the desktop app
+   */
+  async function openDeepLink(deepLink: string) {
+    // Try to open the deep link using browser APIs
+    try {
+      // Create a temporary anchor to trigger the protocol handler
+      // Note: This works through the content script
+      const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+      if (tabs[0]?.id) {
+        await browser.tabs.sendMessage(tabs[0].id, {
+          type: 'open-deep-link',
+          deepLink,
+        });
+      }
+    } catch (error) {
+      // If content script isn't available, try direct approach
+      // This might work on some browsers
+      console.log('[DLMan] Attempting direct deep link open:', deepLink);
     }
   }
 

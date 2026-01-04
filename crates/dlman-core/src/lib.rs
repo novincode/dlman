@@ -211,6 +211,58 @@ impl DlmanCore {
         Ok(download)
     }
     
+    /// Add a new download without auto-starting (queued status)
+    /// 
+    /// This adds the download to the queue but does NOT start it automatically.
+    /// The download will remain in "Queued" status until manually started.
+    pub async fn add_download_queued(
+        &self,
+        url: &str,
+        destination: PathBuf,
+        queue_id: Uuid,
+        category_id: Option<Uuid>,
+    ) -> Result<Download, DlmanError> {
+        // Validate URL
+        let parsed_url = url::Url::parse(url)
+            .map_err(|_| DlmanError::InvalidUrl(url.to_string()))?;
+        
+        // Extract filename from URL without making network request
+        let filename = parsed_url.path_segments()
+            .and_then(|s| s.last())
+            .filter(|s| !s.is_empty())
+            .unwrap_or("download")
+            .to_string();
+        
+        // URL decode the filename
+        let filename = urlencoding::decode(&filename)
+            .map(|s| s.into_owned())
+            .unwrap_or(filename);
+        
+        // Get unique filename
+        let unique_filename = Self::get_unique_filename(&destination, &filename, self.download_manager.db()).await;
+        
+        // Create download with Queued status (not Pending)
+        let mut download = Download::new(url.to_string(), destination, queue_id);
+        download.category_id = category_id;
+        download.filename = unique_filename;
+        download.size = None;
+        download.final_url = None;
+        download.status = DownloadStatus::Queued; // Stay queued, don't auto-start
+        
+        // Save to database
+        self.download_manager.db().upsert_download(&download).await?;
+        
+        // Emit event immediately so UI updates
+        self.emit(CoreEvent::DownloadAdded {
+            download: download.clone(),
+        });
+        
+        // NOTE: We do NOT spawn the try_start_next_download here
+        // The download stays in queue until user manually starts it
+        
+        Ok(download)
+    }
+    
     /// Get a download by ID
     pub async fn get_download(&self, id: Uuid) -> Result<Download, DlmanError> {
         self.download_manager.db().load_download(id).await?
