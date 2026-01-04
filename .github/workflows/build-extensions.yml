@@ -1,4 +1,4 @@
-name: Build & Release Extensions
+name: Build Browser Extensions
 
 on:
   push:
@@ -6,12 +6,16 @@ on:
       - 'v*'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-extensions:
     runs-on: ubuntu-latest
     
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -23,8 +27,21 @@ jobs:
         with:
           version: 9
       
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+      
+      - name: Setup pnpm cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+      
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
       
       - name: Copy icons
         run: pnpm --filter @dlman/extension run copy-icons
@@ -35,26 +52,33 @@ jobs:
       - name: Build Firefox extension
         run: pnpm --filter @dlman/extension run build:firefox
       
-      - name: Create Chrome ZIP
+      - name: Create Chrome extension ZIP
         run: |
           cd apps/extension/dist/chrome-mv3
           zip -r ../../dlman-extension-chrome.zip .
-          cd ../../
+          cd ../../../
       
-      - name: Create Firefox ZIP
+      - name: Create Firefox extension ZIP
         run: |
           cd apps/extension/dist/firefox-mv2
           zip -r ../../dlman-extension-firefox.zip .
-          cd ../../
+          cd ../../../
       
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "tag=$(date +v%Y%m%d)" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Upload to existing release
+        uses: softprops/action-gh-release@v2
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: |
             apps/extension/dlman-extension-chrome.zip
             apps/extension/dlman-extension-firefox.zip
-          draft: false
-          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
