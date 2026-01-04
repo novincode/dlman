@@ -177,6 +177,7 @@ pub async fn delete_download(
 pub struct DownloadUpdates {
     pub speed_limit: Option<Option<u64>>,
     pub category_id: Option<Option<String>>,
+    pub destination: Option<String>,
 }
 
 #[tauri::command]
@@ -193,10 +194,23 @@ pub async fn update_download(
                 core.update_download_speed_limit(uuid, speed_limit).await?;
             }
 
+            // Get download for other updates
+            let mut download = core.get_download(uuid).await?;
+            let mut needs_db_update = false;
+
             // Update category in database
             if let Some(category_id) = updates.category_id {
-                let mut download = core.get_download(uuid).await?;
                 download.category_id = category_id.map(|s| Uuid::parse_str(&s)).transpose().unwrap_or(None);
+                needs_db_update = true;
+            }
+            
+            // Update destination
+            if let Some(destination) = updates.destination {
+                download.destination = PathBuf::from(destination);
+                needs_db_update = true;
+            }
+            
+            if needs_db_update {
                 core.download_manager.db().upsert_download(&download).await?;
             }
             Ok(())
@@ -589,6 +603,64 @@ pub async fn execute_post_action(action: String, command: Option<String>) -> Res
         }
         _ => Err(format!("Unknown action: {}", action)),
     }
+}
+
+/// Move a completed download file to a new destination
+#[tauri::command(rename_all = "snake_case")]
+pub async fn move_download_file(
+    state: State<'_, AppState>,
+    id: String,
+    new_destination: String,
+) -> Result<(), String> {
+    let download_uuid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
+    let new_dest_path = PathBuf::from(&new_destination);
+    
+    // Get the download from core
+    let download = state
+        .with_core_async(|core| async move {
+            core.get_download(download_uuid).await
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+    
+    // Build source and destination paths
+    let source_path = PathBuf::from(&download.destination).join(&download.filename);
+    let dest_file_path = new_dest_path.join(&download.filename);
+    
+    // Check if source file exists
+    if !source_path.exists() {
+        return Err(format!("Source file not found: {}", source_path.display()));
+    }
+    
+    // Create destination directory if it doesn't exist
+    if !new_dest_path.exists() {
+        std::fs::create_dir_all(&new_dest_path)
+            .map_err(|e| format!("Failed to create destination directory: {}", e))?;
+    }
+    
+    // Move the file
+    std::fs::rename(&source_path, &dest_file_path)
+        .or_else(|_| {
+            // If rename fails (cross-device), try copy + delete
+            std::fs::copy(&source_path, &dest_file_path)?;
+            std::fs::remove_file(&source_path)?;
+            Ok::<_, std::io::Error>(())
+        })
+        .map_err(|e| format!("Failed to move file: {}", e))?;
+    
+    // Update the download's destination in the database
+    let new_dest_clone = new_destination.clone();
+    state
+        .with_core_async(|core| async move {
+            let mut updated_download = core.get_download(download_uuid).await?;
+            updated_download.destination = PathBuf::from(new_dest_clone);
+            core.download_manager.db().upsert_download(&updated_download).await?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+    
+    Ok(())
 }
 
 // ============================================================================

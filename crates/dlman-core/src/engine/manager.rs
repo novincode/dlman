@@ -7,7 +7,7 @@
 
 use crate::engine::{DownloadDatabase, DownloadTask, RateLimiter};
 use crate::error::DlmanError;
-use dlman_types::{CoreEvent, Download, DownloadStatus, LinkInfo};
+use dlman_types::{CoreEvent, Download, DownloadStatus, LinkInfo, ProxySettings};
 use reqwest::Client;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -42,11 +42,86 @@ struct DownloadTaskHandle {
     rate_limiter: RateLimiter,
 }
 
+/// Build an HTTP client with optional proxy settings
+pub fn build_http_client(proxy_settings: Option<&ProxySettings>) -> Result<Client, DlmanError> {
+    let mut builder = Client::builder()
+        .user_agent("DLMan/2.0.0")
+        .connect_timeout(Duration::from_secs(30))
+        .timeout(Duration::from_secs(120));
+    
+    // Configure proxy based on settings
+    if let Some(proxy) = proxy_settings {
+        match proxy.mode.as_str() {
+            "none" => {
+                // Disable all proxies
+                builder = builder.no_proxy();
+            }
+            "manual" => {
+                // Manual proxy configuration
+                if let Some(ref http_proxy) = proxy.http_proxy {
+                    if !http_proxy.is_empty() {
+                        let mut proxy_builder = reqwest::Proxy::http(http_proxy)
+                            .map_err(|e| DlmanError::Unknown(format!("Invalid HTTP proxy: {}", e)))?;
+                        
+                        // Add authentication if provided
+                        if let (Some(ref user), Some(ref pass)) = (&proxy.username, &proxy.password) {
+                            if !user.is_empty() {
+                                proxy_builder = proxy_builder.basic_auth(user, pass);
+                            }
+                        }
+                        
+                        builder = builder.proxy(proxy_builder);
+                    }
+                }
+                
+                if let Some(ref https_proxy) = proxy.https_proxy {
+                    if !https_proxy.is_empty() {
+                        let mut proxy_builder = reqwest::Proxy::https(https_proxy)
+                            .map_err(|e| DlmanError::Unknown(format!("Invalid HTTPS proxy: {}", e)))?;
+                        
+                        if let (Some(ref user), Some(ref pass)) = (&proxy.username, &proxy.password) {
+                            if !user.is_empty() {
+                                proxy_builder = proxy_builder.basic_auth(user, pass);
+                            }
+                        }
+                        
+                        builder = builder.proxy(proxy_builder);
+                    }
+                }
+                
+                // Set no_proxy if configured
+                if let Some(ref no_proxy) = proxy.no_proxy {
+                    if !no_proxy.is_empty() {
+                        std::env::set_var("NO_PROXY", no_proxy);
+                    }
+                }
+            }
+            _ => {
+                // "system" - use system proxy (default behavior, no configuration needed)
+                // reqwest automatically uses HTTP_PROXY, HTTPS_PROXY, NO_PROXY env vars
+            }
+        }
+    }
+    
+    builder
+        .build()
+        .map_err(|e| DlmanError::Unknown(e.to_string()))
+}
+
 impl DownloadManager {
     /// Create a new download manager
     pub async fn new(
         data_dir: PathBuf,
         event_tx: broadcast::Sender<CoreEvent>,
+    ) -> Result<Self, DlmanError> {
+        Self::new_with_proxy(data_dir, event_tx, None).await
+    }
+    
+    /// Create a new download manager with proxy settings
+    pub async fn new_with_proxy(
+        data_dir: PathBuf,
+        event_tx: broadcast::Sender<CoreEvent>,
+        proxy_settings: Option<&ProxySettings>,
     ) -> Result<Self, DlmanError> {
         // Create temp directory for segment files
         let temp_dir = data_dir.join("temp");
@@ -56,13 +131,8 @@ impl DownloadManager {
         let db_path = data_dir.join("downloads.db");
         let db = DownloadDatabase::new(db_path).await?;
         
-        // Create HTTP client
-        let client = Client::builder()
-            .user_agent("DLMan/2.0.0")
-            .connect_timeout(Duration::from_secs(30))
-            .timeout(Duration::from_secs(120))
-            .build()
-            .map_err(|e| DlmanError::Unknown(e.to_string()))?;
+        // Create HTTP client with proxy settings
+        let client = build_http_client(proxy_settings)?;
         
         Ok(Self {
             active_tasks: Arc::new(RwLock::new(HashMap::new())),
@@ -71,6 +141,12 @@ impl DownloadManager {
             temp_dir,
             event_tx,
         })
+    }
+    
+    /// Update the HTTP client with new proxy settings
+    pub fn update_proxy(&mut self, proxy_settings: Option<&ProxySettings>) -> Result<(), DlmanError> {
+        self.client = build_http_client(proxy_settings)?;
+        Ok(())
     }
     
     /// Get the database reference

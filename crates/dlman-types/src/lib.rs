@@ -297,6 +297,31 @@ pub struct Settings {
     pub max_retries: u32,
     /// Delay in seconds between retry attempts
     pub retry_delay_seconds: u32,
+    /// Proxy configuration
+    #[serde(default)]
+    pub proxy: ProxySettings,
+}
+
+/// Proxy configuration
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ProxySettings {
+    /// Proxy mode: "none", "system", or "manual"
+    #[serde(default = "default_proxy_mode")]
+    pub mode: String,
+    /// HTTP proxy URL (for manual mode)
+    pub http_proxy: Option<String>,
+    /// HTTPS proxy URL (for manual mode)
+    pub https_proxy: Option<String>,
+    /// Bypass proxy for these hosts (comma-separated)
+    pub no_proxy: Option<String>,
+    /// Proxy authentication username
+    pub username: Option<String>,
+    /// Proxy authentication password
+    pub password: Option<String>,
+}
+
+fn default_proxy_mode() -> String {
+    "system".to_string()
 }
 
 impl Default for Settings {
@@ -316,6 +341,7 @@ impl Default for Settings {
             remember_last_path: true,
             max_retries: 5,
             retry_delay_seconds: 30,
+            proxy: ProxySettings::default(),
         }
     }
 }

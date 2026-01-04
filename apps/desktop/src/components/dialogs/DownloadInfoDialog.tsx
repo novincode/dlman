@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import {
   Dialog,
   DialogContent,
@@ -14,6 +15,7 @@ import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Input } from '@/components/ui/input';
 import {
   FolderOpen,
   ExternalLink,
@@ -33,6 +35,10 @@ import {
   Timer,
   Layers,
   Activity,
+  Pencil,
+  Save,
+  X,
+  FolderInput,
 } from 'lucide-react';
 import { formatBytes } from '@/lib/utils';
 import { useQueueStore } from '@/stores/queues';
@@ -61,6 +67,68 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
   const [speedLimitKB, setSpeedLimitKB] = useState(
     download?.speed_limit ? Math.round(download.speed_limit / 1024) : 0
   );
+  
+  // Destination editing state
+  const [isEditingDestination, setIsEditingDestination] = useState(false);
+  const [editedDestination, setEditedDestination] = useState(download?.destination || '');
+  
+  // Reset destination edit state when dialog opens/closes
+  useEffect(() => {
+    if (open && download) {
+      setEditedDestination(download.destination);
+      setIsEditingDestination(false);
+    }
+  }, [open, download?.destination]);
+  
+  // Handle destination change
+  const handleSaveDestination = async () => {
+    if (!download || editedDestination === download.destination) {
+      setIsEditingDestination(false);
+      return;
+    }
+    
+    try {
+      // For completed downloads, we need to move the file
+      if (download.status === 'completed') {
+        await invoke('move_download_file', {
+          id: download.id,
+          newDestination: editedDestination,
+        });
+        toast.success('File moved successfully');
+      } else {
+        // For pending/queued/paused downloads, just update the destination
+        await invoke('update_download', {
+          id: download.id,
+          updates: { destination: editedDestination },
+        });
+        toast.success('Destination updated');
+      }
+      
+      updateDownload(download.id, { destination: editedDestination });
+      setIsEditingDestination(false);
+    } catch (err) {
+      console.error('Failed to update destination:', err);
+      toast.error(`Failed to update destination: ${err}`);
+    }
+  };
+  
+  // Browse for folder
+  const handleBrowseFolder = async () => {
+    try {
+      const selected = await openDialog({
+        directory: true,
+        multiple: false,
+        defaultPath: editedDestination,
+        title: 'Select Destination Folder',
+      });
+      
+      if (selected && typeof selected === 'string') {
+        setEditedDestination(selected);
+      }
+    } catch (err) {
+      console.error('Failed to open folder dialog:', err);
+    }
+  };
   
   // Calculate speed and ETA for active downloads
   useEffect(() => {
@@ -364,15 +432,72 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
 
           <Separator />
 
-          {/* Location */}
+          {/* Location - Editable */}
           <div className="space-y-2">
-            <p className="text-sm text-muted-foreground flex items-center gap-1">
-              <FolderOpen className="h-3.5 w-3.5" />
-              Save Location
-            </p>
-            <p className="text-sm font-mono bg-muted rounded px-2 py-1 break-all">
-              {download.destination}
-            </p>
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground flex items-center gap-1">
+                <FolderOpen className="h-3.5 w-3.5" />
+                Save Location
+              </p>
+              {!isEditingDestination && download.status !== 'downloading' && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 px-2"
+                  onClick={() => setIsEditingDestination(true)}
+                >
+                  <Pencil className="h-3 w-3 mr-1" />
+                  Edit
+                </Button>
+              )}
+            </div>
+            
+            {isEditingDestination ? (
+              <div className="space-y-2">
+                <div className="flex gap-2">
+                  <Input
+                    value={editedDestination}
+                    onChange={(e) => setEditedDestination(e.target.value)}
+                    className="font-mono text-sm"
+                    placeholder="Enter destination path"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="shrink-0"
+                    onClick={handleBrowseFolder}
+                  >
+                    <FolderInput className="h-4 w-4" />
+                  </Button>
+                </div>
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={handleSaveDestination}>
+                    <Save className="h-3.5 w-3.5 mr-1" />
+                    {download.status === 'completed' ? 'Move File' : 'Save'}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setIsEditingDestination(false);
+                      setEditedDestination(download.destination);
+                    }}
+                  >
+                    <X className="h-3.5 w-3.5 mr-1" />
+                    Cancel
+                  </Button>
+                </div>
+                {download.status === 'completed' && (
+                  <p className="text-xs text-muted-foreground">
+                    The downloaded file will be moved to the new location.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm font-mono bg-muted rounded px-2 py-1 break-all">
+                {download.destination}
+              </p>
+            )}
           </div>
 
           {/* URL */}

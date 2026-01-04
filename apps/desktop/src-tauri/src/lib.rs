@@ -136,6 +136,7 @@ pub fn run() {
             commands::delete_file_only,
             commands::file_exists,
             commands::execute_post_action,
+            commands::move_download_file,
             // Window commands
             commands::show_add_download_popup,
         ])

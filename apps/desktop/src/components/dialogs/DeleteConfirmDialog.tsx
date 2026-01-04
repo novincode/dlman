@@ -75,6 +75,22 @@ export function DeleteConfirmDialog({
     onConfirm(deleteFileFromSystem);
   }, [deleteFileFromSystem, onConfirm]);
 
+  // Handle Enter key to confirm
+  useEffect(() => {
+    if (!open) return;
+    
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Enter' && !e.defaultPrevented) {
+        e.preventDefault();
+        handleConfirm();
+        onOpenChange(false);
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [open, handleConfirm, onOpenChange]);
+
   const handleCancel = useCallback(() => {
     setDeleteFileFromSystem(false);
     onOpenChange(false);

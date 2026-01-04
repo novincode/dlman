@@ -100,6 +100,17 @@ export interface Settings {
   notify_sound: boolean;
   // Update settings
   auto_check_updates: boolean;
+  // Proxy settings
+  proxy?: ProxySettings;
+}
+
+export interface ProxySettings {
+  mode: 'none' | 'system' | 'manual';
+  http_proxy?: string;
+  https_proxy?: string;
+  no_proxy?: string;
+  username?: string;
+  password?: string;
 }
 
 export type Theme = "light" | "dark" | "system";

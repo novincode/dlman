@@ -47,9 +47,9 @@ import { useSettingsStore } from '@/stores/settings';
 import { useCategoryStore, Category } from '@/stores/categories';
 import { getIconComponent } from '@/lib/categoryIcons';
 import { CategoryDialog } from './CategoryDialog';
-import type { Settings as SettingsType, Theme } from '@/types';
+import type { Settings as SettingsType, Theme, ProxySettings } from '@/types';
 
-type SettingsTab = 'downloads' | 'categories' | 'notifications' | 'appearance' | 'extensions' | 'advanced';
+type SettingsTab = 'downloads' | 'categories' | 'notifications' | 'appearance' | 'extensions' | 'proxy' | 'advanced';
 
 const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
   { id: 'downloads', label: 'Downloads', icon: <Download className="h-4 w-4" /> },
@@ -57,6 +57,7 @@ const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
   { id: 'notifications', label: 'Notifications', icon: <Bell className="h-4 w-4" /> },
   { id: 'appearance', label: 'Appearance', icon: <Palette className="h-4 w-4" /> },
   { id: 'extensions', label: 'Extensions', icon: <Layers className="h-4 w-4" /> },
+  { id: 'proxy', label: 'Proxy', icon: <Network className="h-4 w-4" /> },
   { id: 'advanced', label: 'Advanced', icon: <Gauge className="h-4 w-4" /> },
 ];
 
@@ -729,6 +730,170 @@ export function SettingsDialog() {
                   </p>
                 </div>
               </div>
+            </div>
+          </div>
+        );
+
+      case 'proxy':
+        return (
+          <div className="space-y-6">
+            <div className="space-y-4">
+              <h3 className="text-sm font-medium flex items-center gap-2">
+                <Network className="h-4 w-4" />
+                Proxy Configuration
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Configure how DLMan connects to the internet. Choose between system proxy, manual configuration, or direct connection.
+              </p>
+
+              {/* Proxy Mode Selection */}
+              <div className="space-y-3">
+                <Label>Proxy Mode</Label>
+                <div className="grid gap-2">
+                  {[
+                    { value: 'system', label: 'Use System Proxy', description: 'Use your operating system\'s proxy settings' },
+                    { value: 'none', label: 'No Proxy', description: 'Connect directly without any proxy' },
+                    { value: 'manual', label: 'Manual Configuration', description: 'Specify proxy servers manually' },
+                  ].map((option) => (
+                    <div
+                      key={option.value}
+                      className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                        (localSettings.proxy?.mode || 'system') === option.value
+                          ? 'border-primary bg-primary/5'
+                          : 'border-border hover:border-muted-foreground/50'
+                      }`}
+                      onClick={() => {
+                        const newProxy = { 
+                          ...localSettings.proxy, 
+                          mode: option.value 
+                        };
+                        handleChange('proxy', newProxy as ProxySettings);
+                      }}
+                    >
+                      <div className={`mt-0.5 h-4 w-4 rounded-full border-2 flex items-center justify-center ${
+                        (localSettings.proxy?.mode || 'system') === option.value
+                          ? 'border-primary'
+                          : 'border-muted-foreground/50'
+                      }`}>
+                        {(localSettings.proxy?.mode || 'system') === option.value && (
+                          <div className="h-2 w-2 rounded-full bg-primary" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-medium text-sm">{option.label}</p>
+                        <p className="text-xs text-muted-foreground">{option.description}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Manual Proxy Settings */}
+              {localSettings.proxy?.mode === 'manual' && (
+                <div className="space-y-4 pl-4 border-l-2 border-primary/30">
+                  <div className="space-y-2">
+                    <Label htmlFor="httpProxy">HTTP Proxy</Label>
+                    <Input
+                      id="httpProxy"
+                      type="text"
+                      placeholder="http://proxy.example.com:8080"
+                      value={localSettings.proxy?.http_proxy || ''}
+                      onChange={(e) => {
+                        const newProxy = {
+                          ...localSettings.proxy,
+                          http_proxy: e.target.value || undefined,
+                        };
+                        handleChange('proxy', newProxy as ProxySettings);
+                      }}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Proxy server for HTTP connections
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="httpsProxy">HTTPS Proxy</Label>
+                    <Input
+                      id="httpsProxy"
+                      type="text"
+                      placeholder="http://proxy.example.com:8080"
+                      value={localSettings.proxy?.https_proxy || ''}
+                      onChange={(e) => {
+                        const newProxy = {
+                          ...localSettings.proxy,
+                          https_proxy: e.target.value || undefined,
+                        };
+                        handleChange('proxy', newProxy as ProxySettings);
+                      }}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Proxy server for HTTPS connections (usually the same as HTTP)
+                    </p>
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-2">
+                    <Label htmlFor="noProxy">Bypass Proxy For</Label>
+                    <Input
+                      id="noProxy"
+                      type="text"
+                      placeholder="localhost, 127.0.0.1, .local"
+                      value={localSettings.proxy?.no_proxy || ''}
+                      onChange={(e) => {
+                        const newProxy = {
+                          ...localSettings.proxy,
+                          no_proxy: e.target.value || undefined,
+                        };
+                        handleChange('proxy', newProxy as ProxySettings);
+                      }}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Comma-separated list of hosts to bypass the proxy
+                    </p>
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-4">
+                    <h4 className="text-sm font-medium">Proxy Authentication (Optional)</h4>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="proxyUsername">Username</Label>
+                        <Input
+                          id="proxyUsername"
+                          type="text"
+                          placeholder="Username"
+                          value={localSettings.proxy?.username || ''}
+                          onChange={(e) => {
+                            const newProxy = {
+                              ...localSettings.proxy,
+                              username: e.target.value || undefined,
+                            };
+                            handleChange('proxy', newProxy as ProxySettings);
+                          }}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="proxyPassword">Password</Label>
+                        <Input
+                          id="proxyPassword"
+                          type="password"
+                          placeholder="Password"
+                          value={localSettings.proxy?.password || ''}
+                          onChange={(e) => {
+                            const newProxy = {
+                              ...localSettings.proxy,
+                              password: e.target.value || undefined,
+                            };
+                            handleChange('proxy', newProxy as ProxySettings);
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         );

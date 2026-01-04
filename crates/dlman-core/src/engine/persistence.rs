@@ -82,7 +82,8 @@ impl DownloadDatabase {
                 browser_integration_port INTEGER NOT NULL DEFAULT 7899,
                 remember_last_path INTEGER NOT NULL DEFAULT 1,
                 max_retries INTEGER NOT NULL DEFAULT 5,
-                retry_delay_seconds INTEGER NOT NULL DEFAULT 30
+                retry_delay_seconds INTEGER NOT NULL DEFAULT 30,
+                proxy_settings TEXT
             );
             
             CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
@@ -93,7 +94,25 @@ impl DownloadDatabase {
         .execute(&pool)
         .await?;
         
+        // Run migrations for existing databases
+        Self::run_migrations(&pool).await?;
+        
         Ok(Self { pool })
+    }
+    
+    /// Run database migrations for schema updates
+    async fn run_migrations(pool: &sqlx::SqlitePool) -> Result<(), DlmanError> {
+        // Migration: Add proxy_settings column if it doesn't exist
+        sqlx::query(
+            r#"
+            ALTER TABLE settings ADD COLUMN proxy_settings TEXT
+            "#,
+        )
+        .execute(pool)
+        .await
+        .ok(); // Ignore error if column already exists
+        
+        Ok(())
     }
     
     /// Save or update a download
@@ -427,6 +446,10 @@ impl DownloadDatabase {
                     remember_last_path: row.get::<i64, _>("remember_last_path") != 0,
                     max_retries: row.get::<i64, _>("max_retries") as u32,
                     retry_delay_seconds: row.get::<i64, _>("retry_delay_seconds") as u32,
+                    // Proxy settings loaded from JSON column or default
+                    proxy: row.get::<Option<String>, _>("proxy_settings")
+                        .and_then(|s| serde_json::from_str(&s).ok())
+                        .unwrap_or_default(),
                 })
             }
             None => {
@@ -446,13 +469,17 @@ impl DownloadDatabase {
             Theme::System => "system",
         };
         
+        let proxy_json = serde_json::to_string(&settings.proxy)
+            .unwrap_or_else(|_| "{}".to_string());
+        
         sqlx::query(
             r#"
             INSERT INTO settings (
                 id, default_download_path, max_concurrent_downloads, default_segments,
                 global_speed_limit, theme, dev_mode, minimize_to_tray, start_on_boot,
-                browser_integration_port, remember_last_path, max_retries, retry_delay_seconds
-            ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                browser_integration_port, remember_last_path, max_retries, retry_delay_seconds,
+                proxy_settings
+            ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 default_download_path = excluded.default_download_path,
                 max_concurrent_downloads = excluded.max_concurrent_downloads,
@@ -465,7 +492,8 @@ impl DownloadDatabase {
                 browser_integration_port = excluded.browser_integration_port,
                 remember_last_path = excluded.remember_last_path,
                 max_retries = excluded.max_retries,
-                retry_delay_seconds = excluded.retry_delay_seconds
+                retry_delay_seconds = excluded.retry_delay_seconds,
+                proxy_settings = excluded.proxy_settings
             "#,
         )
         .bind(settings.default_download_path.to_string_lossy().to_string())
@@ -480,6 +508,7 @@ impl DownloadDatabase {
         .bind(if settings.remember_last_path { 1i64 } else { 0i64 })
         .bind(settings.max_retries as i64)
         .bind(settings.retry_delay_seconds as i64)
+        .bind(proxy_json)
         .execute(&self.pool)
         .await?;
         
