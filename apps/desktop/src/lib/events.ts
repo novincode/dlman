@@ -1,10 +1,18 @@
 // Tauri event listener setup
 
 import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
 import { useDownloadStore } from "@/stores/downloads";
+import { useQueueStore } from "@/stores/queues";
 import { useUIStore } from "@/stores/ui";
 import { CoreEvent } from "@/types";
+import {
+  notifyDownloadComplete,
+  notifyDownloadFailed,
+  notifyQueueComplete,
+  notifyQueueStarted,
+} from "./notifications";
 
 // Check if we're running in Tauri context
 const isTauri = () => typeof window !== 'undefined' && window.__TAURI_INTERNALS__ !== undefined;
@@ -133,12 +141,27 @@ export function setupEventListeners(): () => void {
       // Show toast notification for completed/failed downloads
       if (data.payload.status === "completed") {
         const download = useDownloadStore.getState().downloads.get(data.payload.id);
-        toast.success(`Download completed: ${download?.filename || 'Unknown file'}`);
+        const filename = download?.filename || 'Unknown file';
+        toast.success(`Download completed: ${filename}`);
+        // Also send OS notification if app not focused
+        if (document.hidden && download) {
+          notifyDownloadComplete(filename, download.destination);
+        }
+        
+        // Check if all downloads in this queue are complete
+        if (download) {
+          checkQueueCompletion(download.queue_id);
+        }
       } else if (data.payload.status === "failed" && data.payload.error) {
         const download = useDownloadStore.getState().downloads.get(data.payload.id);
-        toast.error(`Download failed: ${download?.filename || 'Unknown file'}`, {
+        const filename = download?.filename || 'Unknown file';
+        toast.error(`Download failed: ${filename}`, {
           description: data.payload.error,
         });
+        // Also send OS notification if app not focused
+        if (document.hidden) {
+          notifyDownloadFailed(filename, data.payload.error);
+        }
       }
     }
   }).then((fn) => unlisten.push(fn)).catch(console.error);
@@ -164,6 +187,36 @@ export function setupEventListeners(): () => void {
     const data = event.payload;
     if (data.type === "DownloadRemoved") {
       useDownloadStore.getState().removeDownload(data.payload.id);
+    }
+  }).then((fn) => unlisten.push(fn)).catch(console.error);
+
+  // Listen for queue started events (scheduled starts)
+  listen<CoreEvent>("queue-started", (event) => {
+    const data = event.payload;
+    if (data.type === "QueueStarted") {
+      const queues = useQueueStore.getState().queues;
+      const queue = queues.get(data.payload.id);
+      if (queue) {
+        toast.info(`Queue "${queue.name}" started`);
+        // Send OS notification
+        notifyQueueStarted(queue.name);
+      }
+    }
+  }).then((fn) => unlisten.push(fn)).catch(console.error);
+
+  // Listen for queue completed events
+  listen<CoreEvent>("queue-completed", (event) => {
+    const data = event.payload;
+    if (data.type === "QueueCompleted") {
+      const queues = useQueueStore.getState().queues;
+      const queue = queues.get(data.payload.id);
+      if (queue) {
+        toast.success(`Queue "${queue.name}" stopped`);
+        // Send OS notification if app not focused
+        if (document.hidden) {
+          notifyQueueComplete(queue.name);
+        }
+      }
     }
   }).then((fn) => unlisten.push(fn)).catch(console.error);
 
@@ -193,4 +246,51 @@ export function setupEventListeners(): () => void {
   return () => {
     unlisten.forEach((fn) => fn());
   };
+}
+
+/**
+ * Check if all downloads in a queue are complete and execute post-action if so
+ */
+async function checkQueueCompletion(queueId: string) {
+  const downloadStore = useDownloadStore.getState();
+  const queueStore = useQueueStore.getState();
+  const downloads = Array.from(downloadStore.downloads.values());
+  const queueDownloads = downloads.filter((d) => d.queue_id === queueId);
+  
+  // Check if there are any non-completed, non-failed downloads
+  const pendingDownloads = queueDownloads.filter(
+    (d) => d.status !== 'completed' && d.status !== 'failed'
+  );
+  
+  if (pendingDownloads.length > 0 || queueDownloads.length === 0) {
+    return; // Still have pending downloads or no downloads in queue
+  }
+  
+  // All downloads complete/failed - check for post-action
+  const queue = queueStore.queues.get(queueId);
+  if (!queue) return;
+  
+  const postAction = queue.post_action;
+  if (!postAction || postAction === 'none') return;
+  
+  // Notify about queue completion
+  notifyQueueComplete(queue.name);
+  
+  // Execute the post-action
+  try {
+    if (typeof postAction === 'object' && 'run_command' in postAction) {
+      await invoke('execute_post_action', { 
+        action: 'run_command', 
+        command: postAction.run_command 
+      });
+      toast.info(`Executed command for queue "${queue.name}"`);
+    } else if (postAction !== 'notify') {
+      // Sleep, shutdown, hibernate
+      toast.info(`Executing ${postAction}...`, { duration: 5000 });
+      await invoke('execute_post_action', { action: postAction });
+    }
+  } catch (err) {
+    console.error('Failed to execute post-action:', err);
+    toast.error(`Failed to execute ${postAction}: ${err}`);
+  }
 }

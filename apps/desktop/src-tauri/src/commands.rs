@@ -273,6 +273,28 @@ pub async fn stop_queue(state: State<'_, AppState>, id: String) -> Result<(), St
         .await
 }
 
+/// Queue info with schedule timing
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QueueScheduleInfo {
+    pub queue_id: String,
+    pub seconds_until_start: Option<u64>,
+}
+
+/// Get schedule info for all queues with time until next start
+#[tauri::command]
+pub async fn get_queue_schedules(state: State<'_, AppState>) -> Result<Vec<QueueScheduleInfo>, String> {
+    state
+        .with_core_async(|core| async move {
+            let queues = core.get_queues().await;
+            Ok(queues.iter().map(|q| QueueScheduleInfo {
+                queue_id: q.id.to_string(),
+                seconds_until_start: core.get_time_until_next_start(q),
+            }).collect())
+        })
+        .await
+}
+
 // ============================================================================
 // Settings Commands
 // ============================================================================
@@ -457,6 +479,110 @@ pub async fn delete_file_only(path: String) -> Result<(), String> {
 pub async fn file_exists(path: String) -> Result<bool, String> {
     let path = PathBuf::from(&path);
     Ok(path.exists())
+}
+
+/// Execute a post-download action (shutdown, sleep, hibernate, run_command)
+#[tauri::command]
+pub async fn execute_post_action(action: String, command: Option<String>) -> Result<(), String> {
+    match action.as_str() {
+        "none" => Ok(()),
+        "notify" => Ok(()), // Handled on frontend via notifications
+        "sleep" => {
+            #[cfg(target_os = "macos")]
+            {
+                std::process::Command::new("pmset")
+                    .args(["sleepnow"])
+                    .spawn()
+                    .map_err(|e| format!("Failed to sleep: {}", e))?;
+            }
+            #[cfg(target_os = "windows")]
+            {
+                std::process::Command::new("rundll32.exe")
+                    .args(["powrprof.dll,SetSuspendState", "0", "1", "0"])
+                    .spawn()
+                    .map_err(|e| format!("Failed to sleep: {}", e))?;
+            }
+            #[cfg(target_os = "linux")]
+            {
+                std::process::Command::new("systemctl")
+                    .args(["suspend"])
+                    .spawn()
+                    .map_err(|e| format!("Failed to sleep: {}", e))?;
+            }
+            Ok(())
+        }
+        "shutdown" => {
+            #[cfg(target_os = "macos")]
+            {
+                std::process::Command::new("osascript")
+                    .args(["-e", "tell application \"System Events\" to shut down"])
+                    .spawn()
+                    .map_err(|e| format!("Failed to shutdown: {}", e))?;
+            }
+            #[cfg(target_os = "windows")]
+            {
+                std::process::Command::new("shutdown")
+                    .args(["/s", "/t", "30"])
+                    .spawn()
+                    .map_err(|e| format!("Failed to shutdown: {}", e))?;
+            }
+            #[cfg(target_os = "linux")]
+            {
+                std::process::Command::new("shutdown")
+                    .args(["-h", "now"])
+                    .spawn()
+                    .map_err(|e| format!("Failed to shutdown: {}", e))?;
+            }
+            Ok(())
+        }
+        "hibernate" => {
+            #[cfg(target_os = "macos")]
+            {
+                // macOS doesn't have true hibernate, use sleep instead
+                std::process::Command::new("pmset")
+                    .args(["sleepnow"])
+                    .spawn()
+                    .map_err(|e| format!("Failed to hibernate: {}", e))?;
+            }
+            #[cfg(target_os = "windows")]
+            {
+                std::process::Command::new("shutdown")
+                    .args(["/h"])
+                    .spawn()
+                    .map_err(|e| format!("Failed to hibernate: {}", e))?;
+            }
+            #[cfg(target_os = "linux")]
+            {
+                std::process::Command::new("systemctl")
+                    .args(["hibernate"])
+                    .spawn()
+                    .map_err(|e| format!("Failed to hibernate: {}", e))?;
+            }
+            Ok(())
+        }
+        "run_command" => {
+            if let Some(cmd) = command {
+                #[cfg(target_os = "windows")]
+                {
+                    std::process::Command::new("cmd")
+                        .args(["/C", &cmd])
+                        .spawn()
+                        .map_err(|e| format!("Failed to run command: {}", e))?;
+                }
+                #[cfg(not(target_os = "windows"))]
+                {
+                    std::process::Command::new("sh")
+                        .args(["-c", &cmd])
+                        .spawn()
+                        .map_err(|e| format!("Failed to run command: {}", e))?;
+                }
+                Ok(())
+            } else {
+                Err("No command provided".to_string())
+            }
+        }
+        _ => Err(format!("Unknown action: {}", action)),
+    }
 }
 
 

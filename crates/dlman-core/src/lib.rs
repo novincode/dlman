@@ -16,11 +16,13 @@
 mod engine;
 mod error;
 mod queue;
+mod scheduler;
 mod storage;
 
 pub use engine::*;
 pub use error::*;
 pub use queue::*;
+pub use scheduler::*;
 pub use storage::*;
 
 use dlman_types::{CoreEvent, Download, DownloadStatus, LinkInfo, Queue, QueueOptions, Settings};
@@ -37,6 +39,8 @@ pub struct DlmanCore {
     pub download_manager: Arc<DownloadManager>,
     /// Queue manager
     queue_manager: Arc<QueueManager>,
+    /// Queue scheduler (runs background task for timed starts/stops)
+    scheduler: Arc<QueueScheduler>,
     /// Legacy storage for queues (JSON files) - settings moved to SQLite
     storage: Arc<Storage>,
     /// Application settings (cached from SQLite)
@@ -69,13 +73,22 @@ impl DlmanCore {
         let queues = storage.load_queues().await?;
         let queue_manager = Arc::new(QueueManager::new(queues, event_tx.clone()));
         
-        Ok(Self {
+        // Initialize scheduler
+        let scheduler = Arc::new(QueueScheduler::new(queue_manager.clone(), event_tx.clone()));
+        
+        let core = Self {
             download_manager,
             queue_manager,
+            scheduler,
             storage: Arc::new(storage),
             settings: Arc::new(RwLock::new(settings)),
             event_tx,
-        })
+        };
+        
+        // Start the scheduler background task
+        core.scheduler.start(core.clone()).await;
+        
+        Ok(core)
     }
     
     /// Subscribe to core events
@@ -466,6 +479,11 @@ impl DlmanCore {
         }
         
         Ok(())
+    }
+    
+    /// Get time until next scheduled start for a queue (in seconds)
+    pub fn get_time_until_next_start(&self, queue: &Queue) -> Option<u64> {
+        time_until_next_start(queue).map(|d| d.as_secs())
     }
     
     // ========================================================================

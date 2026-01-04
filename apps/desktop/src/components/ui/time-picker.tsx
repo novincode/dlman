@@ -168,17 +168,38 @@ export function TimePicker({
                 size="icon"
                 className="h-8 w-8"
                 onClick={incrementHours}
+                tabIndex={-1}
               >
                 <ChevronUp className="h-4 w-4" />
               </Button>
-              <div className="flex h-12 w-14 items-center justify-center rounded-lg bg-muted text-2xl font-semibold tabular-nums">
-                {timeState.hours.toString().padStart(2, "0")}
-              </div>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={timeState.hours.toString().padStart(2, "0")}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value) || 0;
+                  const maxHours = use24Hour ? 23 : 12;
+                  const minHours = use24Hour ? 0 : 1;
+                  const clamped = Math.max(minHours, Math.min(maxHours, val));
+                  setTimeState(prev => ({ ...prev, hours: clamped }));
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    incrementHours();
+                  } else if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    decrementHours();
+                  }
+                }}
+                className="flex h-12 w-14 items-center justify-center text-center rounded-lg bg-muted text-2xl font-semibold tabular-nums border-0 focus:ring-2 focus:ring-primary focus:outline-none"
+              />
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
                 onClick={decrementHours}
+                tabIndex={-1}
               >
                 <ChevronDown className="h-4 w-4" />
               </Button>
@@ -194,17 +215,36 @@ export function TimePicker({
                 size="icon"
                 className="h-8 w-8"
                 onClick={incrementMinutes}
+                tabIndex={-1}
               >
                 <ChevronUp className="h-4 w-4" />
               </Button>
-              <div className="flex h-12 w-14 items-center justify-center rounded-lg bg-muted text-2xl font-semibold tabular-nums">
-                {timeState.minutes.toString().padStart(2, "0")}
-              </div>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={timeState.minutes.toString().padStart(2, "0")}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value) || 0;
+                  const clamped = Math.max(0, Math.min(59, val));
+                  setTimeState(prev => ({ ...prev, minutes: clamped }));
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    incrementMinutes();
+                  } else if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    decrementMinutes();
+                  }
+                }}
+                className="flex h-12 w-14 items-center justify-center text-center rounded-lg bg-muted text-2xl font-semibold tabular-nums border-0 focus:ring-2 focus:ring-primary focus:outline-none"
+              />
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
                 onClick={decrementMinutes}
+                tabIndex={-1}
               >
                 <ChevronDown className="h-4 w-4" />
               </Button>

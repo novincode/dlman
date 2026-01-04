@@ -32,6 +32,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             // Enable forwarding Rust logs to the frontend Dev Console.
             log_forward::set_app_handle(app.handle().clone());
@@ -83,6 +84,7 @@ pub fn run() {
             commands::delete_queue,
             commands::start_queue,
             commands::stop_queue,
+            commands::get_queue_schedules,
             // Settings commands
             commands::get_settings,
             commands::update_settings,
@@ -95,6 +97,7 @@ pub fn run() {
             commands::open_file,
             commands::delete_file_only,
             commands::file_exists,
+            commands::execute_post_action,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

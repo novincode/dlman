@@ -11,6 +11,7 @@ import {
   Trash2,
   Play,
   Pause,
+  Clock,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
@@ -33,6 +34,7 @@ import { useQueueStore, useQueuesArray, DEFAULT_QUEUE_ID } from "@/stores/queues
 import { cn } from "@/lib/utils";
 import { QueueDialog } from "@/components/dialogs/QueueDialog";
 import { DroppableSidebarItem } from "@/components/dnd/DroppableSidebarItem";
+import { useQueueSchedules, formatTimeUntil } from "@/hooks/useQueueSchedules";
 import type { Queue } from "@/types";
 
 export function QueueList() {
@@ -41,6 +43,7 @@ export function QueueList() {
   const [showQueueDialog, setShowQueueDialog] = useState(false);
   const queues = useQueuesArray();
   const { selectedQueueId, setSelectedQueue, removeQueue } = useQueueStore();
+  const { schedules } = useQueueSchedules();
 
   const handleAddQueue = useCallback(() => {
     setEditingQueue(null);
@@ -131,6 +134,7 @@ export function QueueList() {
                       queue={queue}
                       isSelected={selectedQueueId === queue.id}
                       isDefault={queue.id === DEFAULT_QUEUE_ID}
+                      secondsUntilStart={schedules.get(queue.id)}
                       onClick={() => setSelectedQueue(queue.id)}
                       onEdit={() => handleEditQueue(queue)}
                       onDelete={() => handleDeleteQueue(queue)}
@@ -170,6 +174,7 @@ interface QueueItemProps {
   queue: Queue;
   isSelected?: boolean;
   isDefault?: boolean;
+  secondsUntilStart?: number | null;
   onClick?: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
@@ -181,12 +186,14 @@ function QueueItem({
   queue,
   isSelected,
   isDefault,
+  secondsUntilStart,
   onClick,
   onEdit,
   onDelete,
   onStart,
   onPause,
 }: QueueItemProps) {
+  const timeUntil = formatTimeUntil(secondsUntilStart);
 
   const renderMenuItems = (isDropdown: boolean) => {
     const MenuItem = isDropdown ? DropdownMenuItem : ContextMenuItem;
@@ -251,6 +258,14 @@ function QueueItem({
 
           {/* Name */}
           <span className="text-sm truncate flex-1">{queue.name}</span>
+
+          {/* Scheduled start countdown */}
+          {timeUntil && (
+            <span className="flex items-center gap-1 text-[10px] text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded" title="Time until scheduled start">
+              <Clock className="h-3 w-3" />
+              {timeUntil}
+            </span>
+          )}
 
           {/* More menu (not for default queue) */}
           <DropdownMenu>

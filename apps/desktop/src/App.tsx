@@ -20,6 +20,7 @@ import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useUpdateCheck } from "@/hooks/useUpdateCheck";
 import { parseUrls } from "@/lib/utils";
 import { initSystemIntegrations } from "@/lib/system-tray";
+import { initNotifications } from "@/lib/notifications";
 
 // Check if we're in Tauri context
 const isTauri = () => typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
@@ -55,6 +56,7 @@ function AppContent() {
   useEffect(() => {
     if (isTauri()) {
       initSystemIntegrations().catch(console.error);
+      initNotifications().catch(console.error);
     }
   }, []);
 
