@@ -40,6 +40,7 @@ DLMan is a **free, open-source download manager** that runs on Windows, macOS, a
 - Multi-segment parallel downloads — split files into multiple connections
 - Configurable segment count (1-32 per download)
 - Per-download and per-queue speed limits
+- Real-time network usage monitoring
 
 **Reliability**
 - Pause and resume downloads anytime
@@ -47,17 +48,24 @@ DLMan is a **free, open-source download manager** that runs on Windows, macOS, a
 - Automatic retry for failed downloads
 - SQLite-based crash-safe persistence
 
+**Scheduling**
+- Schedule queues to start/stop at specific times
+- Select active days of the week
+- Post-download actions (sleep, shutdown, run command)
+- Automatic queue management
+
 **Organization**
 - Queue management with priorities
 - Categories with custom download folders
 - Batch import multiple URLs at once
-- Drag and drop support
+- Drag and drop support (single or multiple links)
 
 **Interface**
 - Modern, clean UI
 - Dark and light themes
 - Real-time progress with segment visualization
 - Desktop notifications
+- In-app update notifications
 
 **More**
 - CLI tool included

@@ -1,6 +1,6 @@
 # DLMan Architecture
 
-> System design documentation for DLMan v1.3.0+
+> System design documentation for DLMan v1.5.0+
 
 ## Project Structure
 
@@ -36,12 +36,13 @@ dlman/
 │   ├── dlman-core/              # Core download engine
 │   │   ├── src/
 │   │   │   ├── engine/          # Download engine
-│   │   │   │   ├── persistence.rs  # SQLite database (downloads, segments, settings)
+│   │   │   │   ├── persistence.rs  # SQLite database
 │   │   │   │   ├── manager.rs      # Download manager
 │   │   │   │   ├── download_task.rs
 │   │   │   │   ├── segment_worker.rs
 │   │   │   │   └── rate_limiter.rs
 │   │   │   ├── queue.rs         # Queue management
+│   │   │   ├── scheduler.rs     # Queue scheduler (v1.5.0+)
 │   │   │   ├── storage.rs       # JSON storage for queues
 │   │   │   ├── error.rs
 │   │   │   └── lib.rs

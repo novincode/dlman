@@ -1,4 +1,4 @@
-# DLMan Core - Download Engine (v1.3.0)
+# DLMan Core - Download Engine (v1.5.0)
 
 ## Overview
 
@@ -20,10 +20,17 @@ The `dlman-core` crate is the heart of DLMan. It handles all download operations
 
 ### Queue Management
 - Priority-based scheduling
-- Time-based scheduling (start/stop times)
+- Time-based scheduling (start/stop times, weekdays)
 - Concurrent download limits per queue
 - Per-queue speed limits
-- Post-completion actions (shutdown, sleep, etc.)
+- Post-completion actions (shutdown, sleep, hibernate, run command)
+
+### Queue Scheduler (v1.5.0+)
+- Background scheduler checks every 30 seconds
+- Automatically starts queues at scheduled time
+- Stops queues at scheduled stop time
+- Respects day-of-week settings
+- Calculates countdown to next scheduled start
 
 ### Speed Control
 - Per-download speed limits (override queue limit)
@@ -239,3 +246,201 @@ Errors are:
 - Saved to download record
 - Surfaced to UI
 - Retryable when possible
+
+## Multi-Segment Download Engine
+
+### How It Works
+
+When you download a file, DLMan can split it into multiple segments that download in parallel. This can significantly speed up downloads, especially for large files.
+
+```
+                    URL: https://example.com/large-file.zip (1 GB)
+                                        │
+                                        ▼
+                    ┌───────────────────────────────────────┐
+                    │           DownloadManager              │
+                    │  - Probes URL for file info            │
+                    │  - Checks Accept-Ranges header         │
+                    │  - Creates segment plan                │
+                    └───────────────────────────────────────┘
+                                        │
+                    ┌───────────────────┼───────────────────┐
+                    │                   │                   │
+                    ▼                   ▼                   ▼
+             ┌──────────┐        ┌──────────┐        ┌──────────┐
+             │ Segment 1│        │ Segment 2│        │ Segment N│
+             │ 0-256MB  │        │256-512MB │        │  ...     │
+             └──────────┘        └──────────┘        └──────────┘
+                    │                   │                   │
+                    │     HTTP GET with Range header        │
+                    ▼                   ▼                   ▼
+             ┌──────────┐        ┌──────────┐        ┌──────────┐
+             │  Worker  │        │  Worker  │        │  Worker  │
+             │  Task    │        │  Task    │        │  Task    │
+             └──────────┘        └──────────┘        └──────────┘
+                    │                   │                   │
+                    └───────────────────┼───────────────────┘
+                                        ▼
+                    ┌───────────────────────────────────────┐
+                    │         Destination File               │
+                    │  (Segments write to their positions)   │
+                    └───────────────────────────────────────┘
+```
+
+### Segment Worker
+
+Each segment is handled by an async task (`SegmentWorker`) that:
+
+1. **Sends HTTP request** with `Range: bytes=start-end` header
+2. **Streams data** in chunks (8KB by default)
+3. **Writes to file** at the correct offset using `seek`
+4. **Reports progress** every 100ms via channels
+5. **Handles errors** with automatic retry
+
+```rust
+// Simplified segment worker logic
+async fn download_segment(segment: &Segment, file: &File) {
+    let response = client.get(&url)
+        .header("Range", format!("bytes={}-{}", start, end))
+        .send().await?;
+    
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        file.seek(SeekFrom::Start(current_position))?;
+        file.write_all(&chunk)?;
+        update_progress(chunk.len());
+    }
+}
+```
+
+### Pause & Resume
+
+**Pausing a download:**
+1. Cancels all segment worker tasks
+2. Saves current progress to SQLite immediately
+3. Each segment records its `downloaded_bytes`
+
+**Resuming a download:**
+1. Loads segment progress from SQLite
+2. Restarts workers from where they left off
+3. Uses `Range: bytes=current-end` header
+
+```
+Before pause:     [=========>          ] Segment 1: 40%
+After resume:     Segment resumes from byte 40%
+                  [          >---------]
+```
+
+### Speed Limiting
+
+DLMan uses a **token bucket** algorithm for smooth speed limiting:
+
+```
+                    ┌─────────────────────────────┐
+                    │        Token Bucket          │
+                    │  Capacity: speed_limit bytes │
+                    │  Refill: speed_limit/sec     │
+                    └─────────────────────────────┘
+                                 │
+         ┌───────────────────────┼───────────────────────┐
+         │                       │                       │
+         ▼                       ▼                       ▼
+    ┌─────────┐            ┌─────────┐            ┌─────────┐
+    │Segment 1│            │Segment 2│            │Segment 3│
+    │ Request │            │ Request │            │ Request │
+    │ tokens  │            │ tokens  │            │ tokens  │
+    └─────────┘            └─────────┘            └─────────┘
+```
+
+Speed limits can be set at multiple levels:
+1. **Per-download** - Highest priority
+2. **Per-queue** - Applied to all downloads in queue
+3. **Global** - App-wide limit
+
+### Crash Recovery
+
+DLMan persists state to SQLite after every chunk:
+
+```sql
+-- Segment progress is saved continuously
+UPDATE segments 
+SET downloaded_bytes = 157286400
+WHERE download_id = ? AND segment_index = ?
+```
+
+On restart:
+1. Load incomplete downloads from SQLite
+2. Check which segments are incomplete
+3. Resume from last saved position
+
+## Queue Scheduler
+
+### How It Works
+
+The `QueueScheduler` runs as a background task, checking schedules every 30 seconds:
+
+```rust
+pub struct QueueScheduler {
+    queue_manager: Arc<QueueManager>,
+    download_manager: Arc<DownloadManager>,
+}
+
+impl QueueScheduler {
+    pub fn start(self: Arc<Self>) {
+        tokio::spawn(async move {
+            loop {
+                self.check_schedules().await;
+                tokio::time::sleep(Duration::from_secs(30)).await;
+            }
+        });
+    }
+}
+```
+
+### Schedule Checking
+
+```
+Every 30 seconds:
+    │
+    ├─ For each queue with schedule.enabled = true:
+    │   │
+    │   ├─ Is current day in schedule.days?
+    │   │   └─ No → Skip
+    │   │
+    │   ├─ Is current time >= start_time?
+    │   │   └─ Yes → Start queue
+    │   │
+    │   └─ Is current time >= stop_time?
+    │       └─ Yes → Stop queue
+```
+
+### Time Until Next Start
+
+The scheduler can calculate when a queue will next start:
+
+```rust
+pub fn time_until_next_start(schedule: &Schedule) -> Option<Duration> {
+    // Find next day in schedule.days that matches
+    // Calculate seconds until start_time on that day
+}
+```
+
+This powers the countdown display in the UI sidebar.
+
+## Post-Download Actions
+
+When a queue completes all downloads:
+
+| Action | What Happens |
+|--------|--------------|
+| `None` | Nothing |
+| `Notify` | OS notification |
+| `Sleep` | Put computer to sleep |
+| `Shutdown` | Shutdown computer |
+| `Hibernate` | Hibernate computer |
+| `RunCommand(cmd)` | Execute shell command |
+
+Implementation uses platform-specific commands:
+- **macOS**: `pmset sleepnow`, `osascript` for shutdown
+- **Windows**: `shutdown /s`, `rundll32 powrprof.dll`
+- **Linux**: `systemctl suspend`, `systemctl poweroff`
