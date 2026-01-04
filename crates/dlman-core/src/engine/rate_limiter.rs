@@ -109,8 +109,15 @@ impl RateLimiter {
                 let consumed = state.tokens;
                 state.tokens = 0.0;
                 
-                // Return remaining wait time
-                Duration::from_secs_f64(wait_secs) - Duration::from_secs_f64(consumed / state.refill_rate as f64)
+                // Calculate remaining wait time using saturating subtraction to prevent overflow
+                // This can happen due to floating point rounding or when consumed >= needed
+                let consumed_time_secs = consumed / state.refill_rate as f64;
+                if consumed_time_secs >= wait_secs {
+                    // We've already "consumed" enough time, no need to wait
+                    Duration::ZERO
+                } else {
+                    Duration::from_secs_f64(wait_secs - consumed_time_secs)
+                }
             };
             
             // Wait outside the lock so other segments can also acquire
