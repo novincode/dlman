@@ -28,6 +28,7 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
 directories = { workspace = true }
+urlencoding = "2"
 
 # Browser extension integration server
 axum = { version = "0.7", features = ["ws"] }

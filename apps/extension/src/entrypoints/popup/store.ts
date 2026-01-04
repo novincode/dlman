@@ -152,7 +152,12 @@ export const usePopupStore = create<PopupState>((set, get) => ({
     set((state) => ({
       activeDownloads: state.activeDownloads.map((d) =>
         d.id === event.id
-          ? { ...d, downloaded: event.downloaded, size: event.total || d.size }
+          ? { 
+              ...d, 
+              downloaded: event.downloaded, 
+              size: event.total || d.size,
+              speed: event.speed,
+            }
           : d
       ),
     }));

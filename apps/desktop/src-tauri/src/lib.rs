@@ -6,9 +6,10 @@ mod browser_server;
 mod commands;
 mod log_forward;
 mod state;
+mod window_manager;
 
 use state::AppState;
-use tauri::Manager;
+use tauri::{Listener, Manager};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -68,6 +69,38 @@ pub fn run() {
                 }
             }
 
+            // Handle deep links (from browser extension)
+            // The deep-link plugin emits events that we listen for
+            let app_handle = app.handle().clone();
+            app.listen("deep-link://new-url", move |event| {
+                let urls = event.payload();
+                for url in urls.lines() {
+                    if let Some(path) = url.strip_prefix("dlman://") {
+                        // Parse URL to extract action
+                        if path.starts_with("add-download") {
+                            // Extract download URL from query params if present
+                            let download_url = if let Some(query_start) = path.find('?') {
+                                let query = &path[query_start + 1..];
+                                query
+                                    .split('&')
+                                    .find(|param| param.starts_with("url="))
+                                    .and_then(|param| {
+                                        let encoded = param.strip_prefix("url=")?;
+                                        urlencoding::decode(encoded).ok().map(|s| s.to_string())
+                                    })
+                            } else {
+                                None
+                            };
+
+                            // Show add download popup
+                            if let Some(state) = app_handle.try_state::<AppState>() {
+                                let _ = state.window_manager.show_add_download_popup(&app_handle, download_url);
+                            }
+                        }
+                    }
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -103,6 +136,8 @@ pub fn run() {
             commands::delete_file_only,
             commands::file_exists,
             commands::execute_post_action,
+            // Window commands
+            commands::show_add_download_popup,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -22,6 +22,7 @@ export interface Download {
   color: string | null;
   error: string | null;
   speed_limit: number | null;
+  speed?: number; // Current download speed (bytes/sec)
   created_at: string;
   completed_at: string | null;
   retry_count: number;

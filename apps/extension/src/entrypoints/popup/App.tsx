@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { usePopupStore } from './store';
 import { Header } from './components/Header';
 import { ConnectionStatus } from './components/ConnectionStatus';
-import { QuickAdd } from './components/QuickAdd';
+import { AddWithApp } from './components/AddWithApp';
 import { ActiveDownloads } from './components/ActiveDownloads';
 import { SiteToggle } from './components/SiteToggle';
 import { Footer } from './components/Footer';
@@ -69,8 +69,8 @@ export default function App() {
         ) : (
           <div className="flex-1 flex flex-col">
             <ConnectionStatus />
+            <AddWithApp />
             <div className="flex-1 overflow-hidden flex flex-col p-3 gap-3">
-              <QuickAdd />
               <SiteToggle />
               <ActiveDownloads />
             </div>

@@ -134,6 +134,10 @@ impl BrowserServer {
             .route("/api/queues", get(handle_get_queues))
             .route("/api/downloads", get(handle_get_downloads))
             .route("/api/downloads", post(handle_add_download))
+            // Download control endpoints
+            .route("/api/downloads/:id/pause", post(handle_pause_download))
+            .route("/api/downloads/:id/resume", post(handle_resume_download))
+            .route("/api/downloads/:id/cancel", post(handle_cancel_download))
             // WebSocket
             .route("/ws", get(handle_websocket))
             .layer(cors)
@@ -230,6 +234,67 @@ async fn handle_add_download(
             download: None,
             error: Some(e.to_string()),
         }),
+    }
+}
+
+/// Simple response for control operations
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ControlResponse {
+    pub success: bool,
+    pub error: Option<String>,
+}
+
+async fn handle_pause_download(
+    State(state): axum::extract::State<SharedState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> impl axum::response::IntoResponse {
+    let Ok(uuid) = Uuid::parse_str(&id) else {
+        return axum::Json(ControlResponse {
+            success: false,
+            error: Some("Invalid download ID".to_string()),
+        });
+    };
+
+    let core = state.write().await;
+    match core.pause_download(uuid).await {
+        Ok(_) => axum::Json(ControlResponse { success: true, error: None }),
+        Err(e) => axum::Json(ControlResponse { success: false, error: Some(e.to_string()) }),
+    }
+}
+
+async fn handle_resume_download(
+    State(state): axum::extract::State<SharedState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> impl axum::response::IntoResponse {
+    let Ok(uuid) = Uuid::parse_str(&id) else {
+        return axum::Json(ControlResponse {
+            success: false,
+            error: Some("Invalid download ID".to_string()),
+        });
+    };
+
+    let core = state.write().await;
+    match core.resume_download(uuid).await {
+        Ok(_) => axum::Json(ControlResponse { success: true, error: None }),
+        Err(e) => axum::Json(ControlResponse { success: false, error: Some(e.to_string()) }),
+    }
+}
+
+async fn handle_cancel_download(
+    State(state): axum::extract::State<SharedState>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> impl axum::response::IntoResponse {
+    let Ok(uuid) = Uuid::parse_str(&id) else {
+        return axum::Json(ControlResponse {
+            success: false,
+            error: Some("Invalid download ID".to_string()),
+        });
+    };
+
+    let core = state.write().await;
+    match core.cancel_download(uuid).await {
+        Ok(_) => axum::Json(ControlResponse { success: true, error: None }),
+        Err(e) => axum::Json(ControlResponse { success: false, error: Some(e.to_string()) }),
     }
 }
 

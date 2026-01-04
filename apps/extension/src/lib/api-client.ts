@@ -340,6 +340,51 @@ export class DlmanClient {
       };
     }
   }
+
+  /**
+   * Pause a download
+   */
+  async pauseDownload(id: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      return await this.httpRequest<{ success: boolean; error?: string }>('POST', `/api/downloads/${id}/pause`);
+    } catch (error) {
+      console.error('[DLMan] Failed to pause download:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  /**
+   * Resume a download
+   */
+  async resumeDownload(id: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      return await this.httpRequest<{ success: boolean; error?: string }>('POST', `/api/downloads/${id}/resume`);
+    } catch (error) {
+      console.error('[DLMan] Failed to resume download:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  /**
+   * Cancel a download
+   */
+  async cancelDownload(id: string): Promise<{ success: boolean; error?: string }> {
+    try {
+      return await this.httpRequest<{ success: boolean; error?: string }>('POST', `/api/downloads/${id}/cancel`);
+    } catch (error) {
+      console.error('[DLMan] Failed to cancel download:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
 }
 
 // Singleton instance

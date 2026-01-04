@@ -585,4 +585,16 @@ pub async fn execute_post_action(action: String, command: Option<String>) -> Res
     }
 }
 
+// ============================================================================
+// Window Commands
+// ============================================================================
 
+/// Show the add download popup window (for browser extension integration)
+#[tauri::command]
+pub async fn show_add_download_popup(
+    app_handle: tauri::AppHandle,
+    state: State<'_, AppState>,
+    url: Option<String>,
+) -> Result<(), String> {
+    state.window_manager.show_add_download_popup(&app_handle, url)
+}

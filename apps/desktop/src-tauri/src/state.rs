@@ -1,6 +1,7 @@
 //! Application state management
 
 use crate::browser_server::BrowserServer;
+use crate::window_manager::WindowManager;
 use dlman_core::DlmanCore;
 use dlman_types::CoreEvent;
 use std::path::PathBuf;
@@ -11,6 +12,7 @@ use tokio::sync::RwLock;
 /// Application state managed by Tauri
 pub struct AppState {
     pub core: Arc<RwLock<Option<DlmanCore>>>,
+    pub window_manager: Arc<WindowManager>,
     #[allow(dead_code)]
     pub data_dir: PathBuf,
 }
@@ -21,6 +23,7 @@ impl AppState {
 
         Ok(Self {
             core: Arc::new(RwLock::new(Some(core))),
+            window_manager: Arc::new(WindowManager::new()),
             data_dir,
         })
     }

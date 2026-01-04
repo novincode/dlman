@@ -119,10 +119,25 @@ function AppContent() {
   useEffect(() => {
     const cleanup = setupEventListeners();
     
+    // Listen for deep link events from browser extension
+    let unlisten: (() => void) | undefined;
+    if (isTauri()) {
+      import('@tauri-apps/api/event').then(({ listen }) => {
+        listen<string>('set-download-url', (event) => {
+          // Store URL and open dialog
+          setPendingClipboardUrls([event.payload]);
+          setShowNewDownloadDialog(true);
+        }).then((unlistenFn) => {
+          unlisten = unlistenFn;
+        }).catch(console.error);
+      }).catch(console.error);
+    }
+    
     return () => {
       cleanup();
+      if (unlisten) unlisten();
     };
-  }, []);
+  }, [setShowNewDownloadDialog]);
 
   // Handle paste for links
   useEffect(() => {
