@@ -276,12 +276,8 @@ impl DlmanCore {
     
     /// Pause a download
     pub async fn pause_download(&self, id: Uuid) -> Result<(), DlmanError> {
+        // Note: manager.pause() already emits DownloadStatusChanged event
         self.download_manager.pause(id).await?;
-        self.emit(CoreEvent::DownloadStatusChanged {
-            id,
-            status: DownloadStatus::Paused,
-            error: None,
-        });
         Ok(())
     }
     
@@ -330,25 +326,16 @@ impl DlmanCore {
         info!("resume_download: effective_speed_limit={:?}, segment_count={}, max_retries={}", 
               effective_speed_limit, segment_count, max_retries);
         
+        // Note: manager.resume() already emits DownloadStatusChanged event
         self.download_manager.resume(id, effective_speed_limit, segment_count, max_retries, retry_delay_secs).await?;
-        
-        self.emit(CoreEvent::DownloadStatusChanged {
-            id,
-            status: DownloadStatus::Downloading,
-            error: None,
-        });
         
         Ok(())
     }
     
     /// Cancel a download
     pub async fn cancel_download(&self, id: Uuid) -> Result<(), DlmanError> {
+        // Note: manager.cancel() already emits DownloadStatusChanged event
         self.download_manager.cancel(id).await?;
-        self.emit(CoreEvent::DownloadStatusChanged {
-            id,
-            status: DownloadStatus::Cancelled,
-            error: None,
-        });
         Ok(())
     }
     

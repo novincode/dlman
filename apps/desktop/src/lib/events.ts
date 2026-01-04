@@ -43,7 +43,21 @@ export function setPendingClipboardUrls(urls: string[]) {
 }
 
 export function setupEventListeners(): () => void {
+  // Track cleanup state - if true, any newly resolved listeners should immediately unsubscribe
+  let isCleanedUp = false;
   const unlisten: Array<() => void> = [];
+
+  // Helper to register a listener that respects cleanup state
+  const registerListener = (promise: Promise<() => void>) => {
+    promise.then((fn) => {
+      if (isCleanedUp) {
+        // Already cleaned up - immediately unsubscribe
+        fn();
+      } else {
+        unlisten.push(fn);
+      }
+    }).catch(console.error);
+  };
 
   // Don't set up listeners if not in Tauri context
   if (!isTauri()) {
@@ -52,7 +66,8 @@ export function setupEventListeners(): () => void {
   }
 
   // Listen for download progress
-  listen<CoreEvent>("download-progress", (event) => {
+  registerListener(listen<CoreEvent>("download-progress", (event) => {
+    if (isCleanedUp) return;
     const data = event.payload;
     if (data.type === "DownloadProgress") {
       useDownloadStore.getState().updateProgress(
@@ -63,10 +78,11 @@ export function setupEventListeners(): () => void {
         data.payload.eta
       );
     }
-  }).then((fn) => unlisten.push(fn)).catch(console.error);
+  }));
 
   // Listen for core errors
-  listen<CoreEvent>("core-error", (event) => {
+  registerListener(listen<CoreEvent>("core-error", (event) => {
+    if (isCleanedUp) return;
     const data = event.payload;
     if (data.type === "Error") {
       useUIStore.getState().addConsoleLog({
@@ -77,17 +93,10 @@ export function setupEventListeners(): () => void {
         data: data.payload.context ? { context: data.payload.context } : undefined,
       });
     }
-  })
-    .then((fn) => unlisten.push(fn))
-    .catch((err) => {
-      useUIStore.getState().addConsoleLog({
-        level: "error",
-        message: `Failed to listen for core-error: ${String(err)}`,
-      });
-    });
+  }));
 
   // Listen for backend logs (Rust tracing)
-  listen<{
+  registerListener(listen<{
     level: "info" | "warn" | "error" | "debug";
     message: string;
     target?: string;
@@ -96,6 +105,7 @@ export function setupEventListeners(): () => void {
     line?: number | null;
     fields?: Record<string, unknown>;
   }>("backend-log", (event) => {
+    if (isCleanedUp) return;
     const p = event.payload;
     useUIStore.getState().addConsoleLog({
       level: p.level,
@@ -107,17 +117,11 @@ export function setupEventListeners(): () => void {
         fields: p.fields,
       },
     });
-  })
-    .then((fn) => unlisten.push(fn))
-    .catch((err) => {
-      useUIStore.getState().addConsoleLog({
-        level: "error",
-        message: `Failed to listen for backend-log: ${String(err)}`,
-      });
-    });
+  }));
 
   // Listen for segment progress
-  listen<CoreEvent>("segment-progress", (event) => {
+  registerListener(listen<CoreEvent>("segment-progress", (event) => {
+    if (isCleanedUp) return;
     const data = event.payload;
     if (data.type === "SegmentProgress") {
       useDownloadStore.getState().updateSegmentProgress(
@@ -126,10 +130,11 @@ export function setupEventListeners(): () => void {
         data.payload.downloaded
       );
     }
-  }).then((fn) => unlisten.push(fn)).catch(console.error);
+  }));
 
   // Listen for status changes
-  listen<CoreEvent>("download-status", (event) => {
+  registerListener(listen<CoreEvent>("download-status", (event) => {
+    if (isCleanedUp) return;
     const data = event.payload;
     if (data.type === "DownloadStatusChanged") {
       useDownloadStore.getState().updateStatus(
@@ -164,34 +169,38 @@ export function setupEventListeners(): () => void {
         }
       }
     }
-  }).then((fn) => unlisten.push(fn)).catch(console.error);
+  }));
 
   // Listen for new downloads
-  listen<CoreEvent>("download-added", (event) => {
+  registerListener(listen<CoreEvent>("download-added", (event) => {
+    if (isCleanedUp) return;
     const data = event.payload;
     if (data.type === "DownloadAdded") {
       useDownloadStore.getState().addDownload(data.payload.download);
     }
-  }).then((fn) => unlisten.push(fn)).catch(console.error);
+  }));
 
   // Listen for updated downloads
-  listen<CoreEvent>("download-updated", (event) => {
+  registerListener(listen<CoreEvent>("download-updated", (event) => {
+    if (isCleanedUp) return;
     const data = event.payload;
     if (data.type === "DownloadUpdated") {
       useDownloadStore.getState().updateDownload(data.payload.download.id, data.payload.download);
     }
-  }).then((fn) => unlisten.push(fn)).catch(console.error);
+  }));
 
   // Listen for removed downloads
-  listen<CoreEvent>("download-removed", (event) => {
+  registerListener(listen<CoreEvent>("download-removed", (event) => {
+    if (isCleanedUp) return;
     const data = event.payload;
     if (data.type === "DownloadRemoved") {
       useDownloadStore.getState().removeDownload(data.payload.id);
     }
-  }).then((fn) => unlisten.push(fn)).catch(console.error);
+  }));
 
   // Listen for queue started events (scheduled starts)
-  listen<CoreEvent>("queue-started", (event) => {
+  registerListener(listen<CoreEvent>("queue-started", (event) => {
+    if (isCleanedUp) return;
     const data = event.payload;
     if (data.type === "QueueStarted") {
       const queues = useQueueStore.getState().queues;
@@ -202,10 +211,11 @@ export function setupEventListeners(): () => void {
         notifyQueueStarted(queue.name);
       }
     }
-  }).then((fn) => unlisten.push(fn)).catch(console.error);
+  }));
 
   // Listen for queue completed events
-  listen<CoreEvent>("queue-completed", (event) => {
+  registerListener(listen<CoreEvent>("queue-completed", (event) => {
+    if (isCleanedUp) return;
     const data = event.payload;
     if (data.type === "QueueCompleted") {
       const queues = useQueueStore.getState().queues;
@@ -218,12 +228,13 @@ export function setupEventListeners(): () => void {
         }
       }
     }
-  }).then((fn) => unlisten.push(fn)).catch(console.error);
+  }));
 
   // Listen for Tauri file drop events (tauri://drop)
-  listen<{ paths: string[]; position: { x: number; y: number } }>(
+  registerListener(listen<{ paths: string[]; position: { x: number; y: number } }>(
     "tauri://drop",
     (event) => {
+      if (isCleanedUp) return;
       const { paths } = event.payload;
       
       // Filter for URLs (files starting with http)
@@ -240,10 +251,11 @@ export function setupEventListeners(): () => void {
         }
       }
     }
-  ).then((fn) => unlisten.push(fn)).catch(console.error);
+  ));
 
-  // Cleanup function
+  // Cleanup function - marks as cleaned up and unsubscribes all already-resolved listeners
   return () => {
+    isCleanedUp = true;
     unlisten.forEach((fn) => fn());
   };
 }
