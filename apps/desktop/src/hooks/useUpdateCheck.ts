@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { open as openUrl } from '@tauri-apps/plugin-shell';
 import { checkForUpdates, getReleasesPageUrl } from '@/lib/version';
 import { useUpdateStore } from '@/stores/update';
+import { useSettingsStore } from '@/stores/settings';
 
 // Only check once per session
 let hasCheckedThisSession = false;
@@ -17,12 +18,19 @@ let hasCheckedThisSession = false;
 export function useUpdateCheck() {
   const hasRun = useRef(false);
   const { setUpdateInfo, setIsChecking, shouldShowNotification } = useUpdateStore();
+  const autoCheckUpdates = useSettingsStore((s) => s.settings.auto_check_updates);
 
   useEffect(() => {
     // Only run once per component mount and once per session
     if (hasRun.current || hasCheckedThisSession) {
       return;
     }
+    
+    // Respect user setting
+    if (!autoCheckUpdates) {
+      return;
+    }
+    
     hasRun.current = true;
     hasCheckedThisSession = true;
 

@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
+import { open as openUrl } from '@tauri-apps/plugin-shell';
 import {
   Settings,
   Folder,
@@ -14,6 +15,13 @@ import {
   Info,
   Loader2,
   RotateCcw,
+  Bell,
+  Tag,
+  ExternalLink,
+  Chrome,
+  RefreshCw,
+  Download,
+  Layers,
 } from 'lucide-react';
 
 import {
@@ -29,25 +37,33 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
 
 import { useUIStore } from '@/stores/ui';
 import { useSettingsStore } from '@/stores/settings';
+import { useCategoryStore } from '@/stores/categories';
+import { getIconComponent } from '@/lib/categoryIcons';
 import type { Settings as SettingsType, Theme } from '@/types';
 
-type SettingsTab = 'downloads' | 'appearance' | 'advanced';
+type SettingsTab = 'downloads' | 'categories' | 'notifications' | 'appearance' | 'extensions' | 'advanced';
 
 const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
-  { id: 'downloads', label: 'Downloads', icon: <Folder className="h-4 w-4" /> },
+  { id: 'downloads', label: 'Downloads', icon: <Download className="h-4 w-4" /> },
+  { id: 'categories', label: 'Categories', icon: <Tag className="h-4 w-4" /> },
+  { id: 'notifications', label: 'Notifications', icon: <Bell className="h-4 w-4" /> },
   { id: 'appearance', label: 'Appearance', icon: <Palette className="h-4 w-4" /> },
+  { id: 'extensions', label: 'Extensions', icon: <Layers className="h-4 w-4" /> },
   { id: 'advanced', label: 'Advanced', icon: <Gauge className="h-4 w-4" /> },
 ];
 
 export function SettingsDialog() {
   const { showSettingsDialog, setShowSettingsDialog } = useUIStore();
   const { settings, updateSettings, setTheme } = useSettingsStore();
+  const { categories, updateCategory } = useCategoryStore();
 
   const [activeTab, setActiveTab] = useState<SettingsTab>('downloads');
   const [localSettings, setLocalSettings] = useState<SettingsType>(settings);
+  const [categoryPaths, setCategoryPaths] = useState<Map<string, string>>(new Map());
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
 
@@ -55,9 +71,15 @@ export function SettingsDialog() {
   useEffect(() => {
     if (showSettingsDialog) {
       setLocalSettings(settings);
+      // Initialize category paths from categories store
+      const paths = new Map<string, string>();
+      categories.forEach((cat, id) => {
+        paths.set(id, cat.customPath || '');
+      });
+      setCategoryPaths(paths);
       setHasChanges(false);
     }
-  }, [showSettingsDialog, settings]);
+  }, [showSettingsDialog, settings, categories]);
 
   const handleChange = useCallback(
     <K extends keyof SettingsType>(key: K, value: SettingsType[K]) => {
@@ -67,11 +89,44 @@ export function SettingsDialog() {
     []
   );
 
+  const handleCategoryPathChange = useCallback((categoryId: string, path: string) => {
+    setCategoryPaths(prev => {
+      const newPaths = new Map(prev);
+      newPaths.set(categoryId, path);
+      return newPaths;
+    });
+    setHasChanges(true);
+  }, []);
+
+  const handleBrowseCategoryPath = useCallback(async (categoryId: string, currentPath: string) => {
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: 'Select Download Path for Category',
+        defaultPath: currentPath || undefined,
+      });
+      if (selected && typeof selected === 'string') {
+        handleCategoryPathChange(categoryId, selected);
+      }
+    } catch (err) {
+      console.error('Failed to open directory picker:', err);
+    }
+  }, [handleCategoryPathChange]);
+
   const handleSave = useCallback(async () => {
     try {
       setIsSaving(true);
       // Update local store first (this persists to localStorage)
       updateSettings(localSettings);
+      
+      // Save category paths
+      categoryPaths.forEach((path, categoryId) => {
+        const category = categories.get(categoryId);
+        if (category && path !== (category.customPath || '')) {
+          updateCategory(categoryId, { customPath: path || undefined });
+        }
+      });
       
       // Try to sync with backend if in Tauri context
       const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
@@ -91,7 +146,7 @@ export function SettingsDialog() {
     } finally {
       setIsSaving(false);
     }
-  }, [localSettings, updateSettings, setShowSettingsDialog]);
+  }, [localSettings, categoryPaths, categories, updateSettings, updateCategory, setShowSettingsDialog]);
 
   const handleClose = () => {
     setShowSettingsDialog(false);
@@ -307,6 +362,307 @@ export function SettingsDialog() {
                 </div>
               </div>
             </div>
+
+            <Separator />
+
+            <div className="space-y-4">
+              <h3 className="text-sm font-medium flex items-center gap-2">
+                <Monitor className="h-4 w-4" />
+                System
+              </h3>
+              <div className="pl-6 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="minimizeToTray" className="cursor-pointer">
+                      Minimize to system tray
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Keep DLMan running in the background when closed
+                    </p>
+                  </div>
+                  <Switch
+                    id="minimizeToTray"
+                    checked={localSettings.minimize_to_tray}
+                    onCheckedChange={(checked: boolean) =>
+                      handleChange('minimize_to_tray', checked)
+                    }
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="startOnBoot" className="cursor-pointer">
+                      Start on system boot
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Automatically launch DLMan when you log in
+                    </p>
+                  </div>
+                  <Switch
+                    id="startOnBoot"
+                    checked={localSettings.start_on_boot}
+                    onCheckedChange={(checked: boolean) =>
+                      handleChange('start_on_boot', checked)
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'categories':
+        return (
+          <div className="space-y-6">
+            <div className="space-y-4">
+              <h3 className="text-sm font-medium flex items-center gap-2">
+                <Tag className="h-4 w-4" />
+                Category Download Paths
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Set custom download paths for each category. Files matching these categories will be saved to their respective paths.
+              </p>
+              <div className="space-y-4">
+                {Array.from(categories.values()).map((category) => {
+                  const IconComponent = getIconComponent(category.icon);
+                  const currentPath = categoryPaths.get(category.id) || '';
+                  return (
+                    <div key={category.id} className="space-y-2 p-4 border rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="h-6 w-6 rounded flex items-center justify-center"
+                          style={{ backgroundColor: category.color + '20' }}
+                        >
+                          <IconComponent className="h-4 w-4" style={{ color: category.color }} />
+                        </div>
+                        <span className="font-medium">{category.name}</span>
+                        <span className="text-xs text-muted-foreground ml-auto">
+                          {category.extensions.slice(0, 5).join(', ')}{category.extensions.length > 5 ? '...' : ''}
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        <Input
+                          value={currentPath}
+                          onChange={(e) => handleCategoryPathChange(category.id, e.target.value)}
+                          placeholder={`Custom path for ${category.name} (uses default if empty)`}
+                          className="flex-1 text-sm"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          onClick={() => handleBrowseCategoryPath(category.id, currentPath)}
+                        >
+                          <FolderOpen className="h-4 w-4" />
+                        </Button>
+                        {currentPath && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleCategoryPathChange(category.id, '')}
+                            title="Reset to default"
+                          >
+                            <RotateCcw className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'notifications':
+        return (
+          <div className="space-y-6">
+            <div className="space-y-4">
+              <h3 className="text-sm font-medium flex items-center gap-2">
+                <Bell className="h-4 w-4" />
+                Notification Settings
+              </h3>
+              <div className="pl-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="notifyOnComplete" className="cursor-pointer">
+                      Download complete
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Show notification when a download finishes
+                    </p>
+                  </div>
+                  <Switch
+                    id="notifyOnComplete"
+                    checked={localSettings.notify_on_complete}
+                    onCheckedChange={(checked: boolean) =>
+                      handleChange('notify_on_complete', checked)
+                    }
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="notifyOnError" className="cursor-pointer">
+                      Download failed
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Show notification when a download fails
+                    </p>
+                  </div>
+                  <Switch
+                    id="notifyOnError"
+                    checked={localSettings.notify_on_error}
+                    onCheckedChange={(checked: boolean) =>
+                      handleChange('notify_on_error', checked)
+                    }
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="notifySound" className="cursor-pointer">
+                      Play sound
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Play a sound for notifications
+                    </p>
+                  </div>
+                  <Switch
+                    id="notifySound"
+                    checked={localSettings.notify_sound}
+                    onCheckedChange={(checked: boolean) =>
+                      handleChange('notify_sound', checked)
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-4">
+              <h3 className="text-sm font-medium flex items-center gap-2">
+                <RefreshCw className="h-4 w-4" />
+                Updates
+              </h3>
+              <div className="pl-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="autoCheckUpdates" className="cursor-pointer">
+                      Check for updates automatically
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Check for new versions on startup
+                    </p>
+                  </div>
+                  <Switch
+                    id="autoCheckUpdates"
+                    checked={localSettings.auto_check_updates}
+                    onCheckedChange={(checked: boolean) =>
+                      handleChange('auto_check_updates', checked)
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'extensions':
+        return (
+          <div className="space-y-6">
+            <div className="space-y-4">
+              <h3 className="text-sm font-medium flex items-center gap-2">
+                <Layers className="h-4 w-4" />
+                Browser Extensions
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Install the DLMan browser extension to capture downloads directly from your browser.
+              </p>
+              
+              <div className="grid gap-4">
+                {/* Chrome Extension */}
+                <div className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-blue-500 to-green-500 flex items-center justify-center">
+                      <Chrome className="h-5 w-5 text-white" />
+                    </div>
+                    <div>
+                      <p className="font-medium">Chrome / Edge / Brave</p>
+                      <p className="text-xs text-muted-foreground">Chromium-based browsers</p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      openUrl('https://github.com/novincode/dlman/releases/latest');
+                    }}
+                  >
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Download
+                  </Button>
+                </div>
+
+                {/* Firefox Extension */}
+                <div className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-orange-500 to-red-500 flex items-center justify-center">
+                      <svg className="h-5 w-5 text-white" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
+                      </svg>
+                    </div>
+                    <div>
+                      <p className="font-medium">Firefox</p>
+                      <p className="text-xs text-muted-foreground">Mozilla Firefox</p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      openUrl('https://github.com/novincode/dlman/releases/latest');
+                    }}
+                  >
+                    <ExternalLink className="h-4 w-4 mr-2" />
+                    Download
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-4">
+              <h3 className="text-sm font-medium flex items-center gap-2">
+                <Network className="h-4 w-4" />
+                Integration Settings
+              </h3>
+              <div className="pl-6 space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="browserPort">Integration port</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="browserPort"
+                      type="number"
+                      min={1024}
+                      max={65535}
+                      value={localSettings.browser_integration_port}
+                      onChange={(e) =>
+                        handleChange(
+                          'browser_integration_port',
+                          parseInt(e.target.value) || 7899
+                        )
+                      }
+                      className="w-32"
+                    />
+                    <span className="text-sm text-muted-foreground">(default: 7899)</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Browser extensions connect to this port. Change only if there's a conflict.
+                  </p>
+                </div>
+              </div>
+            </div>
           </div>
         );
 
@@ -315,41 +671,19 @@ export function SettingsDialog() {
           <div className="space-y-6">
             <div className="space-y-4">
               <h3 className="text-sm font-medium flex items-center gap-2">
-                <Network className="h-4 w-4" />
-                Browser Integration
-              </h3>
-              <div className="pl-6 space-y-2">
-                <Label htmlFor="browserPort">Integration port</Label>
-                <Input
-                  id="browserPort"
-                  type="number"
-                  min={1024}
-                  max={65535}
-                  value={localSettings.browser_integration_port}
-                  onChange={(e) =>
-                    handleChange(
-                      'browser_integration_port',
-                      parseInt(e.target.value) || 7899
-                    )
-                  }
-                  className="w-32"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Browser extensions connect to this port to capture downloads.
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <h3 className="text-sm font-medium flex items-center gap-2">
                 <Info className="h-4 w-4" />
-                Developer
+                Developer Options
               </h3>
               <div className="pl-6 space-y-3">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="devMode" className="cursor-pointer">
-                    Enable developer mode
-                  </Label>
+                  <div className="space-y-0.5">
+                    <Label htmlFor="devMode" className="cursor-pointer">
+                      Enable developer mode
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Shows the dev console and enables additional debugging features.
+                    </p>
+                  </div>
                   <Switch
                     id="devMode"
                     checked={localSettings.dev_mode}
@@ -358,20 +692,20 @@ export function SettingsDialog() {
                     }
                   />
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Shows the dev console and enables additional debugging features.
-                </p>
               </div>
             </div>
           </div>
         );
+
+      default:
+        return null;
     }
   };
 
   return (
     <Dialog open={showSettingsDialog} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[700px] max-h-[80vh] flex flex-col p-0">
-        <DialogHeader className="px-6 pt-6">
+      <DialogContent className="sm:max-w-[800px] h-[600px] flex flex-col p-0 gap-0">
+        <DialogHeader className="px-6 py-4 border-b border-border flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Settings className="h-5 w-5" />
             Settings
@@ -381,18 +715,18 @@ export function SettingsDialog() {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex overflow-hidden min-h-0">
           {/* Sidebar */}
-          <div className="w-48 border-r border-border p-4">
+          <div className="w-52 border-r border-border p-3 flex-shrink-0">
             <nav className="space-y-1">
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
+                  className={`w-full flex items-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium transition-colors ${
                     activeTab === tab.id
                       ? 'bg-primary text-primary-foreground'
-                      : 'hover:bg-muted'
+                      : 'hover:bg-muted text-muted-foreground hover:text-foreground'
                   }`}
                 >
                   {tab.icon}
@@ -408,7 +742,7 @@ export function SettingsDialog() {
           </ScrollArea>
         </div>
 
-        <DialogFooter className="px-6 pb-6 border-t border-border pt-4">
+        <DialogFooter className="px-6 py-4 border-t border-border flex-shrink-0">
           <Button variant="outline" onClick={handleClose}>
             Cancel
           </Button>

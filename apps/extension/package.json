@@ -12,8 +12,11 @@
     "build": "wxt build",
     "build:firefox": "wxt build -b firefox",
     "build:chrome": "wxt build -b chrome",
+    "build:all": "npm run build && npm run build:firefox",
     "zip": "wxt zip",
     "zip:firefox": "wxt zip -b firefox",
+    "zip:all": "npm run zip && npm run zip:firefox",
+    "release": "npm run build:all && npm run zip:all",
     "compile": "tsc --noEmit",
     "copy-icons": "node scripts/copy-icons.js",
     "postinstall": "wxt prepare"

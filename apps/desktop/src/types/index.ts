@@ -94,6 +94,12 @@ export interface Settings {
   remember_last_path: boolean;
   max_retries: number;
   retry_delay_seconds: number;
+  // Notification settings
+  notify_on_complete: boolean;
+  notify_on_error: boolean;
+  notify_sound: boolean;
+  // Update settings
+  auto_check_updates: boolean;
 }
 
 export type Theme = "light" | "dark" | "system";

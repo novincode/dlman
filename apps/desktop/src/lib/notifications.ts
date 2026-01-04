@@ -12,11 +12,22 @@ import {
   requestPermission,
   sendNotification,
 } from '@tauri-apps/plugin-notification';
+import { useSettingsStore } from '@/stores/settings';
 
 // Check if we're in Tauri context
 const isTauri = () =>
   typeof window !== 'undefined' &&
   (window as any).__TAURI_INTERNALS__ !== undefined;
+
+// Get current notification settings
+const getNotificationSettings = () => {
+  const settings = useSettingsStore.getState().settings;
+  return {
+    notifyOnComplete: settings.notify_on_complete,
+    notifyOnError: settings.notify_on_error,
+    notifySound: settings.notify_sound,
+  };
+};
 
 // Permission state
 let permissionGranted = false;
@@ -79,6 +90,10 @@ export async function notifyDownloadComplete(
   filename: string,
   _destination?: string
 ): Promise<void> {
+  // Check if notification is enabled in settings
+  const { notifyOnComplete } = getNotificationSettings();
+  if (!notifyOnComplete) return;
+
   if (!canSendNotifications()) {
     // Initialize on first use if not done yet
     if (!permissionChecked) {
@@ -106,6 +121,10 @@ export async function notifyDownloadFailed(
   filename: string,
   error?: string
 ): Promise<void> {
+  // Check if notification is enabled in settings
+  const { notifyOnError } = getNotificationSettings();
+  if (!notifyOnError) return;
+
   if (!canSendNotifications()) {
     if (!permissionChecked) {
       await initNotifications();

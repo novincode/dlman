@@ -35,6 +35,12 @@ const defaultSettings: Settings = {
   remember_last_path: true,
   max_retries: 5,
   retry_delay_seconds: 30,
+  // Notification settings
+  notify_on_complete: true,
+  notify_on_error: true,
+  notify_sound: true,
+  // Update settings
+  auto_check_updates: true,
 };
 
 export const useSettingsStore = create<SettingsState>()(
