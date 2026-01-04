@@ -200,10 +200,13 @@ impl DlmanCore {
             download: download.clone(),
         });
         
-        // Spawn queue start check in background (non-blocking)
+        // Start the download immediately (non-blocking)
+        // We directly resume the download rather than using try_start_next_download
+        // because the queue might not be "running"
         let core_clone = self.clone();
+        let download_id = download.id;
         tokio::spawn(async move {
-            if let Err(e) = core_clone.queue_manager.try_start_next_download(core_clone.clone(), queue_id).await {
+            if let Err(e) = core_clone.resume_download(download_id).await {
                 tracing::warn!("Failed to auto-start download: {}", e);
             }
         });

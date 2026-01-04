@@ -58,6 +58,8 @@ export function NewDownloadDialog() {
     []
   );
   const updateCategory = useCategoryStore((s) => s.updateCategory);
+  const setSelectedCategory = useCategoryStore((s) => s.setSelectedCategory);
+  const selectedCategoryId = useCategoryStore((s) => s.selectedCategoryId);
   const addDownload = useDownloadStore((s) => s.addDownload);
 
   // Default queue UUID (Main queue)
@@ -347,6 +349,13 @@ export function NewDownloadDialog() {
         toast.success(`Path saved for ${categories.get(categoryId)?.name || 'category'}`);
       }
       
+      // Auto-switch to the download's category if we're in a different category view
+      // This ensures the user sees the newly added download
+      if (categoryId && selectedCategoryId !== null && selectedCategoryId !== categoryId) {
+        // User is viewing a specific category but download is in a different one
+        setSelectedCategory(categoryId);
+      }
+      
       setShowNewDownloadDialog(false);
     } catch (err) {
       console.error('Failed to add download:', err);
@@ -354,7 +363,7 @@ export function NewDownloadDialog() {
     } finally {
       setIsAdding(false);
     }
-  }, [url, destination, queueId, categoryId, filename, customFilename, filenameEdited, fileSize, addDownload, setShowNewDownloadDialog, rememberPathForCategory, updateCategory, categories]);
+  }, [url, destination, queueId, categoryId, filename, customFilename, filenameEdited, fileSize, addDownload, setShowNewDownloadDialog, rememberPathForCategory, updateCategory, categories, selectedCategoryId, setSelectedCategory]);
 
   const formatFileSize = (bytes: number) => {
     if (bytes >= 1024 * 1024 * 1024) {
@@ -404,7 +413,7 @@ export function NewDownloadDialog() {
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       exit={{ opacity: 0 }}
-                      className="absolute right-3 top-1/2 -translate-y-1/2"
+                      className="absolute right-3 inset-y-0 flex items-center"
                     >
                       <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                     </motion.div>
@@ -414,7 +423,7 @@ export function NewDownloadDialog() {
                       initial={{ opacity: 0, scale: 0.8 }}
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.8 }}
-                      className="absolute right-3 top-1/2 -translate-y-1/2"
+                      className="absolute right-3 inset-y-0 flex items-center"
                     >
                       <CheckCircle2 className="h-4 w-4 text-green-500" />
                     </motion.div>
@@ -424,7 +433,7 @@ export function NewDownloadDialog() {
                       initial={{ opacity: 0, scale: 0.8 }}
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0, scale: 0.8 }}
-                      className="absolute right-3 top-1/2 -translate-y-1/2"
+                      className="absolute right-3 inset-y-0 flex items-center"
                     >
                       <XCircle className="h-4 w-4 text-destructive" />
                     </motion.div>

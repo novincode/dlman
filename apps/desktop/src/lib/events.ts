@@ -253,6 +253,23 @@ export function setupEventListeners(): () => void {
     }
   ));
 
+  // Listen for show-new-download-dialog event (from deep links / extension)
+  registerListener(listen<string | null>(
+    "show-new-download-dialog",
+    (event) => {
+      if (isCleanedUp) return;
+      const url = event.payload;
+      
+      // Set the URL as pending if provided
+      if (url) {
+        setPendingClipboardUrls([url]);
+      }
+      
+      // Show the new download dialog
+      useUIStore.getState().setShowNewDownloadDialog(true);
+    }
+  ));
+
   // Cleanup function - marks as cleaned up and unsubscribes all already-resolved listeners
   return () => {
     isCleanedUp = true;

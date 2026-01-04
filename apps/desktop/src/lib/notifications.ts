@@ -11,6 +11,7 @@ import {
   isPermissionGranted,
   requestPermission,
   sendNotification,
+  Options as NotificationOptions,
 } from '@tauri-apps/plugin-notification';
 import { useSettingsStore } from '@/stores/settings';
 
@@ -84,6 +85,30 @@ export function canSendNotifications(): boolean {
 }
 
 /**
+ * Helper function to send a notification with optional sound
+ */
+async function sendNotificationWithOptions(
+  title: string,
+  body: string,
+  _playSound: boolean = true
+): Promise<void> {
+  try {
+    const options: NotificationOptions = {
+      title,
+      body,
+      // On desktop, the OS handles sound based on system settings
+      // The sound property in Tauri is primarily for Android channel sounds
+      // _playSound is reserved for future platform-specific sound implementation
+    };
+    
+    await sendNotification(options);
+    console.log('Notification sent:', title);
+  } catch (err) {
+    console.error('Failed to send notification:', err);
+  }
+}
+
+/**
  * Send a download completed notification
  */
 export async function notifyDownloadComplete(
@@ -91,7 +116,7 @@ export async function notifyDownloadComplete(
   _destination?: string
 ): Promise<void> {
   // Check if notification is enabled in settings
-  const { notifyOnComplete } = getNotificationSettings();
+  const { notifyOnComplete, notifySound } = getNotificationSettings();
   if (!notifyOnComplete) return;
 
   if (!canSendNotifications()) {
@@ -102,16 +127,7 @@ export async function notifyDownloadComplete(
     if (!permissionGranted) return;
   }
 
-  try {
-    await sendNotification({
-      title: 'Download Complete',
-      body: filename,
-      // Note: Actions/buttons are not fully supported in all OS
-      // But the notification itself will work
-    });
-  } catch (err) {
-    console.error('Failed to send notification:', err);
-  }
+  await sendNotificationWithOptions('Download Complete', filename, notifySound);
 }
 
 /**
@@ -122,7 +138,7 @@ export async function notifyDownloadFailed(
   error?: string
 ): Promise<void> {
   // Check if notification is enabled in settings
-  const { notifyOnError } = getNotificationSettings();
+  const { notifyOnError, notifySound } = getNotificationSettings();
   if (!notifyOnError) return;
 
   if (!canSendNotifications()) {
@@ -132,20 +148,17 @@ export async function notifyDownloadFailed(
     if (!permissionGranted) return;
   }
 
-  try {
-    await sendNotification({
-      title: 'Download Failed',
-      body: error ? `${filename}: ${error}` : filename,
-    });
-  } catch (err) {
-    console.error('Failed to send notification:', err);
-  }
+  const body = error ? `${filename}: ${error}` : filename;
+  await sendNotificationWithOptions('Download Failed', body, notifySound);
 }
 
 /**
  * Send a queue completed notification
  */
 export async function notifyQueueComplete(queueName: string): Promise<void> {
+  const { notifyOnComplete, notifySound } = getNotificationSettings();
+  if (!notifyOnComplete) return;
+  
   if (!canSendNotifications()) {
     if (!permissionChecked) {
       await initNotifications();
@@ -153,14 +166,11 @@ export async function notifyQueueComplete(queueName: string): Promise<void> {
     if (!permissionGranted) return;
   }
 
-  try {
-    await sendNotification({
-      title: 'Queue Complete',
-      body: `All downloads in "${queueName}" have finished`,
-    });
-  } catch (err) {
-    console.error('Failed to send notification:', err);
-  }
+  await sendNotificationWithOptions(
+    'Queue Complete',
+    `All downloads in "${queueName}" have finished`,
+    notifySound
+  );
 }
 
 /**
@@ -174,12 +184,9 @@ export async function notifyQueueStarted(queueName: string): Promise<void> {
     if (!permissionGranted) return;
   }
 
-  try {
-    await sendNotification({
-      title: 'Queue Started',
-      body: `"${queueName}" has started downloading (scheduled)`,
-    });
-  } catch (err) {
-    console.error('Failed to send notification:', err);
-  }
+  await sendNotificationWithOptions(
+    'Queue Started',
+    `"${queueName}" has started downloading (scheduled)`,
+    true
+  );
 }

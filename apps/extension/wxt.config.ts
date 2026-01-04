@@ -21,10 +21,21 @@ export default defineConfig({
       'http://localhost:*/*',
       'ws://localhost:*/*',
     ],
-    // Note: Generate PNG icons from the SVGs in public/icon/
-    // For development, WXT will generate placeholder icons
+    // Extension icons - copied from desktop app by copy-icons script
+    icons: {
+      16: 'icon/16.png',
+      32: 'icon/32.png',
+      48: 'icon/48.png',
+      128: 'icon/128.png',
+    },
     action: {
       default_title: 'DLMan',
+      default_icon: {
+        16: 'icon/16.png',
+        32: 'icon/32.png',
+        48: 'icon/48.png',
+        128: 'icon/128.png',
+      },
     },
     web_accessible_resources: [
       {

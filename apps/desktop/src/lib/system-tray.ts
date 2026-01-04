@@ -95,14 +95,20 @@ export async function initSystemTray(): Promise<void> {
       menu: trayMenu,
       menuOnLeftClick: false, // Left click shows window, right click shows menu
       action: (event) => {
-        if (event.type === 'Click' && event.button === 'Left') {
-          showMainWindow();
+        // Handle left click to show/focus the main window
+        if (event.type === 'Click') {
+          if (event.button === 'Left') {
+            showMainWindow();
+          }
+          // Right click automatically shows menu when menuOnLeftClick is false
         }
       },
     });
 
-    // On macOS, set icon as template for proper menu bar appearance
-    await trayIcon.setIconAsTemplate(true);
+    // Note: setIconAsTemplate(true) makes the icon monochrome for macOS menu bar
+    // Only use this if the icon is designed as a template (black + transparent)
+    // Since our app icon is colorful, we DON'T set it as template to preserve colors
+    // await trayIcon.setIconAsTemplate(true);
 
     trayInitialized = true;
     console.log('System tray initialized successfully');

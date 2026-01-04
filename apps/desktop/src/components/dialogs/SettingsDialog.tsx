@@ -22,6 +22,9 @@ import {
   RefreshCw,
   Download,
   Layers,
+  Pencil,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 
 import {
@@ -41,8 +44,9 @@ import { Separator } from '@/components/ui/separator';
 
 import { useUIStore } from '@/stores/ui';
 import { useSettingsStore } from '@/stores/settings';
-import { useCategoryStore } from '@/stores/categories';
+import { useCategoryStore, Category } from '@/stores/categories';
 import { getIconComponent } from '@/lib/categoryIcons';
+import { CategoryDialog } from './CategoryDialog';
 import type { Settings as SettingsType, Theme } from '@/types';
 
 type SettingsTab = 'downloads' | 'categories' | 'notifications' | 'appearance' | 'extensions' | 'advanced';
@@ -59,13 +63,17 @@ const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
 export function SettingsDialog() {
   const { showSettingsDialog, setShowSettingsDialog } = useUIStore();
   const { settings, updateSettings, setTheme } = useSettingsStore();
-  const { categories, updateCategory } = useCategoryStore();
+  const { categories, updateCategory, removeCategory } = useCategoryStore();
 
   const [activeTab, setActiveTab] = useState<SettingsTab>('downloads');
   const [localSettings, setLocalSettings] = useState<SettingsType>(settings);
   const [categoryPaths, setCategoryPaths] = useState<Map<string, string>>(new Map());
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  
+  // Category dialog state
+  const [showCategoryDialog, setShowCategoryDialog] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
 
   // Sync local settings when dialog opens or settings change
   useEffect(() => {
@@ -414,14 +422,28 @@ export function SettingsDialog() {
         return (
           <div className="space-y-6">
             <div className="space-y-4">
-              <h3 className="text-sm font-medium flex items-center gap-2">
-                <Tag className="h-4 w-4" />
-                Category Download Paths
-              </h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium flex items-center gap-2">
+                  <Tag className="h-4 w-4" />
+                  File Categories
+                </h3>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setEditingCategory(null);
+                    setShowCategoryDialog(true);
+                  }}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  New Category
+                </Button>
+              </div>
               <p className="text-sm text-muted-foreground">
-                Set custom download paths for each category. Files matching these categories will be saved to their respective paths.
+                Manage categories for organizing your downloads. Each category can have custom file extensions and download paths.
               </p>
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {Array.from(categories.values()).map((category) => {
                   const IconComponent = getIconComponent(category.icon);
                   const currentPath = categoryPaths.get(category.id) || '';
@@ -429,46 +451,91 @@ export function SettingsDialog() {
                     <div key={category.id} className="space-y-2 p-4 border rounded-lg">
                       <div className="flex items-center gap-2">
                         <div
-                          className="h-6 w-6 rounded flex items-center justify-center"
+                          className="h-8 w-8 rounded flex items-center justify-center"
                           style={{ backgroundColor: category.color + '20' }}
                         >
-                          <IconComponent className="h-4 w-4" style={{ color: category.color }} />
+                          <IconComponent className="h-5 w-5" style={{ color: category.color }} />
                         </div>
-                        <span className="font-medium">{category.name}</span>
-                        <span className="text-xs text-muted-foreground ml-auto">
-                          {category.extensions.slice(0, 5).join(', ')}{category.extensions.length > 5 ? '...' : ''}
-                        </span>
-                      </div>
-                      <div className="flex gap-2">
-                        <Input
-                          value={currentPath}
-                          onChange={(e) => handleCategoryPathChange(category.id, e.target.value)}
-                          placeholder={`Custom path for ${category.name} (uses default if empty)`}
-                          className="flex-1 text-sm"
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="icon"
-                          onClick={() => handleBrowseCategoryPath(category.id, currentPath)}
-                        >
-                          <FolderOpen className="h-4 w-4" />
-                        </Button>
-                        {currentPath && (
+                        <div className="flex-1 min-w-0">
+                          <span className="font-medium">{category.name}</span>
+                          <p className="text-xs text-muted-foreground truncate">
+                            {category.extensions.length > 0 
+                              ? category.extensions.slice(0, 8).join(', ') + (category.extensions.length > 8 ? '...' : '')
+                              : 'No extensions defined'}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1">
                           <Button
                             type="button"
                             variant="ghost"
                             size="icon"
-                            onClick={() => handleCategoryPathChange(category.id, '')}
-                            title="Reset to default"
+                            onClick={() => {
+                              setEditingCategory(category);
+                              setShowCategoryDialog(true);
+                            }}
+                            title="Edit category"
                           >
-                            <RotateCcw className="h-4 w-4" />
+                            <Pencil className="h-4 w-4" />
                           </Button>
-                        )}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              if (confirm(`Delete category "${category.name}"?`)) {
+                                removeCategory(category.id);
+                              }
+                            }}
+                            title="Delete category"
+                            className="text-destructive hover:text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                      <Separator />
+                      <div className="space-y-1">
+                        <Label className="text-xs text-muted-foreground">Download path</Label>
+                        <div className="flex gap-2">
+                          <Input
+                            value={currentPath}
+                            onChange={(e) => handleCategoryPathChange(category.id, e.target.value)}
+                            placeholder="Uses default download location"
+                            className="flex-1 text-sm h-8"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => handleBrowseCategoryPath(category.id, currentPath)}
+                          >
+                            <FolderOpen className="h-3.5 w-3.5" />
+                          </Button>
+                          {currentPath && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => handleCategoryPathChange(category.id, '')}
+                              title="Reset to default"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );
                 })}
+                {categories.size === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Tag className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p>No categories defined</p>
+                    <p className="text-xs">Click "New Category" to create one</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -758,6 +825,16 @@ export function SettingsDialog() {
           </Button>
         </DialogFooter>
       </DialogContent>
+      
+      {/* Category Edit/Create Dialog */}
+      <CategoryDialog
+        open={showCategoryDialog}
+        onOpenChange={(open) => {
+          setShowCategoryDialog(open);
+          if (!open) setEditingCategory(null);
+        }}
+        editCategory={editingCategory}
+      />
     </Dialog>
   );
 }
