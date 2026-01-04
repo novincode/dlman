@@ -1,5 +1,6 @@
 //! Application state management
 
+use crate::browser_server::BrowserServer;
 use dlman_core::DlmanCore;
 use dlman_types::CoreEvent;
 use std::path::PathBuf;
@@ -22,6 +23,26 @@ impl AppState {
             core: Arc::new(RwLock::new(Some(core))),
             data_dir,
         })
+    }
+
+    /// Start the browser integration server
+    pub fn start_browser_server(&self) {
+        let core = self.core.clone();
+        
+        tauri::async_runtime::spawn(async move {
+            let guard = core.read().await;
+            if let Some(core) = guard.as_ref() {
+                let settings = core.get_settings().await;
+                let port = settings.browser_integration_port;
+                let core_clone = core.clone();
+                drop(guard); // Release lock before starting server
+                
+                let mut server = BrowserServer::new(core_clone, port);
+                if let Err(e) = server.start().await {
+                    tracing::error!("Failed to start browser integration server: {}", e);
+                }
+            }
+        });
     }
 
     /// Start forwarding core events to the Tauri frontend

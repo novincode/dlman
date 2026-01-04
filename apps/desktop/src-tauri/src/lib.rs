@@ -2,6 +2,7 @@
 //!
 //! Tauri-based desktop application for DLMan.
 
+mod browser_server;
 mod commands;
 mod log_forward;
 mod state;
@@ -52,6 +53,9 @@ pub fn run() {
                 Ok(state) => {
                     // Start forwarding core events to frontend
                     state.start_event_forwarding(app.handle().clone());
+                    
+                    // Start browser integration server
+                    state.start_browser_server();
                     
                     app.manage(state);
                     tracing::info!("DLMan initialized successfully");

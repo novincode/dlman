@@ -14,6 +14,11 @@
     "dev": "pnpm --filter @dlman/desktop dev",
     "build": "pnpm --filter @dlman/desktop build",
     "preview": "pnpm --filter @dlman/desktop preview",
+    "ext:dev": "pnpm --filter @dlman/extension dev",
+    "ext:dev:firefox": "pnpm --filter @dlman/extension dev:firefox",
+    "ext:build": "pnpm --filter @dlman/extension build",
+    "ext:build:firefox": "pnpm --filter @dlman/extension build:firefox",
+    "ext:zip": "pnpm --filter @dlman/extension zip",
     "lint": "pnpm -r lint",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "clean": "pnpm -r clean && rm -rf node_modules"

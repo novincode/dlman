@@ -22,9 +22,10 @@ IDM costs $25+, only works on Windows, and looks outdated. DLMan is free, works 
 - SQLite persistence
 - Per-download speed limits
 - CLI tool
+- Browser extension (Chrome, Firefox, Edge)
 
 ### Planned
-- Browser extension
 - Plugin system
 - Scheduled downloads
 - Torrent support
+
