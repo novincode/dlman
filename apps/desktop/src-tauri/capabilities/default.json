@@ -5,6 +5,8 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
+    "core:app:default",
+    "core:app:allow-default-window-icon",
     "core:window:default",
     "core:window:allow-close",
     "core:window:allow-show",

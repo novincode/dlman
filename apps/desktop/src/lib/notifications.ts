@@ -1,6 +1,10 @@
 /**
  * Native notification system for download events
  * Uses Tauri's notification plugin for OS-level notifications
+ * 
+ * Note: On macOS, notifications may not work in dev mode because the app
+ * isn't properly signed and registered with the notification center.
+ * They should work correctly in the production build.
  */
 
 import {
@@ -17,10 +21,14 @@ const isTauri = () =>
 // Permission state
 let permissionGranted = false;
 let permissionChecked = false;
+let initializationAttempted = false;
 
 /**
  * Initialize the notification system
  * Requests permission if not already granted
+ * 
+ * Note: On macOS dev mode, permission might appear granted but
+ * notifications won't show until the app is built and signed.
  */
 export async function initNotifications(): Promise<boolean> {
   if (!isTauri()) {
@@ -28,16 +36,28 @@ export async function initNotifications(): Promise<boolean> {
     return false;
   }
 
+  if (initializationAttempted) {
+    return permissionGranted;
+  }
+  initializationAttempted = true;
+
   try {
     permissionGranted = await isPermissionGranted();
     permissionChecked = true;
 
     if (!permissionGranted) {
+      console.log('Notifications: Requesting permission...');
       const permission = await requestPermission();
       permissionGranted = permission === 'granted';
     }
 
     console.log('Notifications: Permission', permissionGranted ? 'granted' : 'denied');
+    
+    // Log a hint for dev mode
+    if (import.meta.env.DEV && permissionGranted) {
+      console.log('Notifications: In dev mode, notifications may not appear on macOS until the app is built.');
+    }
+    
     return permissionGranted;
   } catch (err) {
     console.error('Failed to initialize notifications:', err);

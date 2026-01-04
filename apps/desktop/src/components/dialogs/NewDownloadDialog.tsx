@@ -35,7 +35,7 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { useUIStore } from '@/stores/ui';
-import { useQueuesArray } from '@/stores/queues';
+import { useQueuesArray, useQueueStore } from '@/stores/queues';
 import { useDownloadStore } from '@/stores/downloads';
 import { useCategoryStore } from '@/stores/categories';
 import { getPendingClipboardUrls, getPendingDropUrls } from '@/lib/events';
@@ -48,6 +48,7 @@ const isTauri = () => typeof window !== 'undefined' && (window as any).__TAURI_I
 export function NewDownloadDialog() {
   const { showNewDownloadDialog, setShowNewDownloadDialog } = useUIStore();
   const queues = useQueuesArray();
+  const selectedQueueId = useQueueStore((s) => s.selectedQueueId);
   const categories = useMemo(
     () => useCategoryStore.getState().categories,
     []
@@ -55,9 +56,12 @@ export function NewDownloadDialog() {
   const updateCategory = useCategoryStore((s) => s.updateCategory);
   const addDownload = useDownloadStore((s) => s.addDownload);
 
+  // Default queue UUID (Main queue)
+  const DEFAULT_QUEUE_ID = '00000000-0000-0000-0000-000000000000';
+  
   const [url, setUrl] = useState('');
   const [destination, setDestination] = useState('');
-  const [queueId, setQueueId] = useState('00000000-0000-0000-0000-000000000000');
+  const [queueId, setQueueId] = useState(DEFAULT_QUEUE_ID);
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [filename, setFilename] = useState('');
   const [fileSize, setFileSize] = useState<number | null>(null);
@@ -95,10 +99,13 @@ export function NewDownloadDialog() {
       // Force re-probe even if URL is the same as before
       setProbeTrigger(prev => prev + 1);
       
+      // Set queue to selected queue if viewing a queue, otherwise use Main queue
+      setQueueId(selectedQueueId ?? DEFAULT_QUEUE_ID);
+      
       // Set default path
       initializeDefaultPath();
     }
-  }, [showNewDownloadDialog]);
+  }, [showNewDownloadDialog, selectedQueueId]);
 
   const initializeDefaultPath = async () => {
     const basePath = await getDefaultBasePath();

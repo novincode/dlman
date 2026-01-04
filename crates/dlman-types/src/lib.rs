@@ -192,7 +192,62 @@ pub struct Schedule {
     pub enabled: bool,
     pub start_time: Option<NaiveTime>,
     pub stop_time: Option<NaiveTime>,
+    #[serde(with = "weekday_vec_serde")]
     pub days: Vec<Weekday>,
+}
+
+/// Custom serialization for Vec<Weekday> to/from lowercase string array
+mod weekday_vec_serde {
+    use chrono::Weekday;
+    use serde::{self, Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S>(days: &[Weekday], serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        use serde::ser::SerializeSeq;
+        let mut seq = serializer.serialize_seq(Some(days.len()))?;
+        for day in days {
+            let day_str = match day {
+                Weekday::Mon => "mon",
+                Weekday::Tue => "tue",
+                Weekday::Wed => "wed",
+                Weekday::Thu => "thu",
+                Weekday::Fri => "fri",
+                Weekday::Sat => "sat",
+                Weekday::Sun => "sun",
+            };
+            seq.serialize_element(day_str)?;
+        }
+        seq.end()
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<Weekday>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let strings: Vec<String> = Vec::deserialize(deserializer)?;
+        let mut days = Vec::with_capacity(strings.len());
+        for s in strings {
+            let day = match s.to_lowercase().as_str() {
+                "mon" | "monday" => Weekday::Mon,
+                "tue" | "tuesday" => Weekday::Tue,
+                "wed" | "wednesday" => Weekday::Wed,
+                "thu" | "thursday" => Weekday::Thu,
+                "fri" | "friday" => Weekday::Fri,
+                "sat" | "saturday" => Weekday::Sat,
+                "sun" | "sunday" => Weekday::Sun,
+                other => {
+                    return Err(serde::de::Error::custom(format!(
+                        "Invalid weekday: {}",
+                        other
+                    )))
+                }
+            };
+            days.push(day);
+        }
+        Ok(days)
+    }
 }
 
 /// Action to perform after queue completes

@@ -38,7 +38,7 @@ import { QueueDialog } from '@/components/dialogs/QueueDialog';
 import { CategoryDialog } from '@/components/dialogs/CategoryDialog';
 
 import { useUIStore } from '@/stores/ui';
-import { useQueuesArray, DEFAULT_QUEUE_ID } from '@/stores/queues';
+import { useQueuesArray, useQueueStore, DEFAULT_QUEUE_ID } from '@/stores/queues';
 import { useDownloadStore } from '@/stores/downloads';
 import { useCategoryStore } from '@/stores/categories';
 import { useBatchImportPrefsStore } from '@/stores/batch-import';
@@ -90,6 +90,7 @@ export function BatchImportDialog() {
   const addDownload = useDownloadStore((s) => s.addDownload);
 
   const queues = useQueuesArray();
+  const selectedQueueId = useQueueStore((s) => s.selectedQueueId);
   const categoriesMap = useCategoryStore((s) => s.categories);
   const categories = useMemo(() => Array.from(categoriesMap.values()), [categoriesMap]);
 
@@ -242,7 +243,8 @@ export function BatchImportDialog() {
     const dropUrls = getPendingDropUrls();
     const pending = clipboardUrls.length > 0 ? clipboardUrls : dropUrls;
 
-    setQueueId(DEFAULT_QUEUE_ID);
+    // Use selected queue if viewing a queue, otherwise use Main queue
+    setQueueId(selectedQueueId ?? DEFAULT_QUEUE_ID);
     setCategoryId(null);
     pathCustomizedRef.current = false;
 
