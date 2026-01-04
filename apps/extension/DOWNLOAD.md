@@ -4,23 +4,31 @@ Download the DLMan browser extension to capture downloads directly from your bro
 
 ## Download
 
+Click the links below to download the latest pre-built extension for your browser:
+
 ### Chrome / Edge / Brave (Chromium-based)
 
-1. Download the latest Chrome extension: **[dlman-extension-chrome.zip](https://github.com/novincode/dlman/releases/latest/download/dlman-extension-chrome.zip)**
-2. Extract the ZIP file
-3. Open your browser and go to `chrome://extensions` (or `edge://extensions` for Edge)
-4. Enable **Developer mode** (toggle in the top right)
-5. Click **Load unpacked**
-6. Select the extracted folder
-7. The DLMan extension icon will appear in your toolbar
+📦 **[dlman-extension-chrome.zip](https://github.com/novincode/dlman/releases/latest/download/dlman-extension-chrome.zip)**
+
+**Installation:**
+1. Download and extract the ZIP file
+2. Open your browser and go to `chrome://extensions` (or `edge://extensions` for Edge)
+3. Enable **Developer mode** (toggle in the top right)
+4. Click **Load unpacked**
+5. Select the extracted folder
+6. Done! The extension icon will appear in your toolbar
 
 ### Firefox
 
-1. Download the latest Firefox extension: **[dlman-extension-firefox.zip](https://github.com/novincode/dlman/releases/latest/download/dlman-extension-firefox.zip)**
-2. Open Firefox and go to `about:debugging#/runtime/this-firefox`
-3. Click **Load Temporary Add-on**
-4. Select the ZIP file (or any file inside the extracted folder)
-5. The DLMan extension icon will appear in your toolbar
+📦 **[dlman-extension-firefox.zip](https://github.com/novincode/dlman/releases/latest/download/dlman-extension-firefox.zip)**
+
+**Installation:**
+1. Download the ZIP file
+2. Extract it somewhere
+3. Open Firefox and go to `about:debugging#/runtime/this-firefox`
+4. Click **Load Temporary Add-on**
+5. Select any file from the extracted folder
+6. Done! The extension icon will appear in your toolbar
 
 > **Note:** Firefox temporary add-ons are removed when Firefox is closed. For permanent installation, the extension would need to be signed by Mozilla.
 
@@ -55,6 +63,8 @@ Download the DLMan browser extension to capture downloads directly from your bro
 
 ## Building from Source
 
+If you want to build the extensions yourself:
+
 ```bash
 # Clone the repository
 git clone https://github.com/novincode/dlman.git
@@ -64,14 +74,10 @@ cd dlman
 pnpm install
 
 # Build Chrome extension
-pnpm --filter @dlman/extension build
+pnpm --filter @dlman/extension build:chrome
 
 # Build Firefox extension
 pnpm --filter @dlman/extension build:firefox
-
-# Create ZIP files
-pnpm --filter @dlman/extension zip
-pnpm --filter @dlman/extension zip:firefox
 ```
 
 The built extensions will be in `apps/extension/dist/`.
@@ -79,3 +85,7 @@ The built extensions will be in `apps/extension/dist/`.
 ## Source Code
 
 The extension source code is available at: [apps/extension](https://github.com/novincode/dlman/tree/main/apps/extension)
+
+---
+
+**Latest Release:** See all downloads and releases on [GitHub Releases](https://github.com/novincode/dlman/releases)

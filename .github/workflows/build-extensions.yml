@@ -1,0 +1,60 @@
+name: Build & Release Extensions
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-extensions:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+      
+      - name: Install dependencies
+        run: pnpm install
+      
+      - name: Copy icons
+        run: pnpm --filter @dlman/extension run copy-icons
+      
+      - name: Build Chrome extension
+        run: pnpm --filter @dlman/extension run build:chrome
+      
+      - name: Build Firefox extension
+        run: pnpm --filter @dlman/extension run build:firefox
+      
+      - name: Create Chrome ZIP
+        run: |
+          cd apps/extension/dist/chrome-mv3
+          zip -r ../../dlman-extension-chrome.zip .
+          cd ../../
+      
+      - name: Create Firefox ZIP
+        run: |
+          cd apps/extension/dist/firefox-mv2
+          zip -r ../../dlman-extension-firefox.zip .
+          cd ../../
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            apps/extension/dlman-extension-chrome.zip
+            apps/extension/dlman-extension-firefox.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

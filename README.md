@@ -118,6 +118,19 @@ See [CLI documentation](docs/CLI.md) for more.
 
 ---
 
+## Browser Extension
+
+Install the DLMan browser extension to capture downloads directly from your browser:
+
+| Browser | Download |
+|---------|----------|
+| **Chrome / Edge / Brave** | [📦 dlman-extension-chrome.zip](https://github.com/novincode/dlman/releases/latest/download/dlman-extension-chrome.zip) |
+| **Firefox** | [📦 dlman-extension-firefox.zip](https://github.com/novincode/dlman/releases/latest/download/dlman-extension-firefox.zip) |
+
+See the [Extension Download Guide](apps/extension/DOWNLOAD.md) for detailed installation instructions.
+
+---
+
 ## Contributing
 
 Contributions welcome! See the [Development Guide](docs/DEVELOPMENT.md).
