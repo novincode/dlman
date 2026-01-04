@@ -13,7 +13,10 @@ import {
   Clipboard,
   Tag,
   Save,
-  Clock
+  Clock,
+  FileText,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 
 import {
@@ -65,6 +68,9 @@ export function NewDownloadDialog() {
   const [queueId, setQueueId] = useState(DEFAULT_QUEUE_ID);
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [filename, setFilename] = useState('');
+  const [customFilename, setCustomFilename] = useState(''); // User-edited filename
+  const [filenameEdited, setFilenameEdited] = useState(false); // Track if user edited filename
+  const [showAdvancedPath, setShowAdvancedPath] = useState(false); // Show separate filename field
   const [fileSize, setFileSize] = useState<number | null>(null);
   const [isProbing, setIsProbing] = useState(false);
   const [probeError, setProbeError] = useState<string | null>(null);
@@ -91,6 +97,9 @@ export function NewDownloadDialog() {
       }
       
       setFilename('');
+      setCustomFilename('');
+      setFilenameEdited(false);
+      setShowAdvancedPath(false);
       setFileSize(null);
       setProbeError(null);
       setCategoryId(null);
@@ -144,6 +153,15 @@ export function NewDownloadDialog() {
     setDestination(newPath);
   };
 
+  // Handle custom filename change
+  const handleFilenameChange = (newFilename: string) => {
+    setCustomFilename(newFilename);
+    setFilenameEdited(true);
+  };
+
+  // Get the effective filename to use (custom if edited, otherwise probed)
+  const effectiveFilename = filenameEdited && customFilename ? customFilename : filename;
+
   // Probe URL when it changes (debounced)
   useEffect(() => {
     if (!showNewDownloadDialog) {
@@ -175,6 +193,10 @@ export function NewDownloadDialog() {
           setFileSize(null);
         } else if (info) {
           setFilename(info.filename);
+          // Only set custom filename if user hasn't edited it
+          if (!filenameEdited) {
+            setCustomFilename(info.filename);
+          }
           setFileSize(info.size ?? null);
           setProbeError(null);
           // Auto-detect category from filename
@@ -239,6 +261,9 @@ export function NewDownloadDialog() {
       return;
     }
 
+    // Get the filename to use (custom if edited, otherwise probed)
+    const filenameToUse = filenameEdited && customFilename ? customFilename : filename;
+
     try {
       setIsAdding(true);
       
@@ -246,8 +271,8 @@ export function NewDownloadDialog() {
       if (isTauri()) {
         try {
           // Build probed info if we have filename or size from probing
-          const probedInfo = (filename || fileSize) ? {
-            filename: filename || undefined,
+          const probedInfo = (filenameToUse || fileSize) ? {
+            filename: filenameToUse || undefined,
             size: fileSize ?? undefined,
             final_url: undefined, // finalUrl is not tracked separately in this dialog
           } : undefined;
@@ -275,7 +300,7 @@ export function NewDownloadDialog() {
             id: crypto.randomUUID(),
             url,
             final_url: null,
-            filename: filename || url.split('/').pop() || 'unknown',
+            filename: filenameToUse || url.split('/').pop() || 'unknown',
             destination,
             size: fileSize,
             downloaded: 0,
@@ -298,7 +323,7 @@ export function NewDownloadDialog() {
           id: crypto.randomUUID(),
           url,
           final_url: null,
-          filename: filename || url.split('/').pop() || 'unknown',
+          filename: filenameToUse || url.split('/').pop() || 'unknown',
           destination,
           size: fileSize,
           downloaded: 0,
@@ -329,7 +354,7 @@ export function NewDownloadDialog() {
     } finally {
       setIsAdding(false);
     }
-  }, [url, destination, queueId, categoryId, filename, fileSize, addDownload, setShowNewDownloadDialog, rememberPathForCategory, updateCategory, categories]);
+  }, [url, destination, queueId, categoryId, filename, customFilename, filenameEdited, fileSize, addDownload, setShowNewDownloadDialog, rememberPathForCategory, updateCategory, categories]);
 
   const formatFileSize = (bytes: number) => {
     if (bytes >= 1024 * 1024 * 1024) {
@@ -420,23 +445,88 @@ export function NewDownloadDialog() {
             )}
           </div>
 
-          {/* File Info */}
+          {/* File Info - Shows detected file name and size */}
           <AnimatePresence>
             {filename && !probeError && (
               <motion.div
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
-                className="rounded-md border border-border bg-muted/50 p-3"
+                className="rounded-md border border-border bg-muted/50 p-3 space-y-3"
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">{filename}</span>
-                  {fileSize && (
-                    <span className="text-sm text-muted-foreground">
-                      {formatFileSize(fileSize)}
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                    <span className="text-sm font-medium truncate">{effectiveFilename}</span>
+                    {filenameEdited && (
+                      <span className="text-xs text-primary bg-primary/10 px-1.5 py-0.5 rounded">custom</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {fileSize && (
+                      <span className="text-sm text-muted-foreground">
+                        {formatFileSize(fileSize)}
+                      </span>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowAdvancedPath(!showAdvancedPath)}
+                      className="h-7 px-2 text-xs"
+                    >
+                      {showAdvancedPath ? (
+                        <>
+                          <ChevronUp className="h-3 w-3 mr-1" />
+                          Less
+                        </>
+                      ) : (
+                        <>
+                          <ChevronDown className="h-3 w-3 mr-1" />
+                          Rename
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </div>
+                
+                {/* Expanded filename editing */}
+                <AnimatePresence>
+                  {showAdvancedPath && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="space-y-2"
+                    >
+                      <Label htmlFor="custom-filename" className="text-xs text-muted-foreground">
+                        File name
+                      </Label>
+                      <Input
+                        id="custom-filename"
+                        value={customFilename}
+                        onChange={(e) => handleFilenameChange(e.target.value)}
+                        placeholder="Enter custom filename"
+                        className="h-8 text-sm"
+                      />
+                      {filenameEdited && customFilename !== filename && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">Original: {filename}</span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setCustomFilename(filename);
+                              setFilenameEdited(false);
+                            }}
+                            className="h-5 px-1.5 text-xs"
+                          >
+                            Reset
+                          </Button>
+                        </div>
+                      )}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </motion.div>
             )}
           </AnimatePresence>
