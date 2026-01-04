@@ -19,6 +19,9 @@
     "ext:build": "pnpm --filter @dlman/extension build",
     "ext:build:firefox": "pnpm --filter @dlman/extension build:firefox",
     "ext:zip": "pnpm --filter @dlman/extension zip",
+    "ext:zip:firefox": "pnpm --filter @dlman/extension zip:firefox",
+    "ext:build:all": "pnpm ext:build && pnpm ext:build:firefox",
+    "ext:zip:all": "pnpm ext:zip && pnpm ext:zip:firefox",
     "lint": "pnpm -r lint",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "clean": "pnpm -r clean && rm -rf node_modules"

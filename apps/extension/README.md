@@ -134,6 +134,34 @@ Settings are stored in browser extension storage and can be configured via the o
 - ✅ Brave
 - 🔜 Safari (coming soon)
 
+## Release & Distribution
+
+### Monorepo Approach
+
+The extension is part of the DLMan monorepo (`apps/extension`). This provides:
+- **Shared types** with the desktop app
+- **Consistent versioning** across all DLMan components
+- **Single CI/CD pipeline** for building and releasing
+
+### Automated Releases
+
+When a new version is tagged (e.g., `v1.6.0`), GitHub Actions automatically:
+1. Builds Chrome and Firefox extensions
+2. Creates zip files for each browser
+3. Uploads them to the GitHub release
+
+### Browser Store Distribution
+
+| Store | Status | Notes |
+|-------|--------|-------|
+| Chrome Web Store | 🔜 Planned | Submit `dlman-extension-chrome-*.zip` |
+| Firefox Add-ons | 🔜 Planned | Submit `dlman-extension-firefox-*.zip` |
+| Edge Add-ons | 🔜 Planned | Uses Chrome extension |
+
+### Manual Installation
+
+Download the latest extension zip from [GitHub Releases](https://github.com/novincode/dlman/releases) and load as an unpacked extension.
+
 ## Tech Stack
 
 - **Framework**: [WXT](https://wxt.dev) - Next-gen Web Extension Framework

@@ -8,11 +8,14 @@
   "scripts": {
     "dev": "wxt",
     "dev:firefox": "wxt -b firefox",
+    "prebuild": "node scripts/copy-icons.js",
     "build": "wxt build",
     "build:firefox": "wxt build -b firefox",
+    "build:chrome": "wxt build -b chrome",
     "zip": "wxt zip",
     "zip:firefox": "wxt zip -b firefox",
     "compile": "tsc --noEmit",
+    "copy-icons": "node scripts/copy-icons.js",
     "postinstall": "wxt prepare"
   },
   "dependencies": {

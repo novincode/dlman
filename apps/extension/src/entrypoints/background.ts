@@ -335,11 +335,41 @@ export default defineBackground(() => {
         return true;
 
       case 'add-download':
-        handleDownload(msg.url || '', msg.referrer).then(() => {
-          sendResponse({ success: true });
-        }).catch((error: Error) => {
-          sendResponse({ success: false, error: error.message });
-        });
+        (async () => {
+          try {
+            const client = getDlmanClient();
+            const isAvailable = await client.ping();
+            
+            if (!isAvailable) {
+              sendResponse({ success: false, error: 'DLMan is not running' });
+              return;
+            }
+            
+            const result = await client.addDownload({
+              url: msg.url || '',
+              referrer: msg.referrer,
+              queue_id: currentSettings?.defaultQueueId || undefined,
+            });
+            
+            sendResponse({ 
+              success: result.success, 
+              error: result.error,
+              download: result.download 
+            });
+            
+            // Show notification if enabled
+            if (result.success && currentSettings?.showNotifications) {
+              browser.notifications.create({
+                type: 'basic',
+                iconUrl: 'icon/128.png',
+                title: 'Download Added',
+                message: result.download?.filename || extractFilename(msg.url || ''),
+              });
+            }
+          } catch (error) {
+            sendResponse({ success: false, error: (error as Error).message });
+          }
+        })();
         return true;
 
       case 'connect':
