@@ -196,6 +196,13 @@ export function useKeyboardShortcuts() {
         return;
       }
 
+      // Don't trigger shortcuts when a dialog/modal is open
+      // Radix dialogs add [role="dialog"] to the document
+      const openDialog = document.querySelector('[role="dialog"], [role="alertdialog"]');
+      if (openDialog) {
+        return;
+      }
+
       for (const shortcut of shortcuts) {
         const shiftMatch = shortcut.shiftKey ? e.shiftKey : !e.shiftKey;
         const altMatch = shortcut.altKey ? e.altKey : !e.altKey;

@@ -62,7 +62,7 @@ const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
 ];
 
 export function SettingsDialog() {
-  const { showSettingsDialog, setShowSettingsDialog } = useUIStore();
+  const { showSettingsDialog, setShowSettingsDialog, consoleLogLimits, setConsoleLogLimits } = useUIStore();
   const { settings, updateSettings, setTheme } = useSettingsStore();
   const { categories, updateCategory, removeCategory } = useCategoryStore();
 
@@ -924,6 +924,66 @@ export function SettingsDialog() {
                     }
                   />
                 </div>
+                
+                {/* Console Log Limits - only show when dev mode is enabled */}
+                {localSettings.dev_mode && (
+                  <div className="pt-4 mt-4 border-t space-y-3">
+                    <Label className="text-xs text-muted-foreground">Console Log Limits (per type)</Label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="logLimitInfo" className="text-xs w-12">Info</Label>
+                        <Input
+                          id="logLimitInfo"
+                          type="number"
+                          min={10}
+                          max={1000}
+                          value={consoleLogLimits.info}
+                          onChange={(e) => setConsoleLogLimits({ info: parseInt(e.target.value) || 100 })}
+                          className="h-7 text-xs"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="logLimitWarn" className="text-xs w-12">Warn</Label>
+                        <Input
+                          id="logLimitWarn"
+                          type="number"
+                          min={10}
+                          max={1000}
+                          value={consoleLogLimits.warn}
+                          onChange={(e) => setConsoleLogLimits({ warn: parseInt(e.target.value) || 100 })}
+                          className="h-7 text-xs"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="logLimitError" className="text-xs w-12">Error</Label>
+                        <Input
+                          id="logLimitError"
+                          type="number"
+                          min={10}
+                          max={1000}
+                          value={consoleLogLimits.error}
+                          onChange={(e) => setConsoleLogLimits({ error: parseInt(e.target.value) || 100 })}
+                          className="h-7 text-xs"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="logLimitDebug" className="text-xs w-12">Debug</Label>
+                        <Input
+                          id="logLimitDebug"
+                          type="number"
+                          min={10}
+                          max={1000}
+                          value={consoleLogLimits.debug}
+                          onChange={(e) => setConsoleLogLimits({ debug: parseInt(e.target.value) || 100 })}
+                          className="h-7 text-xs"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Limits how many logs of each type are kept in memory.
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           </div>

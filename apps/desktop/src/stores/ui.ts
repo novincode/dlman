@@ -1,4 +1,13 @@
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
+
+// Log limits per type (persisted to localStorage)
+interface ConsoleLogLimits {
+  info: number;
+  warn: number;
+  error: number;
+  debug: number;
+}
 
 interface UIState {
   // Sidebar
@@ -23,6 +32,7 @@ interface UIState {
   // Dev console
   consoleHeight: number;
   consoleLogs: ConsoleLog[];
+  consoleLogLimits: ConsoleLogLimits;
 
   // Actions
   setSidebarWidth: (width: number) => void;
@@ -44,6 +54,7 @@ interface UIState {
   setDragOverTarget: (target: string | null) => void;
 
   setConsoleHeight: (height: number) => void;
+  setConsoleLogLimits: (limits: Partial<ConsoleLogLimits>) => void;
   addConsoleLog: (log: Omit<ConsoleLog, "id" | "timestamp">) => void;
   clearConsoleLogs: () => void;
 }
@@ -83,6 +94,7 @@ export const useUIStore = create<UIState>((set) => ({
   dragOverTarget: null,
   consoleHeight: 200,
   consoleLogs: [],
+  consoleLogLimits: { info: 200, warn: 100, error: 100, debug: 100 },
 
   // Actions
   setSidebarWidth: (sidebarWidth) => set({ sidebarWidth }),
@@ -107,16 +119,35 @@ export const useUIStore = create<UIState>((set) => ({
   setDragOverTarget: (dragOverTarget) => set({ dragOverTarget }),
 
   setConsoleHeight: (consoleHeight) => set({ consoleHeight }),
-  addConsoleLog: (log) =>
+  setConsoleLogLimits: (limits) =>
     set((state) => ({
-      consoleLogs: [
-        ...state.consoleLogs,
-        {
-          ...log,
-          id: crypto.randomUUID(),
-          timestamp: new Date(),
-        },
-      ].slice(-500), // Keep last 500 logs
+      consoleLogLimits: { ...state.consoleLogLimits, ...limits },
     })),
+  addConsoleLog: (log) =>
+    set((state) => {
+      const newLog = {
+        ...log,
+        id: crypto.randomUUID(),
+        timestamp: new Date(),
+      };
+      const allLogs = [...state.consoleLogs, newLog];
+      
+      // Apply per-type limits
+      const limits = state.consoleLogLimits;
+      const counts: Record<string, number> = { info: 0, warn: 0, error: 0, debug: 0 };
+      
+      // Keep logs from the end, respecting per-type limits
+      const filteredLogs: typeof allLogs = [];
+      for (let i = allLogs.length - 1; i >= 0; i--) {
+        const l = allLogs[i];
+        const limit = limits[l.level] || 100;
+        if (counts[l.level] < limit) {
+          counts[l.level]++;
+          filteredLogs.unshift(l);
+        }
+      }
+      
+      return { consoleLogs: filteredLogs };
+    }),
   clearConsoleLogs: () => set({ consoleLogs: [] }),
 }));

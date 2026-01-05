@@ -22,6 +22,7 @@ import {
   ChevronRight,
   Gauge,
   Zap,
+  CheckSquare,
 } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
@@ -467,6 +468,12 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
 
         <MenuSeparator />
 
+        {/* Select option - enters selection mode */}
+        <MenuItem onClick={() => toggleSelected(download.id)}>
+          <CheckSquare className="h-4 w-4 mr-2" />
+          {isSelected ? "Deselect" : "Select"}
+        </MenuItem>
+
         {/* Remove option */}
         <MenuItem onClick={handleRemove} className="text-destructive focus:text-destructive">
           <Trash2 className="h-4 w-4 mr-2" />
@@ -531,13 +538,15 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
                 )}
               </Button>
 
-              {/* Checkbox */}
-              <Checkbox
-                className="checkbox"
-                checked={isSelected}
-                onCheckedChange={() => toggleSelected(download.id)}
-                onClick={(e) => e.stopPropagation()}
-              />
+              {/* Checkbox - only visible in selection mode */}
+              {isSelectionMode && (
+                <Checkbox
+                  className="checkbox"
+                  checked={isSelected}
+                  onCheckedChange={() => toggleSelected(download.id)}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              )}
 
               {/* Queue Color Indicator */}
               {queue && (
@@ -861,16 +870,9 @@ function StatusIcon({ status }: { status: DownloadStatus }) {
     case "paused":
       return <Pause className="h-8 w-8 text-yellow-500" />;
     case "downloading":
+      // Simple spinner - lightweight CSS animation
       return (
-        <div className="relative">
-          <FileIcon className="h-8 w-8 text-primary" />
-          <motion.div
-            className="absolute inset-0 border-2 border-primary rounded-full"
-            style={{ borderTopColor: "transparent" }}
-            animate={{ rotate: 360 }}
-            transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-          />
-        </div>
+        <div className="h-8 w-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
       );
     case "queued":
     case "pending":

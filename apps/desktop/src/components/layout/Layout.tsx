@@ -23,8 +23,8 @@ export function Layout() {
         <PanelGroup direction="horizontal" className="h-full">
           {/* Sidebar */}
           <Panel
-            defaultSize={20}
-            minSize={15}
+            defaultSize={24}
+            minSize={18}
             maxSize={40}
             collapsible
             onCollapse={() => setSidebarCollapsed(true)}

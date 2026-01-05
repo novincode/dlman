@@ -2,6 +2,7 @@
 
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { toast } from "sonner";
 import { useDownloadStore } from "@/stores/downloads";
 import { useQueueStore } from "@/stores/queues";
@@ -16,6 +17,28 @@ import {
 
 // Check if we're running in Tauri context
 const isTauri = () => typeof window !== 'undefined' && window.__TAURI_INTERNALS__ !== undefined;
+
+// Update app dock/taskbar badge with active download count
+async function updateAppBadge() {
+  if (!isTauri()) return;
+  
+  try {
+    const downloads = useDownloadStore.getState().downloads;
+    const activeCount = Array.from(downloads.values()).filter(
+      d => d.status === 'downloading'
+    ).length;
+    
+    const window = getCurrentWindow();
+    if (activeCount > 0) {
+      await window.setBadgeCount(activeCount);
+    } else {
+      await window.setBadgeCount(undefined);
+    }
+  } catch (e) {
+    // Badge API might not be available on all platforms
+    console.debug('Badge update failed:', e);
+  }
+}
 
 // Store for drag-drop URLs to pass to dialog
 let pendingDropUrls: string[] = [];
@@ -142,6 +165,9 @@ export function setupEventListeners(): () => void {
         data.payload.status,
         data.payload.error
       );
+      
+      // Update app badge when download status changes
+      updateAppBadge();
       
       // Show toast notification for completed/failed downloads
       if (data.payload.status === "completed") {
