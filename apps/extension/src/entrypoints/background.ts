@@ -177,6 +177,45 @@ export default defineBackground(() => {
   // Download Interception
   // ============================================================================
 
+  // MIME types that should be intercepted
+  const DOWNLOADABLE_MIME_TYPES = [
+    'application/zip',
+    'application/x-rar-compressed',
+    'application/x-7z-compressed',
+    'application/x-tar',
+    'application/gzip',
+    'application/x-bzip2',
+    'application/octet-stream', // Generic binary
+    'application/x-msdownload', // Windows executables
+    'application/x-msi',
+    'application/x-apple-diskimage',
+    'application/x-iso9660-image',
+    'video/mp4',
+    'video/x-matroska', // MKV
+    'video/x-msvideo', // AVI
+    'video/quicktime', // MOV
+    'video/webm',
+    'audio/mpeg', // MP3
+    'audio/flac',
+    'audio/wav',
+    'audio/mp4', // M4A
+    'audio/aac',
+    'audio/ogg',
+    'application/pdf',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  ];
+
+  function isDownloadableMimeType(mimeType: string | undefined): boolean {
+    if (!mimeType) return false;
+    const lowerMime = mimeType.toLowerCase().split(';')[0].trim();
+    return DOWNLOADABLE_MIME_TYPES.some(mime => lowerMime === mime || lowerMime.startsWith(mime + ';'));
+  }
+
   function setupDownloadInterception() {
     // Intercept browser downloads
     browser.downloads.onCreated.addListener(async (downloadItem) => {
@@ -184,9 +223,12 @@ export default defineBackground(() => {
         return;
       }
 
-      // Check if URL matches patterns
+      // Check if URL matches patterns OR MIME type is downloadable
       const url = downloadItem.url;
-      if (!url || !isDownloadableUrl(url, currentSettings.interceptPatterns)) {
+      const matchesPattern = url && isDownloadableUrl(url, currentSettings.interceptPatterns);
+      const matchesMimeType = isDownloadableMimeType(downloadItem.mime);
+      
+      if (!url || (!matchesPattern && !matchesMimeType)) {
         return;
       }
 

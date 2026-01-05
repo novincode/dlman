@@ -380,8 +380,8 @@ export function NewDownloadDialog() {
 
   return (
     <Dialog open={showNewDownloadDialog} onOpenChange={setShowNewDownloadDialog}>
-      <DialogContent className="sm:max-w-[500px]">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-[500px] max-h-[85vh] overflow-hidden flex flex-col">
+        <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Download className="h-5 w-5" />
             New Download
@@ -391,7 +391,8 @@ export function NewDownloadDialog() {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="space-y-4 py-4">
           {/* URL Input */}
           <div className="space-y-2">
             <Label htmlFor="url" className="flex items-center gap-2">
@@ -640,9 +641,10 @@ export function NewDownloadDialog() {
               </SelectContent>
             </Select>
           </div>
+          </div>
         </div>
 
-        <DialogFooter className="gap-2 sm:gap-0">
+        <DialogFooter className="shrink-0 gap-2 sm:gap-0">
           <Button
             variant="outline"
             onClick={() => setShowNewDownloadDialog(false)}

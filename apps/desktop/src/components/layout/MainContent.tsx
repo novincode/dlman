@@ -38,7 +38,7 @@ export function MainContent() {
 
   return (
     <div 
-      className="flex flex-col h-full" 
+      className="flex flex-col h-full min-w-0" 
       data-global-context-area
       onContextMenu={handleContextMenu}
     >
@@ -49,7 +49,7 @@ export function MainContent() {
       <SelectionToolbar />
 
       {/* Download List */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden min-w-0">
         {downloads.length > 0 ? (
           <DownloadList downloads={downloads} />
         ) : (

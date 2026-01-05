@@ -60,20 +60,41 @@ export function extractFilename(url: string): string {
 
 /**
  * Check if a URL matches download patterns
+ * Handles URLs with query parameters and fragments
  */
 export function isDownloadableUrl(url: string, patterns: string[]): boolean {
-  const lowercaseUrl = url.toLowerCase();
-  
-  for (const pattern of patterns) {
-    // Convert glob pattern to regex
-    const regexPattern = pattern
-      .replace(/\./g, '\\.')
-      .replace(/\*/g, '.*')
-      .replace(/\?/g, '.');
+  try {
+    const urlObj = new URL(url);
+    // Get just the pathname without query params
+    const pathname = urlObj.pathname.toLowerCase();
     
-    const regex = new RegExp(`${regexPattern}$`, 'i');
-    if (regex.test(lowercaseUrl)) {
-      return true;
+    for (const pattern of patterns) {
+      // Convert glob pattern to regex
+      const regexPattern = pattern
+        .toLowerCase()
+        .replace(/\./g, '\\.')
+        .replace(/\*/g, '.*')
+        .replace(/\?/g, '.');
+      
+      const regex = new RegExp(`${regexPattern}$`, 'i');
+      if (regex.test(pathname)) {
+        return true;
+      }
+    }
+  } catch {
+    // If URL parsing fails, try simple pattern matching on the full URL
+    const lowercaseUrl = url.toLowerCase();
+    for (const pattern of patterns) {
+      const regexPattern = pattern
+        .toLowerCase()
+        .replace(/\./g, '\\.')
+        .replace(/\*/g, '.*')
+        .replace(/\?/g, '.');
+      
+      const regex = new RegExp(`${regexPattern}(\\?|#|$)`, 'i');
+      if (regex.test(lowercaseUrl)) {
+        return true;
+      }
     }
   }
   

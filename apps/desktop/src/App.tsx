@@ -15,7 +15,7 @@ import { ContextMenuProvider } from "@/components/ContextMenu";
 import { DndProvider } from "@/components/dnd/DndProvider";
 import { useSettingsStore, loadSettingsFromBackend } from "@/stores/settings";
 import { useUIStore } from "@/stores/ui";
-import { setupEventListeners, setPendingClipboardUrls } from "@/lib/events";
+import { setupEventListeners, setPendingClipboardUrls, setPendingDropUrls } from "@/lib/events";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useUpdateCheck } from "@/hooks/useUpdateCheck";
 import { parseUrls } from "@/lib/utils";
@@ -177,8 +177,8 @@ function AppContent() {
   const handleDrop = useCallback((urls: string[]) => {
     if (urls.length === 0) return;
 
-    // Store URLs for dialogs to pick up (same as paste handler)
-    setPendingClipboardUrls(urls);
+    // Store URLs in the drop store (separate from clipboard)
+    setPendingDropUrls(urls);
 
     if (urls.length === 1) {
       // Single URL - open new download dialog

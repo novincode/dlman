@@ -149,7 +149,7 @@ export function DownloadList({ downloads }: DownloadListProps) {
         onKeyDown={handleKeyDown}
       >
         <div
-          className="relative w-full"
+          className="relative w-full min-w-0"
           style={{ height: `${virtualizer.getTotalSize()}px` }}
         >
           {virtualizer.getVirtualItems().map((virtualItem) => {
@@ -160,7 +160,7 @@ export function DownloadList({ downloads }: DownloadListProps) {
                 key={virtualItem.key}
                 data-index={virtualItem.index}
                 ref={virtualizer.measureElement}
-                className="absolute top-0 left-0 w-full"
+                className="absolute top-0 left-0 w-full min-w-0 px-1"
                 style={{
                   transform: `translateY(${virtualItem.start}px)`,
                 }}

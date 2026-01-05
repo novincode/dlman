@@ -539,41 +539,43 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
               </div>
 
               {/* Main Content */}
-              <div className="flex-1 min-w-0">
+              <div className="flex-1 min-w-0 overflow-hidden">
                 {/* Filename and Status */}
-                <div className="flex items-center gap-2">
-                  <span className="font-medium truncate">{download.filename}</span>
-                  <StatusBadge status={download.status} />
-                  {/* MOVED badge for completed downloads where file doesn't exist */}
-                  {download.status === "completed" && fileExists === false && (
-                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded uppercase bg-orange-500/10 text-orange-500">
-                      MOVED
-                    </span>
-                  )}
-                  {/* Speed limit indicator */}
-                  {effectiveSpeedLimit && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground flex items-center gap-1">
-                      <Gauge className="h-3 w-3" />
-                      {Math.round(effectiveSpeedLimit / 1024)} KB/s
-                    </span>
-                  )}
-                  {/* Category badge */}
-                  {category && (() => {
-                    const iconConfig = getCategoryIcon(category.icon, category.name);
-                    const IconComponent = iconConfig.icon;
-                    return (
-                      <span 
-                        className="text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1 font-medium"
-                        style={{ 
-                          backgroundColor: `${category.color}15`, 
-                          color: category.color 
-                        }}
-                      >
-                        <IconComponent className="h-3 w-3" />
-                        {category.name}
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-medium truncate min-w-0 flex-shrink">{download.filename}</span>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <StatusBadge status={download.status} />
+                    {/* MOVED badge for completed downloads where file doesn't exist */}
+                    {download.status === "completed" && fileExists === false && (
+                      <span className="text-[10px] font-medium px-1.5 py-0.5 rounded uppercase bg-orange-500/10 text-orange-500">
+                        MOVED
                       </span>
-                    );
-                  })()}
+                    )}
+                    {/* Speed limit indicator */}
+                    {effectiveSpeedLimit && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground flex items-center gap-1">
+                        <Gauge className="h-3 w-3" />
+                        {Math.round(effectiveSpeedLimit / 1024)} KB/s
+                      </span>
+                    )}
+                    {/* Category badge */}
+                    {category && (() => {
+                      const iconConfig = getCategoryIcon(category.icon, category.name);
+                      const IconComponent = iconConfig.icon;
+                      return (
+                        <span 
+                          className="text-[10px] px-1.5 py-0.5 rounded flex items-center gap-1 font-medium"
+                          style={{ 
+                            backgroundColor: `${category.color}15`, 
+                            color: category.color 
+                          }}
+                        >
+                          <IconComponent className="h-3 w-3" />
+                          {category.name}
+                        </span>
+                      );
+                    })()}
+                  </div>
                 </div>
 
                 {/* Progress Bar (for active downloads) */}
@@ -782,10 +784,6 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
                         <span className="font-medium">
                           {new Date(download.created_at).toLocaleString()}
                         </span>
-                      </div>
-                      <div className="col-span-2 truncate">
-                        <span className="text-muted-foreground">URL:</span>{" "}
-                        <span className="font-mono text-[10px]">{download.url}</span>
                       </div>
                     </div>
                   </div>
