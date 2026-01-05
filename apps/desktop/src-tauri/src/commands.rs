@@ -648,13 +648,19 @@ pub async fn move_download_file(
         })
         .map_err(|e| format!("Failed to move file: {}", e))?;
     
-    // Update the download's destination in the database
+    // Update the download's destination in the database and emit event
     let new_dest_clone = new_destination.clone();
     state
         .with_core_async(|core| async move {
             let mut updated_download = core.get_download(download_uuid).await?;
             updated_download.destination = PathBuf::from(new_dest_clone);
             core.download_manager.db().upsert_download(&updated_download).await?;
+            
+            // Emit event to update frontend
+            core.emit(dlman_types::CoreEvent::DownloadUpdated {
+                download: updated_download,
+            });
+            
             Ok(())
         })
         .await

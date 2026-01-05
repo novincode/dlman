@@ -92,7 +92,7 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
       if (download.status === 'completed') {
         await invoke('move_download_file', {
           id: download.id,
-          newDestination: editedDestination,
+          new_destination: editedDestination,
         });
         toast.success('File moved successfully');
       } else {
