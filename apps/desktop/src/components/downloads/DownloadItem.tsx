@@ -56,6 +56,7 @@ import { getCategoryIcon } from "@/lib/categoryIcons";
 import { formatBytes, formatSpeed, formatDuration } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import { DownloadInfoDialog } from "@/components/dialogs/DownloadInfoDialog";
+import { useFileDrag, canDragDownload } from "@/hooks/useFileDrag";
 import type { Download, DownloadStatus } from "@/types";
 
 // Check if we're in Tauri context
@@ -79,6 +80,16 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
   const [speedLimitInput, setSpeedLimitInput] = useState<string>(
     download.speed_limit ? Math.round(download.speed_limit / 1024).toString() : ""
   );
+  
+  // File drag-out support for completed downloads
+  const { handleDragStart: handleFileDragStart, isSupported: isDragSupported } = useFileDrag({
+    onDragEnd: (dropped) => {
+      if (dropped) {
+        toast.success('File dropped successfully');
+      }
+    },
+  });
+  const canDrag = canDragDownload(download) && isDragSupported;
 
   // Sync speedLimitInput when download changes
   useEffect(() => {
@@ -471,10 +482,13 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
         <ContextMenuTrigger asChild>
           <div
             data-download-item="true"
+            draggable={canDrag}
+            onDragStart={(e) => handleFileDragStart(e, download)}
             className={cn(
               "rounded-lg border bg-card transition-all group",
               isSelected && "border-primary bg-primary/5",
               isFocused && "ring-2 ring-ring ring-inset",
+              canDrag && "cursor-grab active:cursor-grabbing",
             )}
             onClick={() => {
               // ALWAYS set focus when clicking anywhere on the item

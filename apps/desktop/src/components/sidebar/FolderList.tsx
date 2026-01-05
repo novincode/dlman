@@ -1,9 +1,12 @@
 import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { invoke } from "@tauri-apps/api/core";
+import { toast } from "sonner";
 import {
   ChevronDown,
   ChevronRight,
   Folder,
+  FolderOpen,
   Plus,
   MoreHorizontal,
   Edit,
@@ -34,8 +37,12 @@ import {
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 import { useCategoryStore, useCategoriesArray, Category } from "@/stores/categories";
+import { getCategoryDownloadPath } from "@/lib/download-path";
 import { CategoryDialog } from "@/components/dialogs/CategoryDialog";
 import { DroppableSidebarItem } from "@/components/dnd/DroppableSidebarItem";
+
+// Check if we're in Tauri context
+const isTauri = () => typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
 
 // Map category IDs to icons
 const CATEGORY_ICON_MAP: Record<string, LucideIcon> = {
@@ -71,6 +78,21 @@ export function FolderList() {
   const handleDeleteCategory = useCallback((id: string) => {
     removeCategory(id);
   }, [removeCategory]);
+
+  const handleOpenCategoryFolder = useCallback(async (category: Category) => {
+    if (!isTauri()) {
+      toast.info("Open folder is only available in the desktop app");
+      return;
+    }
+    
+    try {
+      const folderPath = await getCategoryDownloadPath(category.id);
+      await invoke("open_folder", { path: folderPath });
+    } catch (err) {
+      console.error("Failed to open category folder:", err);
+      toast.error("Failed to open folder");
+    }
+  }, []);
 
   return (
     <>
@@ -157,6 +179,11 @@ export function FolderList() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleOpenCategoryFolder(category); }}>
+                                  <FolderOpen className="h-4 w-4 mr-2" />
+                                  Open Folder
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
                                 <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEditCategory(category); }}>
                                   <Edit className="h-4 w-4 mr-2" />
                                   Edit Category
@@ -178,6 +205,11 @@ export function FolderList() {
                           </div>
                         </ContextMenuTrigger>
                         <ContextMenuContent>
+                          <ContextMenuItem onClick={() => handleOpenCategoryFolder(category)}>
+                            <FolderOpen className="h-4 w-4 mr-2" />
+                            Open Folder
+                          </ContextMenuItem>
+                          <ContextMenuSeparator />
                           <ContextMenuItem onClick={() => handleEditCategory(category)}>
                             <Edit className="h-4 w-4 mr-2" />
                             Edit Category
