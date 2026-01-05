@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.7.2] - 2026-01-05
+
+### 🐛 Bug Fixes
+- Fixed race condition in download manager preventing multiple concurrent starts
+- Fixed move_download_file parameter naming (snake_case for backend)
+- Added DevTools toggle shortcut (Cmd+Alt+D) when dev mode enabled
+- Fixed add_download dependency array in NewDownloadDialog
+- Emit DownloadUpdated event after moving file to keep UI in sync
+
 ## [1.7.0] - 2025-01-26
 
 ### ✨ New Features

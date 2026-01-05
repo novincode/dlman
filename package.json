@@ -1,6 +1,6 @@
 {
   "name": "dlman",
-  "version": "1.7.0",
+  "version": "1.7.2",
   "private": true,
   "description": "A modern, open-source download manager",
   "keywords": ["download", "manager", "tauri", "rust", "react"],
