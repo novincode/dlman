@@ -12,13 +12,6 @@ import {
   Edit,
   Palette,
   Trash2,
-  Music,
-  Film,
-  FileText,
-  Image,
-  Archive,
-  Box,
-  type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,23 +33,10 @@ import { useCategoryStore, useCategoriesArray, Category } from "@/stores/categor
 import { getCategoryDownloadPath } from "@/lib/download-path";
 import { CategoryDialog } from "@/components/dialogs/CategoryDialog";
 import { DroppableSidebarItem } from "@/components/dnd/DroppableSidebarItem";
+import { getCategoryIcon } from "@/lib/categoryIcons";
 
 // Check if we're in Tauri context
 const isTauri = () => typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
-
-// Map category IDs to icons
-const CATEGORY_ICON_MAP: Record<string, LucideIcon> = {
-  music: Music,
-  videos: Film,
-  documents: FileText,
-  images: Image,
-  archives: Archive,
-  programs: Box,
-};
-
-function getCategoryIcon(catId: string): LucideIcon {
-  return CATEGORY_ICON_MAP[catId] || Folder;
-}
 
 export function FolderList() {
   const [expanded, setExpanded] = useState(true);
@@ -138,7 +118,8 @@ export function FolderList() {
                 </div>
 
                 {categories.map((category) => {
-                  const IconComponent = getCategoryIcon(category.id);
+                  const iconConfig = getCategoryIcon(category.icon, category.name);
+                  const IconComponent = iconConfig.icon;
                   
                   return (
                     <DroppableSidebarItem key={category.id} id={category.id} type="category">

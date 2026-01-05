@@ -99,10 +99,14 @@ function isHtmlItem(item: Item): boolean {
 export function BatchImportDialog() {
   const { showBatchImportDialog, setShowBatchImportDialog } = useUIStore();
   const addDownload = useDownloadStore((s) => s.addDownload);
+  const setFilter = useDownloadStore((s) => s.setFilter);
 
   const queues = useQueuesArray();
   const selectedQueueId = useQueueStore((s) => s.selectedQueueId);
+  const setSelectedQueue = useQueueStore((s) => s.setSelectedQueue);
   const categoriesMap = useCategoryStore((s) => s.categories);
+  const selectedCategoryId = useCategoryStore((s) => s.selectedCategoryId);
+  const setSelectedCategory = useCategoryStore((s) => s.setSelectedCategory);
   const categories = useMemo(() => Array.from(categoriesMap.values()), [categoriesMap]);
 
   const hideHtmlPages = useBatchImportPrefsStore((s) => s.hideHtmlPages);
@@ -470,6 +474,22 @@ export function BatchImportDialog() {
     [items, hideHtmlPages, focusedIndex, toggleItem]
   );
 
+  // Navigate to show the newly added downloads
+  const navigateToDownloads = useCallback(() => {
+    // Reset filter to "all" so downloads are visible
+    setFilter('all');
+    
+    // Navigate to the destination queue
+    if (selectedQueueId !== null && selectedQueueId !== queueId) {
+      setSelectedQueue(queueId);
+    }
+    
+    // Navigate to the category (if user was viewing a specific category)
+    if (categoryId && selectedCategoryId !== null && selectedCategoryId !== categoryId) {
+      setSelectedCategory(categoryId);
+    }
+  }, [queueId, categoryId, selectedQueueId, selectedCategoryId, setFilter, setSelectedQueue, setSelectedCategory]);
+
   const handleAddSelected = useCallback(async () => {
     const selected = items.filter((it) => it.checked && !it.error).filter((it) => !(hideHtmlPages && isHtmlItem(it)));
 
@@ -510,6 +530,9 @@ export function BatchImportDialog() {
         }
 
         toast.success(`Added ${downloads.length} downloads`);
+        
+        // Navigate to the downloads view
+        navigateToDownloads();
       } else {
         // Non-Tauri fallback - add one by one
         for (const it of selected) {
@@ -534,6 +557,9 @@ export function BatchImportDialog() {
           addDownload(localDownload);
         }
         toast.success(`Added ${selected.length} downloads`);
+        
+        // Navigate to the downloads view
+        navigateToDownloads();
       }
 
       if (startImmediately) {
@@ -547,7 +573,7 @@ export function BatchImportDialog() {
     } finally {
       setIsAdding(false);
     }
-  }, [items, hideHtmlPages, destination, queueId, categoryId, addDownload, startImmediately, handleClose]);
+  }, [items, hideHtmlPages, destination, queueId, categoryId, addDownload, startImmediately, handleClose, navigateToDownloads]);
 
   return (
     <>

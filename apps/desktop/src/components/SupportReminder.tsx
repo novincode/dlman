@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { X, Star, Heart } from "lucide-react";
+import { open as openUrl } from "@tauri-apps/plugin-shell";
 import { useSettingsStore } from "@/stores/settings";
 import { cn } from "@/lib/utils";
 
@@ -96,13 +97,21 @@ export function SupportReminder() {
     setVisible(false);
   };
 
-  const handleStar = () => {
-    window.open("https://github.com/novincode/dlman", "_blank");
+  const handleStar = async () => {
+    try {
+      await openUrl("https://github.com/novincode/dlman");
+    } catch (err) {
+      console.error("Failed to open GitHub:", err);
+    }
     // Don't hide immediately, let them come back
   };
 
-  const handleSponsor = () => {
-    window.open("https://github.com/sponsors/novincode", "_blank");
+  const handleSponsor = async () => {
+    try {
+      await openUrl("https://github.com/sponsors/novincode");
+    } catch (err) {
+      console.error("Failed to open sponsors page:", err);
+    }
   };
 
   // Get emoji based on hovered button
@@ -124,8 +133,8 @@ export function SupportReminder() {
   if (!visible) return null;
 
   return (
-    <div className="fixed bottom-20 left-4 z-50 animate-in slide-in-from-left-4 fade-in duration-300">
-      <div className="bg-background/95 backdrop-blur-sm border rounded-xl shadow-lg p-4 max-w-[280px]">
+    <div className="fixed bottom-8 left-4 z-50 animate-in slide-in-from-left-4 fade-in duration-300">
+      <div className="bg-background/95 backdrop-blur-sm border rounded-xl shadow-lg p-5 max-w-[320px]">
         {/* Close button */}
         <button
           onClick={handleSkip}
@@ -139,16 +148,16 @@ export function SupportReminder() {
         {/* Content */}
         <div className="flex items-start gap-3">
           {/* Emoji that reacts */}
-          <div className="text-2xl transition-all duration-200 select-none">
+          <div className="text-3xl transition-all duration-200 select-none">
             {getEmoji()}
           </div>
 
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-foreground">
+            <p className="text-base font-semibold text-foreground">
               Enjoying DLMan?
             </p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Your support helps keep it free
+            <p className="text-sm text-muted-foreground mt-1">
+              Your support helps keep it free and awesome
             </p>
 
             {/* Action buttons */}

@@ -53,6 +53,7 @@ export function NewDownloadDialog() {
   const { showNewDownloadDialog, setShowNewDownloadDialog } = useUIStore();
   const queues = useQueuesArray();
   const selectedQueueId = useQueueStore((s) => s.selectedQueueId);
+  const setSelectedQueue = useQueueStore((s) => s.setSelectedQueue);
   const categories = useMemo(
     () => useCategoryStore.getState().categories,
     []
@@ -62,6 +63,7 @@ export function NewDownloadDialog() {
   const selectedCategoryId = useCategoryStore((s) => s.selectedCategoryId);
   const addDownload = useDownloadStore((s) => s.addDownload);
   const removeDownload = useDownloadStore((s) => s.removeDownload);
+  const setFilter = useDownloadStore((s) => s.setFilter);
 
   // Default queue UUID (Main queue)
   const DEFAULT_QUEUE_ID = '00000000-0000-0000-0000-000000000000';
@@ -304,7 +306,16 @@ export function NewDownloadDialog() {
       updateCategory(categoryId, { customPath: destination });
     }
     
-    // Auto-switch to the download's category view
+    // Navigate to the download's view so user can see it
+    // 1. Reset filter to "all" so the new download is visible
+    setFilter('all');
+    
+    // 2. Navigate to the destination queue (or "All Downloads" if using default)
+    if (selectedQueueId !== null && selectedQueueId !== queueId) {
+      setSelectedQueue(queueId);
+    }
+    
+    // 3. Auto-switch to the download's category view (only if user was in a specific category)
     if (categoryId && selectedCategoryId !== null && selectedCategoryId !== categoryId) {
       setSelectedCategory(categoryId);
     }
@@ -343,7 +354,7 @@ export function NewDownloadDialog() {
         toast.error('Failed to add download', { description: errorMsg });
       }
     }
-  }, [url, destination, queueId, categoryId, filename, customFilename, filenameEdited, fileSize, addDownload, removeDownload, setShowNewDownloadDialog, rememberPathForCategory, updateCategory, selectedCategoryId, setSelectedCategory]);
+  }, [url, destination, queueId, categoryId, filename, customFilename, filenameEdited, fileSize, addDownload, removeDownload, setShowNewDownloadDialog, rememberPathForCategory, updateCategory, selectedCategoryId, setSelectedCategory, setFilter, setSelectedQueue, selectedQueueId]);
 
   const formatFileSize = (bytes: number) => {
     if (bytes >= 1024 * 1024 * 1024) {
