@@ -75,6 +75,12 @@ impl DownloadTask {
         }
     }
     
+    /// Get the effective URL for downloading segments
+    /// Uses final_url (after redirects) if available, otherwise the original url
+    fn effective_url(&self) -> &str {
+        self.download.final_url.as_deref().unwrap_or(&self.download.url)
+    }
+    
     /// Get the paused flag for external control
     pub fn paused(&self) -> Arc<AtomicBool> {
         self.paused.clone()
@@ -236,10 +242,13 @@ impl DownloadTask {
             return Ok(());
         }
         
+        // Use final_url if available (after redirects), otherwise use original url
+        let url = self.effective_url().to_string();
+        
         let worker = SegmentWorker::new(
             self.download.id,
             segment,
-            self.download.url.clone(),
+            url,
             self.temp_dir.clone(),
             self.client.clone(),
             self.rate_limiter.clone(),
@@ -306,12 +315,16 @@ impl DownloadTask {
             
             let mut join_set = JoinSet::new();
             
+            // Use final_url if available (after redirects), otherwise use original url
+            // This avoids re-resolving redirects for every segment request
+            let url = self.effective_url().to_string();
+            
             // Spawn a worker for each segment that needs downloading
             for segment in &segments_to_download {
                 let worker = SegmentWorker::new(
                     self.download.id,
                     segment.clone(),
-                    self.download.url.clone(),
+                    url.clone(),
                     self.temp_dir.clone(),
                     self.client.clone(),
                     self.rate_limiter.clone(),

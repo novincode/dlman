@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.7.0] - 2025-01-26
+
+### ✨ New Features
+
+**App Badge for Active Downloads**
+- macOS dock badge shows count of active downloads
+- Clear indicator when downloads are in progress
+
+**Console Log Management**
+- Per-type log limits (info, warn, error, debug)
+- Configurable limits in Settings > Advanced (dev mode)
+- Prevents memory bloat from excessive logging
+
+**Selection Mode Improvements**
+- Checkboxes only appear when in selection mode
+- Right-click "Select" option to enter selection mode
+- Cleaner list appearance by default
+
+### 🎨 UI Enhancements
+- Improved download loading animation (lightweight CSS spinner)
+- Wider sidebar with better overflow handling
+- Dialogs now properly block interaction behind them
+- Play/pause buttons feel instant with optimistic updates
+
+### ⚡ Performance
+- Segments now use cached CDN URL to avoid redirect overhead on resume
+- Reduced HTTP requests when resuming downloads from GitHub/CDN sources
+
+### 🐛 Bug Fixes
+- Fixed download status not updating when starting immediately
+- Fixed keyboard shortcuts firing through open dialogs
+- Fixed sidebar horizontal overflow issues
+
 ## [1.5.0] - 2026-01-04
 
 ### ✨ New Features
