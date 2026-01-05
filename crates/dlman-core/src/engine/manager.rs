@@ -278,8 +278,12 @@ impl DownloadManager {
     ) -> Result<(), DlmanError> {
         let id = download.id;
         
+        // Use write lock from the start to prevent race conditions
+        // This ensures atomicity: check-then-insert happens under a single lock
+        let mut active_tasks = self.active_tasks.write().await;
+        
         // Check if already running
-        if self.active_tasks.read().await.contains_key(&id) {
+        if active_tasks.contains_key(&id) {
             warn!("Download {} is already running", id);
             return Ok(());
         }
@@ -307,8 +311,8 @@ impl DownloadManager {
         let paused = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let cancelled = Arc::new(std::sync::atomic::AtomicBool::new(false));
         
-        // Clone for cleanup task
-        let active_tasks = self.active_tasks.clone();
+        // Clone for cleanup task (clone before we hold the write lock to avoid deadlock)
+        let active_tasks_for_cleanup = self.active_tasks.clone();
         let task_id = id;
         
         // Create download task with its own rate limiter
@@ -330,12 +334,13 @@ impl DownloadManager {
         let task_handle = tokio::spawn(async move {
             let result = task.run().await;
             // Remove from active tasks when done
-            active_tasks.write().await.remove(&task_id);
+            active_tasks_for_cleanup.write().await.remove(&task_id);
             result
         });
         
         // Store handle with shared control flags and rate limiter
-        self.active_tasks.write().await.insert(
+        // We still hold the write lock from the beginning of this function
+        active_tasks.insert(
             id,
             DownloadTaskHandle {
                 _task_handle: task_handle,
