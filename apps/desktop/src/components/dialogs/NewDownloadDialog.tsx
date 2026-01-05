@@ -61,6 +61,7 @@ export function NewDownloadDialog() {
   const setSelectedCategory = useCategoryStore((s) => s.setSelectedCategory);
   const selectedCategoryId = useCategoryStore((s) => s.selectedCategoryId);
   const addDownload = useDownloadStore((s) => s.addDownload);
+  const removeDownload = useDownloadStore((s) => s.removeDownload);
 
   // Default queue UUID (Main queue)
   const DEFAULT_QUEUE_ID = '00000000-0000-0000-0000-000000000000';
@@ -76,7 +77,7 @@ export function NewDownloadDialog() {
   const [fileSize, setFileSize] = useState<number | null>(null);
   const [isProbing, setIsProbing] = useState(false);
   const [probeError, setProbeError] = useState<string | null>(null);
-  const [isAdding, setIsAdding] = useState(false);
+  const [isAdding] = useState(false); // Kept for button disabled state during brief window
   const [rememberPathForCategory, setRememberPathForCategory] = useState(false);
   const [pathCustomized, setPathCustomized] = useState(false);
   // Track if user has manually customized the path (ref for logic, state for UI reactivity)
@@ -265,105 +266,77 @@ export function NewDownloadDialog() {
 
     // Get the filename to use (custom if edited, otherwise probed)
     const filenameToUse = filenameEdited && customFilename ? customFilename : filename;
-
-    try {
-      setIsAdding(true);
-      
-      // Try to add via Tauri backend
-      if (isTauri()) {
-        try {
-          // Build probed info if we have filename or size from probing
-          const probedInfo = (filenameToUse || fileSize) ? {
-            filename: filenameToUse || undefined,
-            size: fileSize ?? undefined,
-            final_url: undefined, // finalUrl is not tracked separately in this dialog
-          } : undefined;
-
-          const download = await invoke<DownloadType>('add_download', {
-            url,
-            destination,
-            queue_id: queueId,
-            category_id: categoryId || undefined,
-            probed_info: probedInfo,
-            start_later: startLater, // Pass to backend to control auto-start
-          });
-          // Add to local store
-          addDownload(download);
-          
-          if (startLater) {
-            toast.success('Download added to queue');
-          } else {
-            toast.success('Download started');
-          }
-        } catch (err) {
-          console.error('Backend add_download failed:', err);
-          // Fallback: create local download
-          const localDownload: DownloadType = {
-            id: crypto.randomUUID(),
-            url,
-            final_url: null,
-            filename: filenameToUse || url.split('/').pop() || 'unknown',
-            destination,
-            size: fileSize,
-            downloaded: 0,
-            status: startLater ? 'queued' : 'pending',
-            segments: [],
-            queue_id: queueId,
-            category_id: categoryId,
-            color: null,
-            error: null,
-            speed_limit: null,
-            created_at: new Date().toISOString(),
-            completed_at: null,
-          };
-          addDownload(localDownload);
-          toast.success('Download added (offline mode)');
-        }
-      } else {
-        // Not in Tauri, create local download
-        const localDownload: DownloadType = {
-          id: crypto.randomUUID(),
-          url,
-          final_url: null,
-          filename: filenameToUse || url.split('/').pop() || 'unknown',
-          destination,
-          size: fileSize,
-          downloaded: 0,
-          status: startLater ? 'queued' : 'pending',
-          segments: [],
-          queue_id: queueId,
-          category_id: categoryId,
-          color: null,
-          error: null,
-          speed_limit: null,
-          created_at: new Date().toISOString(),
-          completed_at: null,
-        };
-        addDownload(localDownload);
-        toast.success('Download added (preview mode)');
-      }
-      
-      // If user chose to remember the path for the category, update the category's customPath
-      if (rememberPathForCategory && categoryId) {
-        updateCategory(categoryId, { customPath: destination });
-        toast.success(`Path saved for ${categories.get(categoryId)?.name || 'category'}`);
-      }
-      
-      // Auto-switch to the download's category if we're in a different category view
-      // This ensures the user sees the newly added download
-      if (categoryId && selectedCategoryId !== null && selectedCategoryId !== categoryId) {
-        // User is viewing a specific category but download is in a different one
-        setSelectedCategory(categoryId);
-      }
-      
-      setShowNewDownloadDialog(false);
-    } catch (err) {
-      console.error('Failed to add download:', err);
-      toast.error('Failed to add download');
-    } finally {
-      setIsAdding(false);
+    
+    // OPTIMISTIC UI: Close dialog immediately and add placeholder
+    const tempId = crypto.randomUUID();
+    const optimisticDownload: DownloadType = {
+      id: tempId,
+      url,
+      final_url: null,
+      filename: filenameToUse || url.split('/').pop() || 'downloading...',
+      destination,
+      size: fileSize,
+      downloaded: 0,
+      status: startLater ? 'queued' : 'pending',
+      segments: [],
+      queue_id: queueId,
+      category_id: categoryId,
+      color: null,
+      error: null,
+      speed_limit: null,
+      created_at: new Date().toISOString(),
+      completed_at: null,
+    };
+    
+    // Add optimistically and close dialog immediately for snappy UX
+    addDownload(optimisticDownload);
+    setShowNewDownloadDialog(false);
+    
+    // Show immediate feedback
+    if (startLater) {
+      toast.success('Download added to queue');
+    } else {
+      toast.success('Download starting...');
     }
-  }, [url, destination, queueId, categoryId, filename, customFilename, filenameEdited, fileSize, addDownload, setShowNewDownloadDialog, rememberPathForCategory, updateCategory, categories, selectedCategoryId, setSelectedCategory]);
+    
+    // If user chose to remember the path for the category, update now
+    if (rememberPathForCategory && categoryId) {
+      updateCategory(categoryId, { customPath: destination });
+    }
+    
+    // Auto-switch to the download's category view
+    if (categoryId && selectedCategoryId !== null && selectedCategoryId !== categoryId) {
+      setSelectedCategory(categoryId);
+    }
+
+    // Now perform backend add in background
+    if (isTauri()) {
+      try {
+        const probedInfo = (filenameToUse || fileSize) ? {
+          filename: filenameToUse || undefined,
+          size: fileSize ?? undefined,
+          final_url: undefined,
+        } : undefined;
+
+        const download = await invoke<DownloadType>('add_download', {
+          url,
+          destination,
+          queue_id: queueId,
+          category_id: categoryId || undefined,
+          probed_info: probedInfo,
+          start_later: startLater,
+        });
+        
+        // Remove optimistic placeholder and add real download
+        removeDownload(tempId);
+        addDownload(download);
+      } catch (err) {
+        console.error('Backend add_download failed:', err);
+        // Keep the optimistic download but show error
+        toast.error('Failed to add download to backend');
+      }
+    }
+  }, [url, destination, queueId, categoryId, filename, customFilename, filenameEdited, fileSize, addDownload, removeDownload, setShowNewDownloadDialog, rememberPathForCategory, updateCategory, categories, selectedCategoryId, setSelectedCategory]);
 
   const formatFileSize = (bytes: number) => {
     if (bytes >= 1024 * 1024 * 1024) {

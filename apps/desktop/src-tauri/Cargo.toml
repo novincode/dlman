@@ -20,7 +20,7 @@ tauri-plugin-shell = "2"
 tauri-plugin-process = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-deep-link = "2"
-tauri-plugin-drag = "2"
+# tauri-plugin-drag = "2" # DISABLED: Causes crash on macOS "Rust cannot catch foreign exceptions"
 
 tokio = { workspace = true }
 serde = { workspace = true }

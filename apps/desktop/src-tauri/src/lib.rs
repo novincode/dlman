@@ -36,7 +36,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_deep_link::init())
-        .plugin(tauri_plugin_drag::init())
+        // .plugin(tauri_plugin_drag::init()) // DISABLED: Causes crash on macOS
         .setup(|app| {
             // Enable forwarding Rust logs to the frontend Dev Console.
             log_forward::set_app_handle(app.handle().clone());

@@ -52,7 +52,6 @@
         { "path": "$DOCUMENT/**" },
         { "path": "$DATA/**" }
       ]
-    },
-    "drag:default"
+    }
   ]
 }
