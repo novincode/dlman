@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.7.3] - 2026-01-06
+
+### 🐛 Bug Fixes
+- **Fixed duplicate tray icons on macOS**: Tray icons no longer multiply when reloading the app. The system now properly reuses existing tray icons instead of creating duplicates.
+- Fixed SupportReminder links not opening in Tauri context (now uses shell.open API)
+
+### 🎨 UI Enhancements
+- Added icons to FilterBar "All" states (Activity for status, ListTodo for queues, Folder for categories)
+- Enhanced SupportReminder component with larger text and better positioning
+- Category icons now display correctly in sidebar (Music, Videos, Documents, etc.)
+
 ## [1.7.2] - 2026-01-05
 
 ### 🐛 Bug Fixes

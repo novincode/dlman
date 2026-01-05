@@ -43,7 +43,7 @@ export default defineConfig({
   manifest: {
     name: 'DLMan - Download Manager',
     description: 'Modern download manager - fast, beautiful, and free',
-    version: '1.7.2',
+    version: '1.7.3',
     permissions: [
       'storage',
       'downloads',

@@ -16,80 +16,109 @@ import { useUIStore } from '@/stores/ui';
 import { useQueueStore, selectQueuesArray } from '@/stores/queues';
 import { getAppVersion } from '@/lib/version';
 
-// Track if tray has been initialized
+// Track if tray has been initialized (in this JS session)
 let trayInitialized = false;
 let trayIcon: TrayIcon | null = null;
 
+// Unique ID for the tray icon - used to detect existing icons after reload
+const TRAY_ID = 'dlman-tray';
+
+/**
+ * Create the tray menu with all items
+ */
+async function createTrayMenu(): Promise<Menu> {
+  return await Menu.new({
+    items: [
+      {
+        id: 'new-download',
+        text: 'New Download',
+        accelerator: 'CmdOrCtrl+N',
+        action: () => {
+          showMainWindow();
+          useUIStore.getState().setShowNewDownloadDialog(true);
+        },
+      },
+      {
+        id: 'batch-import',
+        text: 'Batch Import',
+        accelerator: 'CmdOrCtrl+Shift+N',
+        action: () => {
+          showMainWindow();
+          useUIStore.getState().setShowBatchImportDialog(true);
+        },
+      },
+      {
+        item: 'Separator',
+      },
+      {
+        id: 'show-window',
+        text: 'Show DLMan',
+        action: showMainWindow,
+      },
+      {
+        item: 'Separator',
+      },
+      {
+        id: 'settings',
+        text: 'Settings',
+        accelerator: 'CmdOrCtrl+,',
+        action: () => {
+          showMainWindow();
+          useUIStore.getState().setShowSettingsDialog(true);
+        },
+      },
+      {
+        item: 'Separator',
+      },
+      {
+        id: 'quit',
+        text: 'Quit DLMan',
+        accelerator: 'CmdOrCtrl+Q',
+        action: async () => {
+          await exit(0);
+        },
+      },
+    ],
+  });
+}
+
 /**
  * Initialize the system tray icon with menu
+ * 
+ * Handles webview reloads by checking for existing tray icon and reusing it
+ * instead of creating duplicates.
  */
 export async function initSystemTray(): Promise<void> {
   if (trayInitialized) {
-    console.log('System tray already initialized');
+    console.log('System tray already initialized in this session');
     return;
   }
 
   try {
-    const icon = await defaultWindowIcon();
+    // Check if a tray icon already exists (survives webview reload)
+    // This prevents duplicate tray icons when the user reloads the page
+    const existingTray = await TrayIcon.getById(TRAY_ID);
     
-    // Create tray menu items
-    const trayMenu = await Menu.new({
-      items: [
-        {
-          id: 'new-download',
-          text: 'New Download',
-          accelerator: 'CmdOrCtrl+N',
-          action: () => {
-            showMainWindow();
-            useUIStore.getState().setShowNewDownloadDialog(true);
-          },
-        },
-        {
-          id: 'batch-import',
-          text: 'Batch Import',
-          accelerator: 'CmdOrCtrl+Shift+N',
-          action: () => {
-            showMainWindow();
-            useUIStore.getState().setShowBatchImportDialog(true);
-          },
-        },
-        {
-          item: 'Separator',
-        },
-        {
-          id: 'show-window',
-          text: 'Show DLMan',
-          action: showMainWindow,
-        },
-        {
-          item: 'Separator',
-        },
-        {
-          id: 'settings',
-          text: 'Settings',
-          accelerator: 'CmdOrCtrl+,',
-          action: () => {
-            showMainWindow();
-            useUIStore.getState().setShowSettingsDialog(true);
-          },
-        },
-        {
-          item: 'Separator',
-        },
-        {
-          id: 'quit',
-          text: 'Quit DLMan',
-          accelerator: 'CmdOrCtrl+Q',
-          action: async () => {
-            await exit(0);
-          },
-        },
-      ],
-    });
+    if (existingTray) {
+      console.log('Found existing tray icon, reusing it');
+      trayIcon = existingTray;
+      
+      // Update the menu to ensure action handlers are connected
+      // (old menu handlers were lost when JS was reloaded)
+      const trayMenu = await createTrayMenu();
+      await existingTray.setMenu(trayMenu);
+      
+      trayInitialized = true;
+      return;
+    }
+
+    // No existing tray icon, create a new one
+    const icon = await defaultWindowIcon();
+    const trayMenu = await createTrayMenu();
 
     // Create the tray icon
     trayIcon = await TrayIcon.new({
-      id: 'dlman-tray',
+      id: TRAY_ID,
       icon: icon || undefined,
       tooltip: 'DLMan - Download Manager',
       menu: trayMenu,
