@@ -1,7 +1,6 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
 
-// Log limits per type (persisted to localStorage)
+// Log limits per type
 interface ConsoleLogLimits {
   info: number;
   warn: number;
