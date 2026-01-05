@@ -1,10 +1,12 @@
 import { useEffect, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { toast } from "sonner";
 import { useUIStore } from "@/stores/ui";
 import { useDownloadStore, selectFilteredDownloads } from "@/stores/downloads";
 import { useQueueStore } from "@/stores/queues";
 import { useCategoryStore } from "@/stores/categories";
+import { useSettingsStore } from "@/stores/settings";
 import { useShallow } from "zustand/react/shallow";
 import { parseUrls } from "@/lib/utils";
 import { setPendingClipboardUrls } from "@/lib/events";
@@ -37,6 +39,9 @@ export function useKeyboardShortcuts() {
   // Get selected queue and category to filter downloads the same way MainContent does
   const selectedQueueId = useQueueStore((s) => s.selectedQueueId);
   const selectedCategoryId = useCategoryStore((s) => s.selectedCategoryId);
+  
+  // Check if dev mode is enabled for devtools shortcut
+  const devMode = useSettingsStore((s) => s.settings.dev_mode);
   
   // Apply same filtering as MainContent - visible downloads only
   const visibleDownloads = useMemo(() => {
@@ -183,6 +188,28 @@ export function useKeyboardShortcuts() {
       description: "Delete Selected",
     },
   ];
+
+  // Add devtools shortcut when dev mode is enabled
+  if (devMode && isTauri()) {
+    shortcuts.push({
+      key: "d",
+      metaKey: true,
+      altKey: true,
+      action: async () => {
+        try {
+          // Toggle devtools using Tauri's webview API
+          const win = getCurrentWindow();
+          // Try the internal toggle
+          await (win as any).__TAURI_INTERNALS__?.invoke('plugin:webview|internal_toggle_devtools');
+          toast.success('Toggled DevTools');
+        } catch (err) {
+          console.error('Failed to toggle devtools:', err);
+          toast.error('Failed to toggle DevTools');
+        }
+      },
+      description: "Toggle DevTools (Dev Mode)",
+    });
+  }
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {

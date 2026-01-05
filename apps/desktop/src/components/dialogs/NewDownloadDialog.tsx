@@ -338,10 +338,12 @@ export function NewDownloadDialog() {
         console.error('Backend add_download failed:', err);
         // Remove the optimistic download on error
         removeDownload(tempId);
-        toast.error('Failed to add download');
+        // Show error with details
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        toast.error('Failed to add download', { description: errorMsg });
       }
     }
-  }, [url, destination, queueId, categoryId, filename, customFilename, filenameEdited, fileSize, removeDownload, setShowNewDownloadDialog, rememberPathForCategory, updateCategory, selectedCategoryId, setSelectedCategory]);
+  }, [url, destination, queueId, categoryId, filename, customFilename, filenameEdited, fileSize, addDownload, removeDownload, setShowNewDownloadDialog, rememberPathForCategory, updateCategory, selectedCategoryId, setSelectedCategory]);
 
   const formatFileSize = (bytes: number) => {
     if (bytes >= 1024 * 1024 * 1024) {
