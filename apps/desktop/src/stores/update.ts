@@ -23,6 +23,9 @@ interface UpdateStore {
   // Whether the notification has been dismissed for this version
   dismissedVersion: string | null;
   
+  // Session flag - has user seen the About dialog this session?
+  hasSeenAboutThisSession: boolean;
+  
   // Loading state
   isChecking: boolean;
   
@@ -30,8 +33,9 @@ interface UpdateStore {
   setUpdateInfo: (info: UpdateInfo | null) => void;
   setIsChecking: (checking: boolean) => void;
   dismissUpdate: () => void;
+  markAboutSeen: () => void;
   
-  // Computed - whether to show the notification
+  // Computed - whether to show the notification badge
   shouldShowNotification: () => boolean;
 }
 
@@ -40,6 +44,7 @@ export const useUpdateStore = create<UpdateStore>()(
     (set, get) => ({
       updateInfo: null,
       dismissedVersion: null,
+      hasSeenAboutThisSession: false,
       isChecking: false,
       
       setUpdateInfo: (info) => set({ updateInfo: info }),
@@ -52,9 +57,23 @@ export const useUpdateStore = create<UpdateStore>()(
         }
       },
       
+      // Mark as seen when user opens About dialog
+      markAboutSeen: () => {
+        const { updateInfo } = get();
+        set({ 
+          hasSeenAboutThisSession: true,
+          // Also dismiss for this version
+          dismissedVersion: updateInfo?.latestVersion ?? get().dismissedVersion,
+        });
+      },
+      
       shouldShowNotification: () => {
-        const { updateInfo, dismissedVersion } = get();
+        const { updateInfo, dismissedVersion, hasSeenAboutThisSession } = get();
         if (!updateInfo?.hasUpdate || !updateInfo.latestVersion) {
+          return false;
+        }
+        // Don't show if user already seen About this session
+        if (hasSeenAboutThisSession) {
           return false;
         }
         // Show if not dismissed or if a newer version was released
@@ -64,7 +83,7 @@ export const useUpdateStore = create<UpdateStore>()(
     {
       name: 'dlman-update-store',
       partialize: (state) => ({
-        // Only persist the dismissed version
+        // Only persist the dismissed version, not the session flag
         dismissedVersion: state.dismissedVersion,
       }),
     }

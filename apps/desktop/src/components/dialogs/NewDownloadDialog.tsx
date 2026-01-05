@@ -391,8 +391,8 @@ export function NewDownloadDialog() {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 min-h-0 overflow-y-auto">
-          <div className="space-y-4 py-4">
+        <div className="flex-1 min-h-0 overflow-y-auto px-1 -mx-1">
+          <div className="space-y-4 py-4 px-0.5">
           {/* URL Input */}
           <div className="space-y-2">
             <Label htmlFor="url" className="flex items-center gap-2">

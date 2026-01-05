@@ -13,20 +13,23 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useUIStore } from '@/stores/ui';
+import { useUpdateStore } from '@/stores/update';
 import { getAppVersion, checkForUpdates, getReleasesPageUrl, type UpdateInfo } from '@/lib/version';
 
 export function AboutDialog() {
   const { showAboutDialog, setShowAboutDialog } = useUIStore();
+  const markAboutSeen = useUpdateStore((s) => s.markAboutSeen);
   const [version, setVersion] = useState<string>('...');
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
 
-  // Fetch version when dialog opens
+  // Mark about as seen when dialog opens (dismisses update badge for this session)
   useEffect(() => {
     if (showAboutDialog) {
+      markAboutSeen();
       getAppVersion().then((info) => setVersion(info.current));
     }
-  }, [showAboutDialog]);
+  }, [showAboutDialog, markAboutSeen]);
 
   const handleCheckForUpdates = async () => {
     setIsCheckingUpdate(true);

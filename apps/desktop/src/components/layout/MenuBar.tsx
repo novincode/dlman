@@ -31,7 +31,7 @@ import { useDownloadStore, useFilteredDownloads } from "@/stores/downloads";
 import { useQueuesArray } from "@/stores/queues";
 import { parseUrls, cn } from "@/lib/utils";
 import { setPendingClipboardUrls } from "@/lib/events";
-import { UpdateNotification, UpdateBadge } from "@/components/UpdateNotification";
+import { UpdateBadge } from "@/components/UpdateNotification";
 import type { Download } from "@/types";
 
 const isTauri = () =>
@@ -456,9 +456,6 @@ export function MenuBar() {
       </div>
 
       <div className="flex-1" />
-
-      {/* Update Notification */}
-      <UpdateNotification className="mr-2" />
 
       {/* Tools + About + Settings */}
       <div className="flex items-center gap-1 pl-2 border-l">

@@ -103,28 +103,30 @@ export function DropZoneOverlay({ onDrop }: DropZoneOverlayProps) {
       }
 
       // 3) text/html (common when dragging selected anchors from a page)
+      // Only parse if we don't already have URLs from uri-list or text/plain
       const html = e.dataTransfer?.getData('text/html');
-      if (html) {
+      if (html && urls.length === 0) {
         try {
           const doc = new DOMParser().parseFromString(html, 'text/html');
           const hrefs = Array.from(doc.querySelectorAll('a'))
             .map((a) => a.getAttribute('href'))
             .filter((href): href is string => !!href)
-            .filter((href) => href.startsWith('http://') || href.startsWith('https://'));
+            .filter((href) => href.startsWith('http://') || href.startsWith('https://'))
+            // Filter out XML namespace URLs and other non-downloadable URLs
+            .filter((href) => !href.includes('w3.org/') && !href.includes('xmlns'));
           urls.push(...hrefs);
         } catch {
           // ignore
         }
-
-        // Also run regex extraction over raw HTML in case of unusual markup
-        urls.push(...parseUrls(html));
       }
 
-      // De-dupe while preserving order
-      const uniqueUrls = Array.from(new Set(urls));
+      // De-dupe while preserving order and filter out any remaining non-download URLs
+      const filteredUrls = Array.from(new Set(urls)).filter(
+        (url) => !url.includes('w3.org/') && !url.includes('xmlns') && !url.includes('schema.org')
+      );
 
-      if (uniqueUrls.length > 0) {
-        onDrop(uniqueUrls);
+      if (filteredUrls.length > 0) {
+        onDrop(filteredUrls);
       }
     };
 

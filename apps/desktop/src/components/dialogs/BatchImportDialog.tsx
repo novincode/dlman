@@ -74,6 +74,17 @@ function uniqueKeepOrder(urls: string[]): string[] {
   return out;
 }
 
+function extractFilenameFromUrl(url: string): string {
+  try {
+    const urlObj = new URL(url);
+    const pathname = urlObj.pathname;
+    const filename = pathname.split('/').pop() || 'download';
+    return decodeURIComponent(filename);
+  } catch {
+    return url.split('/').pop() || 'download';
+  }
+}
+
 function looksLikeHtmlUrl(url: string): boolean {
   const lower = url.toLowerCase();
   return lower.endsWith('/') || lower.endsWith('.html') || lower.endsWith('.htm');
@@ -750,25 +761,19 @@ export function BatchImportDialog() {
                                 <Checkbox checked={it.checked} disabled={disabled} />
                               </div>
 
-                              <div className="min-w-0 flex-1">
+                              <div className="min-w-0 flex-1 overflow-hidden">
                                 <div className="flex items-center gap-2 min-w-0">
                                   {it.loading ? (
-                                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground shrink-0" />
                                   ) : null}
 
-                                  <div className="min-w-0 flex-1">
+                                  <div className="min-w-0 flex-1 overflow-hidden">
                                     <div className="text-sm font-medium truncate">
-                                      {it.info?.filename || it.url}
-                                    </div>
-
-                                    <div className="mt-1 overflow-x-auto">
-                                      <div className="inline-flex max-w-full rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground whitespace-nowrap">
-                                        {it.url}
-                                      </div>
+                                      {it.info?.filename || extractFilenameFromUrl(it.url)}
                                     </div>
 
                                     {it.error ? (
-                                      <div className="mt-1 text-xs text-destructive">{it.error}</div>
+                                      <div className="mt-1 text-xs text-destructive truncate">{it.error}</div>
                                     ) : null}
 
                                     {!it.loading && !it.error && html ? (

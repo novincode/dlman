@@ -29,8 +29,9 @@ export function DownloadList({ downloads }: DownloadListProps) {
   const virtualizer = useVirtualizer({
     count: downloads.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 80,
+    estimateSize: () => 84, // Slightly larger to account for gap
     overscan: 5,
+    gap: 6, // Small gap between items
     measureElement: (element) => {
       return element.getBoundingClientRect().height;
     },
@@ -144,7 +145,7 @@ export function DownloadList({ downloads }: DownloadListProps) {
     <>
       <div
         ref={parentRef}
-        className="h-full overflow-auto focus:outline-none"
+        className="h-full overflow-auto focus:outline-none p-2"
         tabIndex={0}
         onKeyDown={handleKeyDown}
       >
@@ -160,7 +161,7 @@ export function DownloadList({ downloads }: DownloadListProps) {
                 key={virtualItem.key}
                 data-index={virtualItem.index}
                 ref={virtualizer.measureElement}
-                className="absolute top-0 left-0 w-full min-w-0 px-1"
+                className="absolute top-0 left-0 w-full min-w-0"
                 style={{
                   transform: `translateY(${virtualItem.start}px)`,
                 }}
