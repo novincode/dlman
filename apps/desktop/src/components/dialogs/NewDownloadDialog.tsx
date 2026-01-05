@@ -310,6 +310,8 @@ export function NewDownloadDialog() {
     }
 
     // Now perform backend add in background
+    // The backend will emit events (DownloadAdded, DownloadStatusChanged) that update the store
+    // We just need to swap our temp ID for the real one
     if (isTauri()) {
       try {
         const probedInfo = (filenameToUse || fileSize) ? {
@@ -318,7 +320,7 @@ export function NewDownloadDialog() {
           final_url: undefined,
         } : undefined;
 
-        const download = await invoke<DownloadType>('add_download', {
+        await invoke<DownloadType>('add_download', {
           url,
           destination,
           queue_id: queueId,
@@ -327,16 +329,19 @@ export function NewDownloadDialog() {
           start_later: startLater,
         });
         
-        // Remove optimistic placeholder and add real download
+        // Remove our optimistic placeholder - the real download is added via DownloadAdded event
+        // which also properly tracks status changes from the backend
         removeDownload(tempId);
-        addDownload(download);
+        // DON'T add the returned download here - let events handle it
+        // The backend emits DownloadAdded which adds it, then DownloadStatusChanged updates status
       } catch (err) {
         console.error('Backend add_download failed:', err);
-        // Keep the optimistic download but show error
-        toast.error('Failed to add download to backend');
+        // Remove the optimistic download on error
+        removeDownload(tempId);
+        toast.error('Failed to add download');
       }
     }
-  }, [url, destination, queueId, categoryId, filename, customFilename, filenameEdited, fileSize, addDownload, removeDownload, setShowNewDownloadDialog, rememberPathForCategory, updateCategory, categories, selectedCategoryId, setSelectedCategory]);
+  }, [url, destination, queueId, categoryId, filename, customFilename, filenameEdited, fileSize, removeDownload, setShowNewDownloadDialog, rememberPathForCategory, updateCategory, selectedCategoryId, setSelectedCategory]);
 
   const formatFileSize = (bytes: number) => {
     if (bytes >= 1024 * 1024 * 1024) {
