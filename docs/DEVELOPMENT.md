@@ -35,7 +35,8 @@ dlman/
 │   ├── desktop/          # Tauri + React app
 │   │   ├── src/          # React frontend
 │   │   └── src-tauri/    # Rust backend
-│   └── cli/              # CLI application
+│   ├── cli/              # CLI application
+│   └── extension/        # Browser extension
 ├── crates/
 │   ├── dlman-core/       # Core download engine
 │   └── dlman-types/      # Shared types
@@ -55,9 +56,10 @@ dlman/
 - [x] SQLite-based persistence
 - [x] Per-download speed limits
 - [x] Auto-retry failed downloads
-- [ ] Browser extension
+- [x] Browser extension
+- [x] Scheduled downloads
+- [x] Auto-updates
 - [ ] Plugin system
-- [ ] Scheduled downloads
 - [ ] Torrent support
 
 ## Code Style
@@ -79,6 +81,8 @@ cd apps/desktop && pnpm tsc --noEmit
 
 ## Submitting Changes
 
+See the [Contributing Guide](../CONTRIBUTING.md) for detailed guidelines.
+
 1. Fork the repo
 2. Create a feature branch
 3. Make your changes
@@ -90,4 +94,5 @@ cd apps/desktop && pnpm tsc --noEmit
 - [Architecture](ARCHITECTURE.md) — System design
 - [Core Engine](CORE.md) — Download engine internals
 - [CLI](CLI.md) — CLI documentation
+- [Extension](EXTENSION.md) — Browser extension development
 - [AI Guidelines](AI_GUIDELINES.md) — For AI-assisted development

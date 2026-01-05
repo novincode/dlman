@@ -53,3 +53,8 @@ coverage
 *.pem
 .turbo
 *.tsbuildinfo
+
+# Extension build artifacts
+apps/extension/.wxt
+apps/extension/dist
+apps/extension/*.zip
