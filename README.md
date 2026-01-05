@@ -1,8 +1,4 @@
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/f81e6354-715e-4d47-8e46-55e00cb61346" alt="DLMan Screenshot" width="800">
-</p>
-
-<p align="center">
   <img src="apps/desktop/src-tauri/icons/128x128@2x.png" alt="DLMan" width="80" height="80">
 </p>
 
@@ -40,6 +36,11 @@
 ## What is DLMan?
 
 DLMan is a **free, open-source download manager** built with Rust for speed and reliability. It runs on Windows, macOS, and Linux.
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/f81e6354-715e-4d47-8e46-55e00cb61346" alt="DLMan Screenshot" width="800">
+</p>
+
 
 Unlike traditional download managers, DLMan uses a modern tech stack:
 - **Rust backend** — Native performance, no Electron bloat
