@@ -13,6 +13,7 @@ import {
 import { DropZoneOverlay } from "@/components/DropZoneOverlay";
 import { ContextMenuProvider } from "@/components/ContextMenu";
 import { DndProvider } from "@/components/dnd/DndProvider";
+import { SupportReminder } from "@/components/SupportReminder";
 import { useSettingsStore, loadSettingsFromBackend } from "@/stores/settings";
 import { useUIStore } from "@/stores/ui";
 import { setupEventListeners, setPendingClipboardUrls, setPendingDropUrls } from "@/lib/events";
@@ -203,6 +204,9 @@ function AppContent() {
       <QueueManagerDialog />
       <AboutDialog />
       <ConfirmDialog />
+      
+      {/* Support Reminder */}
+      <SupportReminder />
       
       <Toaster
         theme={actualTheme}
