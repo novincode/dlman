@@ -29,8 +29,8 @@ export class DlmanClient {
   private ws: WebSocket | null = null;
   private options: DlmanClientOptions;
   private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
-  private reconnectDelay = 1000;
+  private maxReconnectAttempts = 3;
+  private reconnectDelay = 500;
   private pendingRequests = new Map<string, {
     resolve: (value: unknown) => void;
     reject: (error: Error) => void;
@@ -109,14 +109,14 @@ export class DlmanClient {
           }
         };
 
-        // Timeout for connection
+        // Timeout for connection - quick fail if app not running
         setTimeout(() => {
           if (this.isConnecting) {
             this.isConnecting = false;
             this.ws?.close();
             resolve(false);
           }
-        }, 5000);
+        }, 2000);
       } catch (error) {
         console.error('[DLMan] Failed to connect:', error);
         this.isConnecting = false;
@@ -271,7 +271,7 @@ export class DlmanClient {
     try {
       const response = await fetch(`${this.baseUrl}/ping`, {
         method: 'GET',
-        signal: AbortSignal.timeout(2000),
+        signal: AbortSignal.timeout(1000),
       });
       return response.ok;
     } catch {

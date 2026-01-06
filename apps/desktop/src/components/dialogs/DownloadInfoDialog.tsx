@@ -14,8 +14,8 @@ import { Separator } from '@/components/ui/separator';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   FolderOpen,
   ExternalLink,
@@ -163,11 +163,15 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
     return () => clearInterval(interval);
   }, [download?.status, download?.downloaded, download?.size]);
   
-  // Update speed limit in backend
-  const handleSpeedLimitChange = async (value: number[]) => {
+  // Update speed limit in backend - only on commit (when user releases slider)
+  const handleSpeedLimitChange = (value: number[]) => {
+    // Just update local state for UI responsiveness
+    setSpeedLimitKB(value[0]);
+  };
+  
+  // Called when user releases the slider
+  const handleSpeedLimitCommit = async (value: number[]) => {
     const kbps = value[0];
-    setSpeedLimitKB(kbps);
-    
     if (download) {
       const bytesPerSecond = kbps === 0 ? null : kbps * 1024;
       updateDownload(download.id, { speed_limit: bytesPerSecond });
@@ -270,11 +274,19 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
     return `${(bytesPerSecond / (1024 * 1024)).toFixed(2)} MB/s`;
   };
 
+  // Format speed limit (KB/s value) with auto-scaling to MB/s or GB/s
+  const formatSpeedLimitDisplay = (kbps: number) => {
+    if (kbps === 0) return 'Unlimited';
+    if (kbps < 1024) return `${kbps} KB/s`;
+    if (kbps < 1024 * 1024) return `${(kbps / 1024).toFixed(1)} MB/s`;
+    return `${(kbps / (1024 * 1024)).toFixed(2)} GB/s`;
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[85vh] flex flex-col overflow-hidden">
+      <DialogContent className="sm:max-w-[600px] max-h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader className="shrink-0">
-          <DialogTitle className="flex items-center gap-2 pr-8">
+          <DialogTitle className="flex items-center gap-2">
             <FileType className="h-5 w-5 shrink-0" />
             <span className="truncate">{download.filename}</span>
           </DialogTitle>
@@ -283,8 +295,8 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 min-h-0 pr-4">
-          <div className="space-y-4 py-4">
+        <div className="flex-1 min-h-0 overflow-y-auto px-1 -mx-1">
+          <div className="space-y-4 py-4 px-0.5">
             {/* Status */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -349,12 +361,13 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
                   Speed Limit
                 </Label>
                 <span className="text-sm font-medium">
-                  {speedLimitKB === 0 ? 'Unlimited' : `${speedLimitKB} KB/s`}
+                  {formatSpeedLimitDisplay(speedLimitKB)}
                 </span>
               </div>
               <Slider
                 value={[speedLimitKB]}
                 onValueChange={handleSpeedLimitChange}
+                onValueCommit={handleSpeedLimitCommit}
                 max={10240}
                 step={64}
                 className="w-full"
@@ -558,10 +571,10 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
             </>
           )}
           </div>
-        </ScrollArea>
+        </div>
 
-        {/* Actions */}
-        <div className="flex flex-wrap gap-2 pt-2 border-t">
+        {/* Actions - Fixed at bottom */}
+        <div className="flex flex-wrap gap-2 pt-4 border-t shrink-0">
           <Button variant="outline" size="sm" onClick={handleCopyUrl}>
             <Copy className="h-4 w-4 mr-2" />
             Copy URL

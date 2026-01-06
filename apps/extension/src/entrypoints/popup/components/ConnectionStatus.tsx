@@ -2,7 +2,7 @@ import { usePopupStore } from '../store';
 import { CheckCircle2, XCircle, AlertCircle, RefreshCw } from 'lucide-react';
 
 export function ConnectionStatus() {
-  const { isConnected, isConnecting, settings, refresh } = usePopupStore();
+  const { isConnected, isConnecting, settings, refresh, retryConnection } = usePopupStore();
 
   if (!settings?.enabled) {
     return (
@@ -54,7 +54,7 @@ export function ConnectionStatus() {
           <span className="text-sm">DLMan not running</span>
         </div>
         <button
-          onClick={() => browser.runtime.sendMessage({ type: 'connect' })}
+          onClick={retryConnection}
           className="text-xs px-2 py-1 bg-destructive/20 hover:bg-destructive/30 rounded transition-colors"
         >
           Retry

@@ -22,6 +22,7 @@ interface PopupState {
   // Actions
   init: () => Promise<void>;
   refresh: () => Promise<void>;
+  retryConnection: () => Promise<void>;
   setTab: (tab: 'downloads' | 'queues' | 'settings') => void;
   toggleEnabled: () => Promise<void>;
   toggleSite: () => Promise<void>;
@@ -78,7 +79,15 @@ export const usePopupStore = create<PopupState>((set, get) => ({
         connected?: boolean;
         connectionStatus?: string;
       }
-      const response = await browser.runtime.sendMessage({ type: 'get-status' }) as StatusResponse;
+      let response = await browser.runtime.sendMessage({ type: 'get-status' }) as StatusResponse;
+      
+      // If not connected, try to connect automatically
+      if (!response?.connected && settings.enabled) {
+        console.log('[DLMan] Not connected, attempting auto-reconnect...');
+        const connectResponse = await browser.runtime.sendMessage({ type: 'connect' }) as { connected?: boolean };
+        response = { ...response, connected: connectResponse?.connected || false };
+      }
+      
       set({ isConnected: response?.connected || false });
 
       // Fetch data if connected
@@ -108,6 +117,26 @@ export const usePopupStore = create<PopupState>((set, get) => ({
       set({ downloads, queues, activeDownloads });
     } catch (error) {
       console.error('[DLMan] Failed to refresh data:', error);
+    }
+  },
+
+  retryConnection: async () => {
+    set({ isConnecting: true });
+    
+    try {
+      const response = await browser.runtime.sendMessage({ type: 'connect' }) as { connected?: boolean };
+      const isConnected = response?.connected || false;
+      set({ isConnected });
+      
+      // Fetch data if connected
+      if (isConnected) {
+        await get().refresh();
+      }
+    } catch (error) {
+      console.error('[DLMan] Failed to retry connection:', error);
+      set({ isConnected: false });
+    } finally {
+      set({ isConnecting: false });
     }
   },
 

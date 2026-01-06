@@ -842,7 +842,7 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
           
           if (isTauri()) {
             try {
-              await invoke("delete_download", { id: download.id, deleteFile });
+              await invoke("delete_download", { id: download.id, delete_file: deleteFile });
               if (deleteFile) {
                 toast.success("Download removed and file deleted");
               } else {

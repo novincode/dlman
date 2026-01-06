@@ -119,7 +119,7 @@ export default function App() {
   return (
     <div className={`${isDark ? 'dark' : ''}`}>
       <div className="min-h-screen bg-background text-foreground">
-        <div className="max-w-2xl mx-auto py-8 px-6">
+        <div className="w-full max-w-4xl mx-auto py-8 px-6">
           {/* Header */}
           <div className="flex items-center gap-3 mb-8">
             <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center">

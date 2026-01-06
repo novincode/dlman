@@ -1,6 +1,6 @@
 {
   "name": "dlman",
-  "version": "1.7.4",
+  "version": "1.7.5",
   "private": true,
   "description": "A modern, open-source download manager",
   "keywords": ["download", "manager", "tauri", "rust", "react"],
@@ -11,7 +11,7 @@
     "url": "https://github.com/novincode/dlman.git"
   },
   "scripts": {
-    "dev": "pnpm --filter @dlman/desktop dev",
+    "dev": "pnpm --filter @dlman/desktop tauri dev",
     "build": "pnpm --filter @dlman/desktop build",
     "preview": "pnpm --filter @dlman/desktop preview",
     "ext:dev": "pnpm --filter @dlman/extension dev",

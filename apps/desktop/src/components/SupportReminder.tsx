@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { X, Star, Heart, Meh, HeartHandshake } from "lucide-react";
+import { X, Star, Heart, Frown, Meh, HeartHandshake } from "lucide-react";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
 import { useSettingsStore } from "@/stores/settings";
 import { cn } from "@/lib/utils";
@@ -118,15 +118,18 @@ export function SupportReminder() {
   const getIcon = () => {
     switch (hoveredButton) {
       case "skip":
-        return <Meh className="h-8 w-8 text-muted-foreground" />;
+        // "Not now" - slightly sad face
+        return <Meh className="h-8 w-8 text-amber-500 animate-pulse" />;
       case "never":
-        return <Meh className="h-8 w-8 text-muted-foreground" />;
+        // "Don't show again" - very sad face
+        return <Frown className="h-8 w-8 text-red-500 animate-bounce" />;
       case "star":
         return <Star className="h-8 w-8 text-yellow-500 fill-yellow-500" />;
       case "sponsor":
         return <HeartHandshake className="h-8 w-8 text-pink-500" />;
       default:
-        return <Heart className="h-8 w-8 text-blue-500 fill-blue-500" />;
+        // Default - poker face / neutral
+        return <Meh className="h-8 w-8 text-blue-500" />;
     }
   };
 
@@ -138,9 +141,10 @@ export function SupportReminder() {
         {/* Close button */}
         <button
           onClick={handleSkip}
-          className="absolute top-2 right-2 text-muted-foreground hover:text-foreground transition-colors"
+          className="absolute top-2 right-2 text-muted-foreground hover:text-amber-500 hover:scale-110 transition-all duration-200"
           onMouseEnter={() => setHoveredButton("skip")}
           onMouseLeave={() => setHoveredButton(null)}
+          title="Not now (15 days)"
         >
           <X className="h-4 w-4" />
         </button>
@@ -196,7 +200,8 @@ export function SupportReminder() {
                 onClick={handleSkip}
                 onMouseEnter={() => setHoveredButton("skip")}
                 onMouseLeave={() => setHoveredButton(null)}
-                className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                className="text-[10px] text-muted-foreground hover:text-amber-500 transition-colors font-medium"
+                title="Skip for 15 days"
               >
                 Not now
               </button>
@@ -204,7 +209,8 @@ export function SupportReminder() {
                 onClick={handleNever}
                 onMouseEnter={() => setHoveredButton("never")}
                 onMouseLeave={() => setHoveredButton(null)}
-                className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+                className="text-[10px] text-muted-foreground hover:text-red-500 transition-colors font-medium"
+                title="Never show again"
               >
                 Don't show again
               </button>

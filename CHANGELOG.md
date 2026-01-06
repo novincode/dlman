@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.7.5] - 2026-01-06
+
+### 🐛 Bug Fixes
+- Fixed "delete download with file" not working - parameter name mismatch (deleteFile → delete_file)
+- Speed limit slider in Download Info dialog now shows MB/s and GB/s instead of just KB/s
+- Fixed Firefox extension not detecting desktop app connection
+- Extension popup now auto-retries connection when opened
+- Retry button in extension now properly updates UI state after reconnecting
+
+### 🚀 Improvements
+- Extension settings page now uses full width (max-w-4xl instead of max-w-2xl)
+- Faster connection detection - reduced timeouts from 5s to 2s, ping from 2s to 1s
+- Reduced reconnect delay from 1s to 500ms and max attempts from 5 to 3
+
 ## [1.7.4] - 2026-01-06
 
 ### 🐛 Bug Fixes
