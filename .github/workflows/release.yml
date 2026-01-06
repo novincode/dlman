@@ -42,15 +42,26 @@ jobs:
           VERSION="${{ steps.get_version.outputs.version }}"
           VERSION_NUM="${VERSION#v}"
           
-          # Extract changelog section for this version (from ## [VERSION] to next ## [)
-          CHANGELOG=$(awk "/^## \[${VERSION_NUM}\]/{flag=1; next} /^## \[/{if(flag) exit} flag" CHANGELOG.md)
+          echo "Looking for version: ${VERSION_NUM}"
+          
+          # Extract changelog section for this version
+          # Match ## [VERSION] or ## [VERSION] - DATE format
+          # Stop at next ## [ or end of file
+          CHANGELOG=$(sed -n "/^## \[${VERSION_NUM}\]/,/^## \[/{ /^## \[${VERSION_NUM}\]/d; /^## \[/d; p; }" CHANGELOG.md)
+          
+          # Trim leading/trailing whitespace
+          CHANGELOG=$(echo "$CHANGELOG" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+          
+          # Debug: show what we found
+          echo "Extracted changelog:"
+          echo "$CHANGELOG"
           
           # If no changelog found, use default message
           if [ -z "$CHANGELOG" ]; then
-            CHANGELOG="See CHANGELOG.md for details."
+            CHANGELOG="See [CHANGELOG.md](https://github.com/novincode/dlman/blob/main/CHANGELOG.md) for details."
           fi
           
-          # Write to file and escape for use in GitHub Actions
+          # Write to file with download instructions + changelog
           {
             echo "## Downloads"
             echo ""
@@ -62,7 +73,7 @@ jobs:
             echo "| macOS Apple Silicon | \`.dmg\` (aarch64) |"
             echo "| Linux | \`.deb\` / \`.rpm\` / \`.AppImage\` |"
             echo ""
-            echo "**macOS:** Run \`xattr -cr /Applications/DLMan.app\` after install."
+            echo "> **macOS:** Run \`xattr -cr /Applications/DLMan.app\` after install."
             echo ""
             echo "### Browser Extension"
             echo "| Browser | File |"
@@ -70,12 +81,16 @@ jobs:
             echo "| Chrome / Edge / Brave | \`dlman-extension-chrome-*.zip\` |"
             echo "| Firefox | \`dlman-extension-firefox-*.zip\` |"
             echo ""
-            echo "**Install:** Extract and load as unpacked extension, or submit to browser stores."
+            echo "> **Install:** Extract and load as unpacked extension, or submit to browser stores."
             echo ""
             echo "---"
             echo ""
             echo "$CHANGELOG"
           } > /tmp/release_body.txt
+          
+          # Debug: show final body
+          echo "Final release body:"
+          cat /tmp/release_body.txt
           
           echo "changelog_file=/tmp/release_body.txt" >> $GITHUB_OUTPUT
 
@@ -90,6 +105,7 @@ jobs:
           body_path: /tmp/release_body.txt
           draft: false
           prerelease: false
+          make_latest: true
 
   build-tauri:
     needs: create-release
@@ -216,10 +232,44 @@ jobs:
           sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${VERSION_NUM}\"/" package.json
           sed -i "s/version: '[^']*'/version: '${VERSION_NUM}'/" wxt.config.ts
 
-      - name: Upload release notes and source
+      - name: Build Chrome extension
+        run: |
+          cd apps/extension
+          pnpm build
+          
+      - name: Build Firefox extension
+        run: |
+          cd apps/extension
+          pnpm build:firefox
+
+      - name: Get version for filename
+        id: version_filename
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          VERSION_NUM="${VERSION#v}"
+          echo "version_num=${VERSION_NUM}" >> $GITHUB_OUTPUT
+
+      - name: Package extensions
+        run: |
+          VERSION="${{ steps.version_filename.outputs.version_num }}"
+          cd apps/extension
+          
+          # Package Chrome extension
+          cd .output/chrome-mv3
+          zip -r "../../dlman-extension-chrome-${VERSION}.zip" .
+          cd ../..
+          
+          # Package Firefox extension  
+          cd .output/firefox-mv2
+          zip -r "../../dlman-extension-firefox-${VERSION}.zip" .
+          cd ../..
+
+      - name: Upload extensions to release
         uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ steps.get_version.outputs.version }}
-          body: "v${{ steps.get_version.outputs.version }} release"
+          files: |
+            apps/extension/dlman-extension-chrome-*.zip
+            apps/extension/dlman-extension-firefox-*.zip

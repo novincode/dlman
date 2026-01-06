@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.7.4] - 2026-01-06
+
+### 🐛 Bug Fixes
+- Fixed DownloadInfoDialog scroll overflow on Windows
+- Fixed batch import auto-starting downloads regardless of "Start immediately" setting
+- Downloads now properly respect the start immediately toggle - when disabled, downloads stay in queued state
+- Fixed emoji display on Windows - replaced with cross-platform Lucide icons for support reminder
+- Improved release workflow to properly extract and display changelog in GitHub releases
+
 ## [1.7.3] - 2026-01-06
 
 ### 🐛 Bug Fixes
