@@ -232,37 +232,37 @@ jobs:
           sed -i "s/\"version\": \"[^\"]*\"/\"version\": \"${VERSION_NUM}\"/" package.json
           sed -i "s/version: '[^']*'/version: '${VERSION_NUM}'/" wxt.config.ts
 
-      - name: Build Chrome extension
+      - name: Build and package extensions
         run: |
           cd apps/extension
-          pnpm build
-          
-      - name: Build Firefox extension
-        run: |
-          cd apps/extension
-          pnpm build:firefox
+          # Install dependencies
+          pnpm install --frozen-lockfile
+          # Build for Chrome and Firefox, and create zip packages
+          pnpm release
 
-      - name: Get version for filename
+      - name: Get version for filenames
         id: version_filename
         run: |
           VERSION="${{ steps.get_version.outputs.version }}"
           VERSION_NUM="${VERSION#v}"
           echo "version_num=${VERSION_NUM}" >> $GITHUB_OUTPUT
 
-      - name: Package extensions
+      - name: Rename and stage extension zips
         run: |
           VERSION="${{ steps.version_filename.outputs.version_num }}"
           cd apps/extension
           
-          # Package Chrome extension
-          cd .output/chrome-mv3
-          zip -r "../../dlman-extension-chrome-${VERSION}.zip" .
-          cd ../..
+          # WXT generates zips in dist/ directory
+          # Rename them to our standard naming
+          if [ -f "dist/chrome-mv3.zip" ]; then
+            cp dist/chrome-mv3.zip "dlman-extension-chrome-${VERSION}.zip"
+          fi
+          if [ -f "dist/firefox-mv2.zip" ]; then
+            cp dist/firefox-mv2.zip "dlman-extension-firefox-${VERSION}.zip"
+          fi
           
-          # Package Firefox extension  
-          cd .output/firefox-mv2
-          zip -r "../../dlman-extension-firefox-${VERSION}.zip" .
-          cd ../..
+          # List what we have
+          ls -lah dlman-extension-*.zip || echo "No extension zips found!"
 
       - name: Upload extensions to release
         uses: softprops/action-gh-release@v2
@@ -270,6 +270,4 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ steps.get_version.outputs.version }}
-          files: |
-            apps/extension/dlman-extension-chrome-*.zip
-            apps/extension/dlman-extension-firefox-*.zip
+          files: apps/extension/dlman-extension-*.zip
