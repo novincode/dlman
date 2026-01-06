@@ -83,17 +83,26 @@ pub async fn add_downloads_batch(
     destination: String,
     queue_id: String,
     category_id: Option<String>,
+    start_immediately: Option<bool>,
 ) -> Result<Vec<Download>, String> {
     let queue_uuid = Uuid::parse_str(&queue_id).map_err(|e| e.to_string())?;
     let category_uuid = category_id.map(|s| Uuid::parse_str(&s).map_err(|e| e.to_string())).transpose()?;
     let dest_path = PathBuf::from(destination);
+    let should_start = start_immediately.unwrap_or(false);
 
     state
         .with_core_async(|core| async move {
             let mut results = Vec::with_capacity(downloads.len());
             
             for req in downloads {
-                match core.add_download(&req.url, dest_path.clone(), queue_uuid, category_uuid).await {
+                // Use add_download (auto-start) or add_download_queued based on start_immediately flag
+                let add_result = if should_start {
+                    core.add_download(&req.url, dest_path.clone(), queue_uuid, category_uuid).await
+                } else {
+                    core.add_download_queued(&req.url, dest_path.clone(), queue_uuid, category_uuid).await
+                };
+                
+                match add_result {
                     Ok(mut download) => {
                         // Apply probed info if provided
                         if let Some(info) = req.probed_info {

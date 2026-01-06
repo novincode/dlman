@@ -272,8 +272,8 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[85vh] flex flex-col">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-[600px] max-h-[85vh] flex flex-col overflow-hidden">
+        <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2 pr-8">
             <FileType className="h-5 w-5 shrink-0" />
             <span className="truncate">{download.filename}</span>
@@ -283,7 +283,7 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 pr-4">
+        <ScrollArea className="flex-1 min-h-0 pr-4">
           <div className="space-y-4 py-4">
             {/* Status */}
           <div className="flex items-center justify-between">

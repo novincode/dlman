@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { X, Star, Heart } from "lucide-react";
+import { X, Star, Heart, Meh, HeartHandshake } from "lucide-react";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
 import { useSettingsStore } from "@/stores/settings";
 import { cn } from "@/lib/utils";
@@ -114,19 +114,19 @@ export function SupportReminder() {
     }
   };
 
-  // Get emoji based on hovered button
-  const getEmoji = () => {
+  // Get icon based on hovered button - using Lucide icons for cross-platform consistency
+  const getIcon = () => {
     switch (hoveredButton) {
       case "skip":
-        return "🥹";
+        return <Meh className="h-8 w-8 text-muted-foreground" />;
       case "never":
-        return "🥲";
+        return <Meh className="h-8 w-8 text-muted-foreground" />;
       case "star":
-        return "⭐";
+        return <Star className="h-8 w-8 text-yellow-500 fill-yellow-500" />;
       case "sponsor":
-        return "🫶";
+        return <HeartHandshake className="h-8 w-8 text-pink-500" />;
       default:
-        return "💙";
+        return <Heart className="h-8 w-8 text-blue-500 fill-blue-500" />;
     }
   };
 
@@ -147,9 +147,9 @@ export function SupportReminder() {
 
         {/* Content */}
         <div className="flex items-start gap-3">
-          {/* Emoji that reacts */}
-          <div className="text-3xl transition-all duration-200 select-none">
-            {getEmoji()}
+          {/* Icon that reacts - using Lucide icons for cross-platform consistency */}
+          <div className="transition-all duration-200 select-none flex items-center justify-center w-10 h-10">
+            {getIcon()}
           </div>
 
           <div className="flex-1 min-w-0">

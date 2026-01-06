@@ -522,6 +522,7 @@ export function BatchImportDialog() {
           destination,
           queue_id: queueId,
           category_id: categoryId || undefined,
+          start_immediately: startImmediately,
         });
 
         // Add all downloads to the store at once
@@ -529,7 +530,11 @@ export function BatchImportDialog() {
           addDownload(download);
         }
 
-        toast.success(`Added ${downloads.length} downloads`);
+        if (startImmediately) {
+          toast.success(`Added ${downloads.length} downloads and started`);
+        } else {
+          toast.success(`Added ${downloads.length} downloads to queue`);
+        }
         
         // Navigate to the downloads view
         navigateToDownloads();
@@ -544,7 +549,7 @@ export function BatchImportDialog() {
             destination,
             size: it.info?.size ?? null,
             downloaded: 0,
-            status: 'pending',
+            status: startImmediately ? 'pending' : 'queued',
             segments: [],
             queue_id: queueId,
             category_id: categoryId,
@@ -560,10 +565,6 @@ export function BatchImportDialog() {
         
         // Navigate to the downloads view
         navigateToDownloads();
-      }
-
-      if (startImmediately) {
-        toast.message('Start immediately is enabled; queue start behavior depends on your queue settings.');
       }
 
       handleClose();
