@@ -118,3 +118,18 @@
     overflow: hidden;
   }
 }
+
+/* Indeterminate progress animation for unknown size downloads */
+@keyframes indeterminate {
+  0% {
+    width: 20%;
+    transform: translateX(-100%);
+  }
+  50% {
+    width: 35%;
+  }
+  100% {
+    width: 20%;
+    transform: translateX(400%);
+  }
+}

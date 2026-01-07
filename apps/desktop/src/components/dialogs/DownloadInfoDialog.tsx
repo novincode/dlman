@@ -536,14 +536,20 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
                 {/* Segment Visualization */}
                 <div className="flex gap-0.5 h-3 rounded overflow-hidden bg-muted">
                   {download.segments.map((segment, index) => {
-                    const segmentProgress = segment.end > segment.start 
-                      ? ((segment.downloaded || 0) / (segment.end - segment.start)) * 100 
-                      : 0;
+                    // Handle unknown size (end = MAX u64 value)
+                    const isUnknownSize = segment.end > Number.MAX_SAFE_INTEGER / 2;
+                    const segmentSize = isUnknownSize ? segment.downloaded : (segment.end - segment.start + 1);
+                    const segmentProgress = segment.complete 
+                      ? 100
+                      : (isUnknownSize 
+                          ? (segment.downloaded > 0 ? 50 : 0)
+                          : (segmentSize > 0 ? ((segment.downloaded || 0) / segmentSize) * 100 : 0));
+                    const displaySize = isUnknownSize ? `${formatBytes(segment.downloaded || 0)} (streaming)` : formatBytes(segmentSize);
                     return (
                       <div
                         key={index}
                         className="flex-1 relative"
-                        title={`Segment ${index + 1}: ${formatBytes(segment.downloaded || 0)} / ${formatBytes(segment.end - segment.start)}`}
+                        title={`Segment ${index + 1}: ${formatBytes(segment.downloaded || 0)} / ${displaySize}`}
                       >
                         <div
                           className="absolute inset-0 bg-primary/40 transition-all"
@@ -557,14 +563,19 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
                 {/* Segment Details */}
                 <ScrollArea className="h-24">
                   <div className="space-y-1 text-xs">
-                    {download.segments.map((segment, index) => (
-                      <div key={index} className="flex items-center justify-between px-2 py-1 rounded bg-muted/50">
-                        <span className="font-medium">Segment {index + 1}</span>
-                        <span className="text-muted-foreground">
-                          {formatBytes(segment.downloaded || 0)} / {formatBytes(segment.end - segment.start)}
-                        </span>
-                      </div>
-                    ))}
+                    {download.segments.map((segment, index) => {
+                      const isUnknownSize = segment.end > Number.MAX_SAFE_INTEGER / 2;
+                      const segmentSize = isUnknownSize ? segment.downloaded : (segment.end - segment.start + 1);
+                      const displaySize = isUnknownSize ? "(streaming)" : formatBytes(segmentSize);
+                      return (
+                        <div key={index} className="flex items-center justify-between px-2 py-1 rounded bg-muted/50">
+                          <span className="font-medium">Segment {index + 1}</span>
+                          <span className="text-muted-foreground">
+                            {formatBytes(segment.downloaded || 0)} / {displaySize}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </ScrollArea>
               </div>

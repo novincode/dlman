@@ -210,17 +210,35 @@ impl DownloadTask {
         
         // All segments complete - merge into final file
         info!("All segments complete, merging...");
-        self.merge_segments().await?;
+        let segment_sizes = self.merge_segments().await?;
         
-        // Mark all segments as complete in our local state
-        for segment in &mut self.download.segments {
+        // Update segments with actual file sizes and calculate total downloaded
+        let mut total_downloaded: u64 = 0;
+        for (i, segment) in self.download.segments.iter_mut().enumerate() {
             segment.complete = true;
-            segment.downloaded = segment.end - segment.start + 1;
+            // Use the actual file size from merge (this is authoritative)
+            if let Some(&actual_size) = segment_sizes.get(i) {
+                segment.downloaded = actual_size;
+                // For unknown size segments, also fix the end value
+                if segment.is_unknown_size() && actual_size > 0 {
+                    segment.end = segment.start.saturating_add(actual_size).saturating_sub(1);
+                }
+            }
+            total_downloaded = total_downloaded.saturating_add(segment.downloaded);
+        }
+        
+        // Update download size if it was unknown (discovered during download)
+        if self.download.size.is_none() && total_downloaded > 0 {
+            self.download.size = Some(total_downloaded);
+            info!("Final download size determined: {} bytes", total_downloaded);
         }
         
         // Update status to completed
         self.download.status = DownloadStatus::Completed;
-        self.download.downloaded = self.download.size.unwrap_or(0);
+        self.download.downloaded = total_downloaded.max(self.download.size.unwrap_or(0));
+        
+        // Save the updated download with correct size info
+        self.db.upsert_download(&self.download).await?;
         self.db.update_download_status(self.download.id, DownloadStatus::Completed, None).await?;
         self.emit_status_change(DownloadStatus::Completed, None).await;
         
@@ -274,6 +292,11 @@ impl DownloadTask {
             Ok(segment_result) => {
                 if let Some(size) = segment_result.discovered_size {
                     self.download.size = Some(size);
+                    // Also update the segment end value so it's no longer u64::MAX
+                    if !self.download.segments.is_empty() && self.download.segments[0].end == u64::MAX {
+                        self.download.segments[0].end = size.saturating_sub(1);
+                        self.download.segments[0].downloaded = size;
+                    }
                     self.db.upsert_download(&self.download).await?;
                     let _ = self.event_tx.send(CoreEvent::DownloadUpdated {
                         download: self.download.clone(),
@@ -650,12 +673,14 @@ impl DownloadTask {
     }
     
     /// Merge all segment temp files into the final file
-    async fn merge_segments(&self) -> Result<(), DlmanError> {
+    /// Returns a vector of actual sizes for each segment (useful for unknown-size downloads)
+    async fn merge_segments(&self) -> Result<Vec<u64>, DlmanError> {
         let final_path = self.download.destination.join(&self.download.filename);
         
         info!("Merging {} segments into {:?}", self.download.segments.len(), final_path);
         
-        // First, verify all temp files exist
+        // First, verify all temp files exist and collect their sizes
+        let mut segment_sizes: Vec<u64> = Vec::with_capacity(self.download.segments.len());
         for segment in &self.download.segments {
             let temp_path = self.temp_dir.join(format!(
                 "{}_segment_{}.part",
@@ -669,7 +694,13 @@ impl DownloadTask {
                     segment.index
                 )));
             }
-            info!("Segment {} temp file verified: {:?}", segment.index, temp_path);
+            
+            // Get actual file size
+            let metadata = tokio::fs::metadata(&temp_path).await?;
+            let file_size = metadata.len();
+            segment_sizes.push(file_size);
+            
+            info!("Segment {} temp file verified: {:?} (size: {} bytes)", segment.index, temp_path, file_size);
         }
         
         // Ensure destination directory exists
@@ -741,7 +772,7 @@ impl DownloadTask {
         output.sync_all().await?;
         
         info!("Merge complete: {:?}", final_path);
-        Ok(())
+        Ok(segment_sizes)
     }
     
     /// Pause the download

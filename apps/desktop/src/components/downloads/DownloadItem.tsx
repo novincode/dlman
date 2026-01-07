@@ -605,7 +605,22 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
                 {(download.status === "downloading" ||
                   download.status === "paused") && (
                   <div className="mt-1.5">
-                    <Progress value={progress} className="h-1.5" />
+                    {download.size ? (
+                      <Progress value={progress} className="h-1.5" />
+                    ) : (
+                      /* Indeterminate progress bar for unknown size */
+                      <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                        <div 
+                          className={cn(
+                            "h-full bg-primary rounded-full",
+                            download.status === "downloading" 
+                              ? "animate-[indeterminate_1.5s_ease-in-out_infinite]" 
+                              : "w-1/4"
+                          )}
+                          style={download.status === "paused" ? { width: '25%' } : undefined}
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -679,23 +694,36 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
                           {/* IDM-style single progress bar with segments */}
                           <div className="relative h-3 bg-muted rounded-full overflow-hidden">
                             {download.segments.map((segment, idx) => {
-                              const segmentSize = segment.end - segment.start + 1;
-                              const segmentProgress = segmentSize > 0 
-                                ? (segment.downloaded / segmentSize) * 100 
-                                : 0;
-                              const segmentWidth = download.size && download.size > 0 
+                              // Handle unknown size (end = MAX u64 value which shows as huge number)
+                              const isUnknownSize = segment.end > Number.MAX_SAFE_INTEGER / 2;
+                              const segmentSize = isUnknownSize ? segment.downloaded : (segment.end - segment.start + 1);
+                              const segmentProgress = segment.complete 
+                                ? 100 
+                                : (isUnknownSize 
+                                    ? (segment.downloaded > 0 ? 50 : 0) // Show partial progress for unknown size
+                                    : (segmentSize > 0 ? (segment.downloaded / segmentSize) * 100 : 0));
+                              const segmentWidth = download.size && download.size > 0 && !isUnknownSize
                                 ? (segmentSize / download.size) * 100 
-                                : 0;
+                                : 100 / download.segments.length; // Equal width for unknown size
+                              
+                              // Calculate left position properly for unknown size
+                              const leftPosition = isUnknownSize 
+                                ? (idx * 100 / download.segments.length)
+                                : download.segments.slice(0, idx).reduce((acc, s) => {
+                                    const sIsUnknown = s.end > Number.MAX_SAFE_INTEGER / 2;
+                                    const sSize = sIsUnknown ? s.downloaded : (s.end - s.start + 1);
+                                    return acc + (sSize / (download.size || 1)) * 100;
+                                  }, 0);
                               
                               return (
                                 <div
                                   key={idx}
                                   className="absolute top-0 h-full"
                                   style={{
-                                    left: `${download.segments.slice(0, idx).reduce((acc, s) => acc + ((s.end - s.start + 1) / (download.size || 1)) * 100, 0)}%`,
+                                    left: `${leftPosition}%`,
                                     width: `${segmentWidth}%`,
                                   }}
-                                  title={`Segment ${idx + 1}: ${Math.round(segmentProgress)}%`}
+                                  title={`Segment ${idx + 1}: ${isUnknownSize ? formatBytes(segment.downloaded) : Math.round(segmentProgress) + '%'}`}
                                 >
                                   <div
                                     className={cn(
@@ -723,10 +751,14 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
                           {/* Segment details */}
                           <div className="grid grid-cols-2 gap-1 text-[10px] text-muted-foreground">
                             {download.segments.map((segment, idx) => {
-                              const segmentSize = segment.end - segment.start + 1;
-                              const segmentProgress = segmentSize > 0 
-                                ? (segment.downloaded / segmentSize) * 100 
-                                : 0;
+                              // Handle unknown size (end = MAX u64 value)
+                              const isUnknownSize = segment.end > Number.MAX_SAFE_INTEGER / 2;
+                              const segmentSize = isUnknownSize ? segment.downloaded : (segment.end - segment.start + 1);
+                              const segmentProgress = segment.complete 
+                                ? 100
+                                : (isUnknownSize 
+                                    ? (segment.downloaded > 0 ? 50 : 0)
+                                    : (segmentSize > 0 ? (segment.downloaded / segmentSize) * 100 : 0));
                               
                               return (
                                 <div key={idx} className="space-y-1">
@@ -735,7 +767,9 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
                                     <span>
                                       {segment.complete 
                                         ? "Complete" 
-                                        : `${formatBytes(segment.downloaded)}/${formatBytes(segmentSize)}`
+                                        : isUnknownSize
+                                          ? `${formatBytes(segment.downloaded)} (streaming)`
+                                          : `${formatBytes(segment.downloaded)}/${formatBytes(segmentSize)}`
                                       }
                                     </span>
                                   </div>
