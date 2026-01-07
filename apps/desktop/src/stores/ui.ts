@@ -23,6 +23,9 @@ interface UIState {
   showDevConsole: boolean;
   confirmDialogOpen: boolean;
   confirmDialogConfig: ConfirmDialogConfig | null;
+  
+  // Bulk delete dialog
+  showBulkDeleteDialog: boolean;
 
   // Drag and drop
   isDragging: boolean;
@@ -45,6 +48,7 @@ interface UIState {
   setShowSettingsDialog: (open: boolean) => void;
   setShowAboutDialog: (open: boolean) => void;
   setShowDevConsole: (open: boolean) => void;
+  setShowBulkDeleteDialog: (open: boolean) => void;
 
   openConfirmDialog: (config: ConfirmDialogConfig) => void;
   closeConfirmDialog: () => void;
@@ -89,6 +93,7 @@ export const useUIStore = create<UIState>((set) => ({
   showDevConsole: true,
   confirmDialogOpen: false,
   confirmDialogConfig: null,
+  showBulkDeleteDialog: false,
   isDragging: false,
   dragOverTarget: null,
   consoleHeight: 200,
@@ -108,6 +113,7 @@ export const useUIStore = create<UIState>((set) => ({
   setShowSettingsDialog: (open) => set({ showSettingsDialog: open }),
   setShowAboutDialog: (open) => set({ showAboutDialog: open }),
   setShowDevConsole: (open) => set({ showDevConsole: open }),
+  setShowBulkDeleteDialog: (open) => set({ showBulkDeleteDialog: open }),
 
   openConfirmDialog: (config) =>
     set({ confirmDialogOpen: true, confirmDialogConfig: config }),

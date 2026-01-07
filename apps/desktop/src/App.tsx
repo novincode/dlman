@@ -1,5 +1,7 @@
 import { useEffect, useCallback, useState } from "react";
 import { Toaster } from "sonner";
+import { toast } from "sonner";
+import { invoke } from "@tauri-apps/api/core";
 import { homeDir } from "@tauri-apps/api/path";
 import { Layout } from "@/components/layout/Layout";
 import {
@@ -9,6 +11,7 @@ import {
   QueueManagerDialog,
   AboutDialog,
   ConfirmDialog,
+  BulkDeleteConfirmDialog,
 } from "@/components/dialogs";
 import { DropZoneOverlay } from "@/components/DropZoneOverlay";
 import { ContextMenuProvider } from "@/components/ContextMenu";
@@ -16,6 +19,7 @@ import { DndProvider } from "@/components/dnd/DndProvider";
 import { SupportReminder } from "@/components/SupportReminder";
 import { useSettingsStore, loadSettingsFromBackend } from "@/stores/settings";
 import { useUIStore } from "@/stores/ui";
+import { useDownloadStore } from "@/stores/downloads";
 import { setupEventListeners, setPendingClipboardUrls, setPendingDropUrls } from "@/lib/events";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useUpdateCheck } from "@/hooks/useUpdateCheck";
@@ -30,8 +34,53 @@ function AppContent() {
   const theme = useSettingsStore((s) => s.settings.theme);
   const defaultDownloadPath = useSettingsStore((s) => s.settings.default_download_path);
   const setDefaultDownloadPath = useSettingsStore((s) => s.setDefaultDownloadPath);
-  const { setShowNewDownloadDialog, setShowBatchImportDialog } = useUIStore();
+  const { setShowNewDownloadDialog, setShowBatchImportDialog, showBulkDeleteDialog, setShowBulkDeleteDialog } = useUIStore();
+  const { selectedIds, downloads, removeDownload, clearSelection } = useDownloadStore();
   const [actualTheme, setActualTheme] = useState<"light" | "dark">("light");
+
+  // Get selected downloads for bulk delete dialog
+  const selectedDownloads = Array.from(selectedIds)
+    .map(id => downloads.get(id))
+    .filter((d): d is NonNullable<typeof d> => Boolean(d));
+
+  // Handle bulk delete confirmation
+  const handleConfirmBulkDelete = useCallback(async (deleteFiles: boolean) => {
+    setShowBulkDeleteDialog(false);
+    
+    const ids = Array.from(selectedIds);
+    let successCount = 0;
+    let fileDeleteCount = 0;
+    
+    for (const id of ids) {
+      const download = downloads.get(id);
+      if (!download) continue;
+      
+      // Remove from store first
+      removeDownload(id);
+      
+      if (isTauri()) {
+        try {
+          // Only delete file for completed downloads if user requested
+          const shouldDeleteFile = deleteFiles && download.status === 'completed';
+          await invoke('delete_download', { id, delete_file: shouldDeleteFile });
+          successCount++;
+          if (shouldDeleteFile) fileDeleteCount++;
+        } catch (err) {
+          console.error(`Failed to delete download ${id}:`, err);
+        }
+      } else {
+        successCount++;
+      }
+    }
+    
+    clearSelection();
+    
+    if (fileDeleteCount > 0) {
+      toast.success(`Removed ${successCount} download(s), deleted ${fileDeleteCount} file(s)`);
+    } else {
+      toast.success(`Removed ${successCount} download(s)`);
+    }
+  }, [selectedIds, downloads, removeDownload, clearSelection, setShowBulkDeleteDialog]);
 
   // Determine actual theme for Sonner (system theme needs real detection)
   const getActualTheme = useCallback((): "light" | "dark" => {
@@ -204,6 +253,12 @@ function AppContent() {
       <QueueManagerDialog />
       <AboutDialog />
       <ConfirmDialog />
+      <BulkDeleteConfirmDialog
+        open={showBulkDeleteDialog}
+        onOpenChange={setShowBulkDeleteDialog}
+        downloads={selectedDownloads}
+        onConfirm={handleConfirmBulkDelete}
+      />
       
       {/* Support Reminder */}
       <SupportReminder />

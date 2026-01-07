@@ -33,10 +33,10 @@ interface SelectionToolbarProps {
 }
 
 export function SelectionToolbar({ className }: SelectionToolbarProps) {
-  const { selectedIds, downloads, clearSelection, selectAll, removeDownload, updateStatus, moveToQueue } = useDownloadStore();
+  const { selectedIds, downloads, clearSelection, selectAll, updateStatus, moveToQueue } = useDownloadStore();
   const filteredDownloads = useFilteredDownloads();
   const queues = useQueuesArray();
-  const { openConfirmDialog } = useUIStore();
+  const { setShowBulkDeleteDialog } = useUIStore();
 
   const selectedCount = selectedIds.size;
   const hasSelection = selectedCount > 0;
@@ -44,7 +44,7 @@ export function SelectionToolbar({ className }: SelectionToolbarProps) {
   // Get selected downloads
   const selectedDownloads = Array.from(selectedIds)
     .map(id => downloads.get(id))
-    .filter(Boolean);
+    .filter((d): d is NonNullable<typeof d> => Boolean(d));
 
   // Check what actions are applicable
   const hasActive = selectedDownloads.some(d => d?.status === 'downloading');
@@ -143,29 +143,8 @@ export function SelectionToolbar({ className }: SelectionToolbarProps) {
   }, [selectedIds, downloads, updateStatus]);
 
   const handleDeleteSelected = useCallback(() => {
-    openConfirmDialog({
-      title: 'Delete Downloads',
-      description: `Are you sure you want to remove ${selectedCount} download(s) from the list? This will not delete the files.`,
-      confirmLabel: 'Remove',
-      variant: 'destructive',
-      onConfirm: async () => {
-        const ids = Array.from(selectedIds);
-        for (const id of ids) {
-          removeDownload(id);
-          
-          if (isTauri()) {
-            try {
-              await invoke('delete_download', { id, delete_file: false });
-            } catch (err) {
-              console.error(`Failed to delete download ${id}:`, err);
-            }
-          }
-        }
-        clearSelection();
-        toast.success(`Removed ${ids.length} download(s)`);
-      },
-    });
-  }, [selectedIds, selectedCount, removeDownload, clearSelection, openConfirmDialog]);
+    setShowBulkDeleteDialog(true);
+  }, [setShowBulkDeleteDialog]);
 
   const handleMoveToQueue = useCallback((newQueueId: string) => {
     const ids = Array.from(selectedIds);

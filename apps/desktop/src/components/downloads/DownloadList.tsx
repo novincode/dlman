@@ -124,7 +124,7 @@ export function DownloadList({ downloads }: DownloadListProps) {
     if (isTauri()) {
       try {
         // If user chose to also delete the file, use delete_file: true
-        await invoke("delete_download", { id: downloadToDelete.id, deleteFile });
+        await invoke("delete_download", { id: downloadToDelete.id, delete_file: deleteFile });
         if (deleteFile) {
           toast.success("Download removed and file deleted");
         } else {

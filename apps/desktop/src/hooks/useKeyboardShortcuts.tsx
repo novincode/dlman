@@ -1,5 +1,4 @@
 import { useEffect, useCallback, useMemo } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { toast } from "sonner";
 import { useUIStore } from "@/stores/ui";
@@ -30,10 +29,10 @@ export function useKeyboardShortcuts() {
     setShowBatchImportDialog,
     setShowSettingsDialog,
     setShowQueueManagerDialog,
-    openConfirmDialog,
+    setShowBulkDeleteDialog,
   } = useUIStore();
 
-  const { selectAll, clearSelection, selectedIds, removeDownload } = useDownloadStore();
+  const { selectAll, clearSelection, selectedIds } = useDownloadStore();
   const baseFilteredDownloads = useDownloadStore(useShallow(selectFilteredDownloads));
   
   // Get selected queue and category to filter downloads the same way MainContent does
@@ -130,29 +129,7 @@ export function useKeyboardShortcuts() {
       key: "Delete",
       action: () => {
         if (selectedIds.size === 0) return;
-        
-        openConfirmDialog({
-          title: 'Delete Downloads',
-          description: `Are you sure you want to remove ${selectedIds.size} download(s) from the list? This will not delete the files.`,
-          confirmLabel: 'Remove',
-          variant: 'destructive',
-          onConfirm: async () => {
-            const ids = Array.from(selectedIds);
-            for (const id of ids) {
-              removeDownload(id);
-              
-              if (isTauri()) {
-                try {
-                  await invoke('delete_download', { id, delete_file: false });
-                } catch (err) {
-                  console.error(`Failed to delete download ${id}:`, err);
-                }
-              }
-            }
-            clearSelection();
-            toast.success(`Removed ${ids.length} download(s)`);
-          },
-        });
+        setShowBulkDeleteDialog(true);
       },
       description: "Delete Selected",
     },
@@ -161,29 +138,7 @@ export function useKeyboardShortcuts() {
       key: "Backspace",
       action: () => {
         if (selectedIds.size === 0) return;
-        
-        openConfirmDialog({
-          title: 'Delete Downloads',
-          description: `Are you sure you want to remove ${selectedIds.size} download(s) from the list? This will not delete the files.`,
-          confirmLabel: 'Remove',
-          variant: 'destructive',
-          onConfirm: async () => {
-            const ids = Array.from(selectedIds);
-            for (const id of ids) {
-              removeDownload(id);
-              
-              if (isTauri()) {
-                try {
-                  await invoke('delete_download', { id, delete_file: false });
-                } catch (err) {
-                  console.error(`Failed to delete download ${id}:`, err);
-                }
-              }
-            }
-            clearSelection();
-            toast.success(`Removed ${ids.length} download(s)`);
-          },
-        });
+        setShowBulkDeleteDialog(true);
       },
       description: "Delete Selected",
     },

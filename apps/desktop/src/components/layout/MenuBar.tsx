@@ -89,10 +89,11 @@ export function MenuBar() {
     setShowQueueManagerDialog,
     setShowSettingsDialog,
     setShowAboutDialog,
+    setShowBulkDeleteDialog,
     openConfirmDialog,
   } = useUIStore();
 
-  const { selectedIds, clearSelection, removeDownload } = useDownloadStore();
+  const { selectedIds, removeDownload } = useDownloadStore();
   const downloads = useFilteredDownloads();
   const queues = useQueuesArray();
   const devMode = useSettingsStore((s) => s.settings.dev_mode);
@@ -217,28 +218,7 @@ export function MenuBar() {
 
   const handleDeleteSelected = () => {
     if (selectedIds.size === 0) return;
-
-    openConfirmDialog({
-      title: "Delete Downloads",
-      description: `Are you sure you want to remove ${selectedIds.size} download(s) from the list?`,
-      confirmLabel: "Delete",
-      variant: "destructive",
-      onConfirm: async () => {
-        const ids = Array.from(selectedIds);
-        for (const id of ids) {
-          removeDownload(id);
-          if (isTauri()) {
-            try {
-              await invoke("delete_download", { id, delete_file: false });
-            } catch (err) {
-              console.error(`Failed to delete download ${id}:`, err);
-            }
-          }
-        }
-        clearSelection();
-        toast.success(`Removed ${ids.length} download(s)`);
-      },
-    });
+    setShowBulkDeleteDialog(true);
   };
 
   const startQueue = async (id: string, name: string) => {
