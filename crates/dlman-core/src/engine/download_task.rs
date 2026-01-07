@@ -3,7 +3,7 @@
 //! This is the main orchestrator for a single download.
 //! It spawns segment workers, monitors their progress, and merges temp files on completion.
 
-use crate::engine::{DownloadDatabase, RateLimiter, SegmentWorker, SegmentResult};
+use crate::engine::{DownloadDatabase, RateLimiter, SegmentWorker};
 use crate::error::DlmanError;
 use dlman_types::{CoreEvent, Download, DownloadStatus, Segment};
 use reqwest::Client;

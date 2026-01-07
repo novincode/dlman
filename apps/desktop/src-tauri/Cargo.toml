@@ -39,6 +39,7 @@ futures-util = "0.3"
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
+devtools = ["tauri/devtools"]
 
 [lib]
 name = "dlman_desktop_lib"

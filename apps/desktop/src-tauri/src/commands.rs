@@ -693,6 +693,7 @@ pub async fn show_add_download_popup(
 }
 
 /// Open DevTools for the main window (dev mode only)
+#[cfg(any(debug_assertions, feature = "devtools"))]
 #[tauri::command]
 pub async fn open_devtools(app_handle: tauri::AppHandle) -> Result<(), String> {
     if let Some(window) = app_handle.get_webview_window("main") {
@@ -701,6 +702,13 @@ pub async fn open_devtools(app_handle: tauri::AppHandle) -> Result<(), String> {
     } else {
         Err("Main window not found".to_string())
     }
+}
+
+/// Stub for release builds without devtools
+#[cfg(not(any(debug_assertions, feature = "devtools")))]
+#[tauri::command]
+pub async fn open_devtools(_app_handle: tauri::AppHandle) -> Result<(), String> {
+    Err("DevTools not available in release builds".to_string())
 }
 
 /// Clear all downloads from the database (dev mode reset)

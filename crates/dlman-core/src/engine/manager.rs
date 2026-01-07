@@ -14,7 +14,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, RwLock};
-use tracing::{info, warn};
+use tracing::{info, warn, error};
 use uuid::Uuid;
 
 /// Download manager that coordinates all downloads
@@ -457,18 +457,28 @@ impl DownloadManager {
     
     /// Delete a download
     pub async fn delete(&self, id: Uuid, delete_file: bool) -> Result<(), DlmanError> {
+        // Load download info BEFORE canceling (so we can check original status)
+        let download = self.db.load_download(id).await?;
+        
         // Cancel if running
         self.cancel(id).await?;
         
-        // Load download info
-        let download = self.db.load_download(id).await?;
-        
         if let Some(download) = download {
-            // Delete file if requested and completed
+            // Delete file if requested and was completed (check original status before cancel)
             if delete_file && download.status == DownloadStatus::Completed {
                 let file_path = download.destination.join(&download.filename);
                 if file_path.exists() {
-                    tokio::fs::remove_file(&file_path).await?;
+                    match tokio::fs::remove_file(&file_path).await {
+                        Ok(_) => {
+                            info!("Deleted file: {:?}", file_path);
+                        }
+                        Err(e) => {
+                            // Log error but continue with deletion - removing from list should still work
+                            error!("Failed to delete file {:?}: {}", file_path, e);
+                        }
+                    }
+                } else {
+                    info!("File not found for deletion: {:?}", file_path);
                 }
             }
             
@@ -484,7 +494,7 @@ impl DownloadManager {
             }
         }
         
-        // Delete from DB
+        // Delete from DB (always happens, even if file deletion failed)
         self.db.delete_download(id).await?;
         
         // Emit event

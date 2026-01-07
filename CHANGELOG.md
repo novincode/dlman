@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.8.1] - 2026-01-07
+
+### 🐛 Bug Fixes
+- Fixed "delete file from disk" not actually deleting files - status was being changed to cancelled before checking if completed
+- Fixed bulk delete not offering file deletion option - now properly checks for files on disk
+- Fixed Linux build failing due to `open_devtools` not available in release builds
+
+### 🔧 Technical
+- File deletion now logs success/failure and continues with download removal even if file deletion fails
+- Added proper `devtools` feature flag for Tauri builds
+
 ## [1.8.0] - 2026-01-07
 
 ### ✨ New Features
