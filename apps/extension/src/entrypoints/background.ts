@@ -415,11 +415,28 @@ export default defineBackground(() => {
     
     switch (msg.type) {
       case 'get-status':
-        sendResponse({
-          enabled: currentSettings?.enabled,
-          connected: connectionStatus === 'connected',
-          connectionStatus,
-        });
+        // Quick ping to verify actual connection status
+        (async () => {
+          const client = getDlmanClient({
+            port: currentSettings?.port || 7899,
+          });
+          const isAvailable = await client.ping();
+          
+          // Update status based on actual ping result
+          if (isAvailable && connectionStatus !== 'connected') {
+            connectionStatus = 'connected';
+            updateBadge();
+          } else if (!isAvailable && connectionStatus === 'connected') {
+            connectionStatus = 'disconnected';
+            updateBadge();
+          }
+          
+          sendResponse({
+            enabled: currentSettings?.enabled,
+            connected: isAvailable,
+            connectionStatus: isAvailable ? 'connected' : connectionStatus,
+          });
+        })();
         return true;
 
       case 'add-download':
@@ -461,9 +478,32 @@ export default defineBackground(() => {
         return true;
 
       case 'connect':
-        connectToDlman().then(() => {
+        (async () => {
+          // First try to ping directly to check if app is running
+          const client = getDlmanClient({
+            port: currentSettings?.port || 7899,
+          });
+          
+          const isAvailable = await client.ping();
+          
+          if (isAvailable) {
+            // App is running, try WebSocket connection
+            const connected = await client.connect();
+            if (connected) {
+              connectionStatus = 'connected';
+              updateBadge();
+            } else {
+              // WebSocket failed but ping works, still mark as connected for HTTP fallback
+              connectionStatus = 'connected';
+              updateBadge();
+            }
+          } else {
+            connectionStatus = 'disconnected';
+            updateBadge();
+          }
+          
           sendResponse({ connected: connectionStatus === 'connected' });
-        });
+        })();
         return true;
 
       case 'all-links':

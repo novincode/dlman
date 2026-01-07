@@ -39,6 +39,10 @@ const defaultSettings: Settings = {
   notify_on_complete: true,
   notify_on_error: true,
   notify_sound: true,
+  // Toast settings (in-app notifications)
+  toast_show_success: true,
+  toast_show_error: true,
+  toast_show_info: true,
   // Update settings
   auto_check_updates: true,
 };

@@ -21,7 +21,6 @@ interface CategoryState {
   updateCategory: (id: string, updates: Partial<Category>) => void;
   removeCategory: (id: string) => void;
   setSelectedCategory: (id: string | null) => void;
-  resetToDefaults: () => void;
 }
 
 // Default categories with proper UUIDs and icon IDs

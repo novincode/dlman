@@ -25,6 +25,7 @@ import {
   Pencil,
   Plus,
   Trash2,
+  MessageSquare,
 } from 'lucide-react';
 
 import {
@@ -599,6 +600,71 @@ export function SettingsDialog() {
                     checked={localSettings.notify_sound}
                     onCheckedChange={(checked: boolean) =>
                       handleChange('notify_sound', checked)
+                    }
+                  />
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-4">
+              <h3 className="text-sm font-medium flex items-center gap-2">
+                <MessageSquare className="h-4 w-4" />
+                In-App Toasts
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                Control which toast messages appear in the app
+              </p>
+              <div className="pl-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="toastShowSuccess" className="cursor-pointer">
+                      Show success messages
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Show toasts for successful actions
+                    </p>
+                  </div>
+                  <Switch
+                    id="toastShowSuccess"
+                    checked={localSettings.toast_show_success}
+                    onCheckedChange={(checked: boolean) =>
+                      handleChange('toast_show_success', checked)
+                    }
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="toastShowError" className="cursor-pointer">
+                      Show error messages
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Show toasts for errors and failures
+                    </p>
+                  </div>
+                  <Switch
+                    id="toastShowError"
+                    checked={localSettings.toast_show_error}
+                    onCheckedChange={(checked: boolean) =>
+                      handleChange('toast_show_error', checked)
+                    }
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label htmlFor="toastShowInfo" className="cursor-pointer">
+                      Show info messages
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Show informational toasts
+                    </p>
+                  </div>
+                  <Switch
+                    id="toastShowInfo"
+                    checked={localSettings.toast_show_info}
+                    onCheckedChange={(checked: boolean) =>
+                      handleChange('toast_show_info', checked)
                     }
                   />
                 </div>

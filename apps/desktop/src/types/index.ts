@@ -98,6 +98,10 @@ export interface Settings {
   notify_on_complete: boolean;
   notify_on_error: boolean;
   notify_sound: boolean;
+  // Toast settings (in-app notifications)
+  toast_show_success: boolean;
+  toast_show_error: boolean;
+  toast_show_info: boolean;
   // Update settings
   auto_check_updates: boolean;
   // Proxy settings
