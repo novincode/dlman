@@ -1,7 +1,7 @@
 {
   "name": "@dlman/extension",
   "displayName": "DLMan - Download Manager",
-  "version": "1.7.5",
+  "version": "1.8.0",
   "private": true,
   "type": "module",
   "description": "Browser extension for DLMan - Modern download manager integration",

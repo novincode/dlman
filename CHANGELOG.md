@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.8.0] - 2026-01-07
+
+### ✨ New Features
+- Toast notification filtering: Users can now disable success, error, or info notifications in Settings
+- Toast auto-dismiss: All notifications automatically dismiss after 3 seconds
+
+### 🐛 Bug Fixes
+- Fixed browser extension connection detection on macOS - now uses real-time pings instead of cached status
+- Fixed UUID parsing error when adding single downloads - resolved issue with legacy category data stored as names instead of UUIDs
+
+### 🎨 UI/UX Improvements
+- Simplified dev menu - removed duplicate reset options
+- Added "In-App Toasts" section in Settings dialog with granular notification controls
+
 ## [1.7.5] - 2026-01-06
 
 ### 🐛 Bug Fixes
