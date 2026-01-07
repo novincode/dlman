@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.8.2] - 2026-01-07
+
+### 🐛 Bug Fixes
+- **Fixed critical overflow panic for unknown-size downloads**: Downloads from sources without Content-Length headers (like GitHub archives) now complete successfully instead of crashing
+- **Fixed UI display issues for streaming downloads**: Segment progress bars and sizes now properly handle unknown-size downloads with "streaming" indicators
+- **Added indeterminate progress animation**: Unknown-size downloads now show animated progress bars instead of stuck at 0%
+
+### 🔧 Technical
+- Improved merge logic to use actual file sizes for unknown-size downloads
+- Enhanced segment worker to properly track and update download sizes when discovered during streaming
+- Added safe arithmetic operations to prevent overflow in segment calculations
+
 ## [1.8.1] - 2026-01-07
 
 ### 🐛 Bug Fixes
