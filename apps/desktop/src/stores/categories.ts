@@ -21,6 +21,7 @@ interface CategoryState {
   updateCategory: (id: string, updates: Partial<Category>) => void;
   removeCategory: (id: string) => void;
   setSelectedCategory: (id: string | null) => void;
+  resetToDefaults: () => void;
 }
 
 // Default categories with proper UUIDs and icon IDs
@@ -109,6 +110,12 @@ export const useCategoryStore = create<CategoryState>()(
         }),
 
       setSelectedCategory: (id) => set({ selectedCategoryId: id }),
+      
+      // Reset categories to defaults (for dev mode)
+      resetToDefaults: () => set({ 
+        categories: initialCategories,
+        selectedCategoryId: null,
+      }),
     }),
     {
       name: "dlman-categories",
@@ -121,6 +128,24 @@ export const useCategoryStore = create<CategoryState>()(
           categories: [string, Category][];
           selectedCategoryId: string | null;
         };
+        
+        // Validate persisted categories - ensure IDs are valid UUIDs
+        // If not, reset to defaults (fixes corrupted old data)
+        const isValidUuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+        
+        if (persistedState.categories?.length) {
+          // Check if any category has an invalid UUID (old data format)
+          const hasInvalidIds = persistedState.categories.some(([id]) => !isValidUuid(id));
+          if (hasInvalidIds) {
+            console.warn('[Categories] Found corrupted category data with invalid IDs, resetting to defaults');
+            return {
+              ...current,
+              categories: initialCategories,
+              selectedCategoryId: null,
+            };
+          }
+        }
+        
         return {
           ...current,
           categories: persistedState.categories?.length 

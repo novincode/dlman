@@ -14,6 +14,10 @@ import {
   Pause,
   CheckCircle,
   AlertCircle,
+  Bug,
+  RefreshCw,
+  Database,
+  Layers,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { save, open } from "@tauri-apps/plugin-dialog";
@@ -29,6 +33,8 @@ import {
 import { useUIStore } from "@/stores/ui";
 import { useDownloadStore, useFilteredDownloads } from "@/stores/downloads";
 import { useQueuesArray } from "@/stores/queues";
+import { useCategoryStore } from "@/stores/categories";
+import { useSettingsStore } from "@/stores/settings";
 import { parseUrls, cn } from "@/lib/utils";
 import { setPendingClipboardUrls } from "@/lib/events";
 import { UpdateBadge } from "@/components/UpdateNotification";
@@ -91,6 +97,8 @@ export function MenuBar() {
   const { selectedIds, clearSelection, removeDownload } = useDownloadStore();
   const downloads = useFilteredDownloads();
   const queues = useQueuesArray();
+  const devMode = useSettingsStore((s) => s.settings.dev_mode);
+  const resetCategories = useCategoryStore((s) => s.resetToDefaults);
 
   const canStartAny = downloads.some(
     (d) => d.status === "paused" || d.status === "queued" || d.status === "pending"
@@ -330,6 +338,62 @@ export function MenuBar() {
     });
   };
 
+  // Dev Mode handlers
+  const handleResetCategories = () => {
+    openConfirmDialog({
+      title: "Reset Categories",
+      description: "This will reset all categories to their default values. Any custom categories will be lost.",
+      confirmLabel: "Reset",
+      variant: "destructive",
+      onConfirm: () => {
+        resetCategories();
+        toast.success("Categories reset to defaults");
+      },
+    });
+  };
+
+  const handleClearAllData = async () => {
+    openConfirmDialog({
+      title: "Clear All App Data",
+      description: "This will clear ALL app data including downloads, categories, queues, and settings. Downloaded files will NOT be deleted. The app will refresh after clearing.",
+      confirmLabel: "Clear All",
+      variant: "destructive",
+      onConfirm: async () => {
+        // Clear all localStorage for this app
+        const keysToRemove = ['dlman-downloads', 'dlman-categories', 'dlman-queues', 'dlman-settings', 'dlman-ui'];
+        keysToRemove.forEach(key => localStorage.removeItem(key));
+        
+        // Also clear backend if in Tauri
+        if (isTauri()) {
+          try {
+            await invoke("clear_all_downloads");
+          } catch (err) {
+            console.warn("Backend clear failed (may not exist):", err);
+          }
+        }
+        
+        toast.success("All data cleared. Refreshing...");
+        // Reload the app after a short delay
+        setTimeout(() => window.location.reload(), 1000);
+      },
+    });
+  };
+
+  const handleOpenDevTools = () => {
+    if (isTauri()) {
+      try {
+        // This opens the webview devtools in Tauri
+        invoke("open_devtools").catch(() => {
+          toast.error("DevTools not available in this build");
+        });
+      } catch (err) {
+        toast.error("Failed to open DevTools");
+      }
+    } else {
+      toast.info("Press F12 to open DevTools in browser");
+    }
+  };
+
   const startDisabled = !canStartAny || startableQueues.length === 0;
   const pauseDisabled = !canPauseAny || pausableQueues.length === 0;
 
@@ -457,7 +521,7 @@ export function MenuBar() {
 
       <div className="flex-1" />
 
-      {/* Tools + About + Settings */}
+      {/* Tools + Dev + About + Settings */}
       <div className="flex items-center gap-1 pl-2 border-l">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -474,6 +538,35 @@ export function MenuBar() {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        {/* Dev Mode Menu - only shown when dev_mode is enabled */}
+        {devMode && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <MenuButton icon={Bug} label="Dev" variant="warning" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={handleOpenDevTools}>
+                <Bug className="h-4 w-4 mr-2" />
+                Open DevTools
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleResetCategories}>
+                <Layers className="h-4 w-4 mr-2" />
+                Reset Categories
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleClearAllData} className="text-destructive">
+                <Database className="h-4 w-4 mr-2" />
+                Clear All Data
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => window.location.reload()}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Reload App
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
 
         <div className="relative">
           <MenuButton icon={Info} label="About" onClick={() => setShowAboutDialog(true)} />

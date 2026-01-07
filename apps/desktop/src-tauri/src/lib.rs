@@ -140,6 +140,9 @@ pub fn run() {
             commands::move_download_file,
             // Window commands
             commands::show_add_download_popup,
+            // Dev commands
+            commands::open_devtools,
+            commands::clear_all_downloads,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

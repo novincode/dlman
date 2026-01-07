@@ -52,6 +52,7 @@ interface DownloadState {
   setSortOrder: (order: "asc" | "desc") => void;
   moveToQueue: (ids: string[], queue_id: string) => void;
   setDownloads: (downloads: Download[]) => void;
+  clearAllDownloads: () => void;
 }
 
 export type DownloadFilter =
@@ -246,6 +247,15 @@ export const useDownloadStore = create<DownloadState>()(
           }
           return { downloads };
         }),
+      
+      // Clear all downloads (for dev mode reset)
+      clearAllDownloads: () => 
+        set(() => ({
+          downloads: new Map(),
+          selectedIds: new Set(),
+          lastSelectedId: null,
+          focusedId: null,
+        })),
     }),
     {
       name: "dlman-downloads",
@@ -321,6 +331,7 @@ export const useDownloadStore = create<DownloadState>()(
         setSortOrder: state.setSortOrder,
         moveToQueue: state.moveToQueue,
         setDownloads: state.setDownloads,
+        clearAllDownloads: state.clearAllDownloads,
       }),
     }
   )

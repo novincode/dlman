@@ -3,7 +3,7 @@
 use crate::state::AppState;
 use dlman_types::{Download, LinkInfo, Queue, QueueOptions, Settings};
 use std::path::PathBuf;
-use tauri::State;
+use tauri::{Manager, State};
 use uuid::Uuid;
 
 // ============================================================================
@@ -690,4 +690,30 @@ pub async fn show_add_download_popup(
     url: Option<String>,
 ) -> Result<(), String> {
     state.window_manager.show_add_download_popup(&app_handle, url)
+}
+
+/// Open DevTools for the main window (dev mode only)
+#[tauri::command]
+pub async fn open_devtools(app_handle: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app_handle.get_webview_window("main") {
+        window.open_devtools();
+        Ok(())
+    } else {
+        Err("Main window not found".to_string())
+    }
+}
+
+/// Clear all downloads from the database (dev mode reset)
+#[tauri::command]
+pub async fn clear_all_downloads(state: State<'_, AppState>) -> Result<(), String> {
+    state
+        .with_core_async(|core| async move {
+            // Get all downloads and delete them
+            let downloads = core.get_all_downloads().await?;
+            for download in downloads {
+                core.download_manager.db().delete_download(download.id).await?;
+            }
+            Ok(())
+        })
+        .await
 }

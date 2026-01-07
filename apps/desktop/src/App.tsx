@@ -213,6 +213,10 @@ function AppContent() {
         position="bottom-right"
         richColors
         closeButton
+        duration={3000}
+        toastOptions={{
+          className: 'text-sm',
+        }}
       />
     </div>
   );
