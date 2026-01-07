@@ -7,7 +7,7 @@ import path from 'path';
 function copyIconsPlugin() {
   return {
     name: 'copy-icons',
-    writeBundle(options) {
+    writeBundle(options: any) {
       const outputDir = options.dir || 'dist/chrome-mv3';
       const iconSourceDir = path.resolve(__dirname, 'public', 'icon');
       const iconOutputDir = path.resolve(outputDir, 'icon');
@@ -42,19 +42,32 @@ export default defineConfig({
   publicDir: 'public',
   manifest: {
     name: 'DLMan - Download Manager',
-    description: 'Modern download manager - fast, beautiful, and free',
+    description: 'Intercept browser downloads and send them to DLMan desktop app for faster, resumable downloads with queue management.',
     version: '1.7.5',
+    // Firefox-specific settings - REQUIRED for Firefox Add-ons
+    browser_specific_settings: {
+      gecko: {
+        id: 'dlman@ideyenovin.gmail.com',
+        strict_min_version: '109.0',
+        // Required since Nov 2025 - declares NO external data collection
+        // Extension only communicates with localhost (DLMan desktop app)
+        // Cast to any because WXT types haven't been updated for data_collection_permissions
+        data_collection_permissions: {
+          required: ['none'],
+        },
+      } as any,
+    },
     permissions: [
-      'storage',
-      'downloads',
-      'contextMenus',
-      'notifications',
-      'activeTab',
-      'clipboardRead',
+      'storage',        // Store user preferences (theme, port, disabled sites)
+      'downloads',      // Intercept browser downloads to redirect to DLMan
+      'contextMenus',   // "Download with DLMan" context menu option
+      'notifications',  // Notify when download is added or app not running
+      'activeTab',      // Get current tab URL for referrer header
+      'clipboardRead',  // Paste URLs from clipboard in popup
     ],
     host_permissions: [
-      'http://localhost:*/*',
-      'ws://localhost:*/*',
+      'http://localhost:*/*',  // Communicate with DLMan desktop app HTTP API
+      'ws://localhost:*/*',    // WebSocket connection for real-time download progress
     ],
     // Extension icons - copied from desktop app by copy-icons script
     icons: {
