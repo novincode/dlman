@@ -116,37 +116,8 @@ export interface LinkInfo {
 }
 
 // ============================================================================
-// API Message Types
+// API Types (used by browser extension ↔ desktop app HTTP communication)
 // ============================================================================
-
-export type MessageType =
-  // Connection
-  | 'ping'
-  | 'pong'
-  | 'authenticate'
-  | 'authenticated'
-  | 'error'
-  // Download operations
-  | 'add_download'
-  | 'download_added'
-  | 'download_progress'
-  | 'download_completed'
-  | 'download_error'
-  | 'get_downloads'
-  | 'downloads_list'
-  // Queue operations
-  | 'get_queues'
-  | 'queues_list'
-  // Status
-  | 'get_status'
-  | 'status';
-
-export interface ApiMessage<T = unknown> {
-  id: string;
-  type: MessageType;
-  payload?: T;
-  timestamp: number;
-}
 
 // ============================================================================
 // Request/Response Types

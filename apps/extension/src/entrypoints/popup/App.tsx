@@ -13,22 +13,9 @@ export default function App() {
   useEffect(() => {
     init();
 
-    // Listen for progress updates from background
-    interface ProgressMessage {
-      type: string;
-      payload?: unknown;
-    }
-    
-    const handleMessage = (message: unknown) => {
-      const msg = message as ProgressMessage;
-      if (msg.type === 'download_progress') {
-        usePopupStore.getState().updateProgress(msg.payload as any);
-      }
-    };
-
-    browser.runtime.onMessage.addListener(handleMessage);
+    // Cleanup on unmount
     return () => {
-      browser.runtime.onMessage.removeListener(handleMessage);
+      usePopupStore.getState().cleanup();
     };
   }, [init]);
 

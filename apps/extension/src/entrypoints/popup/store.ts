@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import type { Download, Queue, ExtensionSettings, DownloadProgressEvent } from '@/types';
+import type { Download, Queue, ExtensionSettings } from '@/types';
+import type { WsEvent } from '@/lib/api-client';
 import { getDlmanClient } from '@/lib/api-client';
 import { settingsStorage } from '@/lib/storage';
 
@@ -21,12 +22,13 @@ interface PopupState {
   
   // Actions
   init: () => Promise<void>;
+  cleanup: () => void;
   refresh: () => Promise<void>;
   retryConnection: () => Promise<void>;
   setTab: (tab: 'downloads' | 'queues' | 'settings') => void;
   toggleEnabled: () => Promise<void>;
   toggleSite: () => Promise<void>;
-  updateProgress: (event: DownloadProgressEvent) => void;
+  updateFromWsEvent: (event: WsEvent) => void;
 }
 
 export const usePopupStore = create<PopupState>((set, get) => ({
@@ -57,7 +59,6 @@ export const usePopupStore = create<PopupState>((set, get) => ({
           const hostname = new URL(currentTab.url).hostname;
           set({ currentHostname: hostname });
 
-          // Check if site is disabled
           const isDisabled = settings.disabledSites.some(site => {
             const pattern = site.toLowerCase();
             const lowerHostname = hostname.toLowerCase();
@@ -73,32 +74,58 @@ export const usePopupStore = create<PopupState>((set, get) => ({
         }
       }
 
-      // Get connection status
+      // Get connection status from background
       interface StatusResponse {
         enabled?: boolean;
         connected?: boolean;
         connectionStatus?: string;
       }
       let response = await browser.runtime.sendMessage({ type: 'get-status' }) as StatusResponse;
-      
+
       // If not connected, try to connect automatically
       if (!response?.connected && settings.enabled) {
         console.log('[DLMan] Not connected, attempting auto-reconnect...');
         const connectResponse = await browser.runtime.sendMessage({ type: 'connect' }) as { connected?: boolean };
         response = { ...response, connected: connectResponse?.connected || false };
       }
-      
+
       set({ isConnected: response?.connected || false });
 
       // Fetch data if connected
       if (response?.connected) {
         await get().refresh();
       }
+
+      // Listen for background messages (progress, data changes)
+      const messageListener = (message: unknown) => {
+        const msg = message as { type: string; payload?: Record<string, unknown> };
+        if (msg.type === 'download_progress' && msg.payload) {
+          get().updateFromWsEvent({
+            type: 'progress',
+            id: msg.payload.id as string,
+            downloaded: msg.payload.downloaded as number,
+            total: msg.payload.total as number | null,
+            speed: msg.payload.speed as number,
+            eta: msg.payload.eta as number | null,
+          });
+        } else if (msg.type === 'data_changed') {
+          // Something changed — refresh data
+          get().refresh();
+        }
+      };
+      browser.runtime.onMessage.addListener(messageListener);
+
+      // Store cleanup function
+      set({ cleanup: () => browser.runtime.onMessage.removeListener(messageListener) } as Partial<PopupState>);
     } catch (error) {
       console.error('[DLMan] Failed to init popup:', error);
     } finally {
       set({ isConnecting: false });
     }
+  },
+
+  cleanup: () => {
+    // Will be replaced by init() with actual cleanup
   },
 
   refresh: async () => {
@@ -177,18 +204,20 @@ export const usePopupStore = create<PopupState>((set, get) => ({
     set({ settings: newSettings, isSiteDisabled: !isSiteDisabled });
   },
 
-  updateProgress: (event) => {
-    set((state) => ({
-      activeDownloads: state.activeDownloads.map((d) =>
-        d.id === event.id
-          ? { 
-              ...d, 
-              downloaded: event.downloaded, 
-              size: event.total || d.size,
-              speed: event.speed,
-            }
-          : d
-      ),
-    }));
+  updateFromWsEvent: (event) => {
+    if (event.type === 'progress' && event.id) {
+      set((state) => ({
+        activeDownloads: state.activeDownloads.map((d) =>
+          d.id === event.id
+            ? {
+                ...d,
+                downloaded: event.downloaded ?? d.downloaded,
+                size: event.total ?? d.size,
+                speed: event.speed ?? d.speed,
+              }
+            : d
+        ),
+      }));
+    }
   },
 }));

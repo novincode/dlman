@@ -1,71 +1,80 @@
 import type {
-  ApiMessage,
-  MessageType,
   AddDownloadRequest,
   AddDownloadResponse,
   StatusResponse,
   Queue,
   Download,
-  DownloadProgressEvent,
 } from '@/types';
-import { generateMessageId } from './utils';
 
-type MessageHandler = (message: ApiMessage) => void;
+// ============================================================================
+// WebSocket event types — matches Rust WsEvent struct exactly
+// ============================================================================
+
+export interface WsEvent {
+  type: string;
+  id?: string;
+  downloaded?: number;
+  total?: number | null;
+  speed?: number;
+  eta?: number | null;
+  status?: string;
+  message?: string;
+}
+
+export type WsEventHandler = (event: WsEvent) => void;
 
 export interface DlmanClientOptions {
   port: number;
   onConnect?: () => void;
   onDisconnect?: () => void;
-  onProgress?: (event: DownloadProgressEvent) => void;
+  onEvent?: WsEventHandler;
   onError?: (error: string) => void;
 }
 
-/**
- * WebSocket + HTTP client for communicating with DLMan desktop app
- * Primary: WebSocket for real-time updates
- * Fallback: HTTP REST API
- */
+// ============================================================================
+// DLMan Client
+//
+// Architecture:
+//   HTTP REST is the PRIMARY transport for all commands.
+//   WebSocket is OPTIONAL — used only for receiving real-time events
+//   (progress, status changes) from the desktop app.
+//   All actual operations (add, pause, resume, cancel, query) go through HTTP.
+// ============================================================================
+
 export class DlmanClient {
   private ws: WebSocket | null = null;
   private options: DlmanClientOptions;
-  private reconnectAttempts = 0;
-  private maxReconnectAttempts = 3;
-  private reconnectDelay = 500;
-  private pendingRequests = new Map<string, {
-    resolve: (value: unknown) => void;
-    reject: (error: Error) => void;
-    timeout: ReturnType<typeof setTimeout>;
-  }>();
-  private messageHandlers: MessageHandler[] = [];
   private isConnecting = false;
+  private keepaliveInterval: ReturnType<typeof setInterval> | null = null;
+  private intentionalClose = false;
 
   constructor(options: DlmanClientOptions) {
     this.options = options;
   }
 
-  /**
-   * Get the base URL for HTTP requests
-   */
   private get baseUrl(): string {
     return `http://localhost:${this.options.port}`;
   }
 
-  /**
-   * Get the WebSocket URL
-   */
   private get wsUrl(): string {
     return `ws://localhost:${this.options.port}/ws`;
   }
 
   /**
-   * Check if connected via WebSocket
+   * Whether the WebSocket is currently open.
+   * Note: HTTP calls work even when WS is down.
    */
   get isConnected(): boolean {
     return this.ws?.readyState === WebSocket.OPEN;
   }
 
+  // ==========================================================================
+  // WebSocket — event stream only
+  // ==========================================================================
+
   /**
-   * Connect to DLMan via WebSocket
+   * Open a WebSocket connection for real-time events.
+   * Returns true if the WS connected successfully.
    */
   async connect(): Promise<boolean> {
     if (this.isConnecting || this.isConnected) {
@@ -73,52 +82,61 @@ export class DlmanClient {
     }
 
     this.isConnecting = true;
+    this.intentionalClose = false;
 
-    return new Promise((resolve) => {
+    return new Promise<boolean>((resolve) => {
       try {
         this.ws = new WebSocket(this.wsUrl);
 
+        const timeout = setTimeout(() => {
+          if (this.isConnecting) {
+            this.isConnecting = false;
+            this.ws?.close();
+            resolve(false);
+          }
+        }, 3000);
+
         this.ws.onopen = () => {
+          clearTimeout(timeout);
           console.log('[DLMan] WebSocket connected');
           this.isConnecting = false;
-          this.reconnectAttempts = 0;
+          this.startKeepalive();
           this.options.onConnect?.();
           resolve(true);
         };
 
         this.ws.onclose = () => {
-          console.log('[DLMan] WebSocket disconnected');
+          clearTimeout(timeout);
+          console.log('[DLMan] WebSocket closed');
           this.isConnecting = false;
+          this.stopKeepalive();
           this.ws = null;
-          this.options.onDisconnect?.();
-          this.attemptReconnect();
+          if (!this.intentionalClose) {
+            this.options.onDisconnect?.();
+          }
         };
 
-        this.ws.onerror = (event) => {
-          console.error('[DLMan] WebSocket error:', event);
+        this.ws.onerror = () => {
+          clearTimeout(timeout);
           this.isConnecting = false;
           resolve(false);
         };
 
         this.ws.onmessage = (event) => {
           try {
-            const message: ApiMessage = JSON.parse(event.data);
-            this.handleMessage(message);
+            const data = event.data as string;
+            // Handle pong keepalive response
+            if (data === '"pong"' || data === 'pong') {
+              return;
+            }
+            const wsEvent: WsEvent = JSON.parse(data);
+            this.handleWsEvent(wsEvent);
           } catch (error) {
-            console.error('[DLMan] Failed to parse message:', error);
+            console.error('[DLMan] Failed to parse WS message:', error);
           }
         };
-
-        // Timeout for connection - quick fail if app not running
-        setTimeout(() => {
-          if (this.isConnecting) {
-            this.isConnecting = false;
-            this.ws?.close();
-            resolve(false);
-          }
-        }, 2000);
       } catch (error) {
-        console.error('[DLMan] Failed to connect:', error);
+        console.error('[DLMan] Failed to create WebSocket:', error);
         this.isConnecting = false;
         resolve(false);
       }
@@ -126,152 +144,100 @@ export class DlmanClient {
   }
 
   /**
-   * Disconnect from DLMan
+   * Gracefully close the WebSocket.
    */
   disconnect(): void {
-    this.reconnectAttempts = this.maxReconnectAttempts; // Prevent reconnect
-    this.ws?.close();
-    this.ws = null;
-    this.pendingRequests.forEach(({ reject, timeout }) => {
-      clearTimeout(timeout);
-      reject(new Error('Disconnected'));
-    });
-    this.pendingRequests.clear();
-  }
-
-  /**
-   * Attempt to reconnect with exponential backoff
-   */
-  private attemptReconnect(): void {
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.log('[DLMan] Max reconnect attempts reached');
-      return;
+    this.intentionalClose = true;
+    this.stopKeepalive();
+    if (this.ws) {
+      this.ws.close();
+      this.ws = null;
     }
-
-    const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts);
-    this.reconnectAttempts++;
-
-    console.log(`[DLMan] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
-
-    setTimeout(() => {
-      this.connect();
-    }, delay);
   }
 
   /**
-   * Handle incoming WebSocket messages
+   * Send periodic pings to keep the connection alive and detect stale sockets.
    */
-  private handleMessage(message: ApiMessage): void {
-    // Check if this is a response to a pending request
-    const pending = this.pendingRequests.get(message.id);
-    if (pending) {
-      clearTimeout(pending.timeout);
-      this.pendingRequests.delete(message.id);
-      
-      if (message.type === 'error') {
-        pending.reject(new Error((message.payload as { message?: string })?.message || 'Unknown error'));
-      } else {
-        pending.resolve(message.payload);
+  private startKeepalive(): void {
+    this.stopKeepalive();
+    this.keepaliveInterval = setInterval(() => {
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        try {
+          this.ws.send('"ping"');
+        } catch {
+          // Socket dead — close will fire and trigger onDisconnect
+          this.ws?.close();
+        }
       }
-      return;
-    }
+    }, 25_000); // 25s — well within typical 30s idle timeouts
+  }
 
-    // Handle broadcast messages
-    switch (message.type) {
-      case 'download_progress':
-        this.options.onProgress?.(message.payload as DownloadProgressEvent);
+  private stopKeepalive(): void {
+    if (this.keepaliveInterval) {
+      clearInterval(this.keepaliveInterval);
+      this.keepaliveInterval = null;
+    }
+  }
+
+  /**
+   * Route incoming WS events to callbacks.
+   */
+  private handleWsEvent(event: WsEvent): void {
+    switch (event.type) {
+      case 'progress':
+        if (event.id) {
+          this.options.onEvent?.(event);
+        }
+        break;
+      case 'status_changed':
+      case 'download_added':
+        this.options.onEvent?.(event);
         break;
       case 'error':
-        this.options.onError?.((message.payload as { message?: string })?.message || 'Unknown error');
+        this.options.onError?.(event.message || 'Unknown error');
         break;
+      default:
+        // Forward any unknown event types too
+        this.options.onEvent?.(event);
     }
-
-    // Notify all handlers
-    this.messageHandlers.forEach(handler => handler(message));
   }
 
-  /**
-   * Send a message via WebSocket and wait for response
-   */
-  private async sendMessage<T>(type: MessageType, payload?: unknown): Promise<T> {
-    const message: ApiMessage = {
-      id: generateMessageId(),
-      type,
-      payload,
-      timestamp: Date.now(),
-    };
+  // ==========================================================================
+  // HTTP REST — primary transport for all operations
+  // ==========================================================================
 
-    return new Promise((resolve, reject) => {
-      if (!this.isConnected) {
-        reject(new Error('Not connected to DLMan'));
-        return;
-      }
-
-      const timeout = setTimeout(() => {
-        this.pendingRequests.delete(message.id);
-        reject(new Error('Request timeout'));
-      }, 30000);
-
-      this.pendingRequests.set(message.id, {
-        resolve: resolve as (value: unknown) => void,
-        reject,
-        timeout,
-      });
-
-      this.ws!.send(JSON.stringify(message));
-    });
-  }
-
-  /**
-   * Add a message handler
-   */
-  onMessage(handler: MessageHandler): () => void {
-    this.messageHandlers.push(handler);
-    return () => {
-      this.messageHandlers = this.messageHandlers.filter(h => h !== handler);
-    };
-  }
-
-  // ============================================================================
-  // HTTP API (fallback when WebSocket not available)
-  // ============================================================================
-
-  /**
-   * Make HTTP request to DLMan
-   */
   private async httpRequest<T>(
     method: 'GET' | 'POST' | 'DELETE',
     path: string,
-    body?: unknown
+    body?: unknown,
   ): Promise<T> {
     const response = await fetch(`${this.baseUrl}${path}`, {
       method,
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: body ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(error || `HTTP ${response.status}`);
+      const text = await response.text();
+      throw new Error(text || `HTTP ${response.status}`);
     }
 
     return response.json();
   }
 
-  // ============================================================================
-  // Public API
-  // ============================================================================
+  // ==========================================================================
+  // Public API — all go through HTTP
+  // ==========================================================================
 
   /**
-   * Check if DLMan is running
+   * Quick health check — is the desktop app running?
    */
   async ping(): Promise<boolean> {
     try {
       const response = await fetch(`${this.baseUrl}/ping`, {
         method: 'GET',
-        signal: AbortSignal.timeout(1000),
+        signal: AbortSignal.timeout(2000),
       });
       return response.ok;
     } catch {
@@ -279,28 +245,16 @@ export class DlmanClient {
     }
   }
 
-  /**
-   * Get DLMan status
-   */
   async getStatus(): Promise<StatusResponse | null> {
     try {
-      if (this.isConnected) {
-        return await this.sendMessage<StatusResponse>('get_status');
-      }
       return await this.httpRequest<StatusResponse>('GET', '/api/status');
     } catch {
       return null;
     }
   }
 
-  /**
-   * Get all queues
-   */
   async getQueues(): Promise<Queue[]> {
     try {
-      if (this.isConnected) {
-        return await this.sendMessage<Queue[]>('get_queues');
-      }
       return await this.httpRequest<Queue[]>('GET', '/api/queues');
     } catch (error) {
       console.error('[DLMan] Failed to get queues:', error);
@@ -308,14 +262,8 @@ export class DlmanClient {
     }
   }
 
-  /**
-   * Get all downloads
-   */
   async getDownloads(): Promise<Download[]> {
     try {
-      if (this.isConnected) {
-        return await this.sendMessage<Download[]>('get_downloads');
-      }
       return await this.httpRequest<Download[]>('GET', '/api/downloads');
     } catch (error) {
       console.error('[DLMan] Failed to get downloads:', error);
@@ -323,14 +271,8 @@ export class DlmanClient {
     }
   }
 
-  /**
-   * Add a new download
-   */
   async addDownload(request: AddDownloadRequest): Promise<AddDownloadResponse> {
     try {
-      if (this.isConnected) {
-        return await this.sendMessage<AddDownloadResponse>('add_download', request);
-      }
       return await this.httpRequest<AddDownloadResponse>('POST', '/api/downloads', request);
     } catch (error) {
       console.error('[DLMan] Failed to add download:', error);
@@ -341,39 +283,13 @@ export class DlmanClient {
     }
   }
 
-  /**
-   * Show the new download dialog in the app
-   * Returns a deep link URL that will open the app's dialog
-   */
-  async showDownloadDialog(url: string, referrer?: string, filename?: string): Promise<{ success: boolean; deepLink?: string; error?: string }> {
-    try {
-      const response = await this.httpRequest<{ success: boolean; deep_link: string; error?: string }>(
-        'POST',
-        '/api/show-dialog',
-        { url, referrer, filename }
-      );
-      return {
-        success: response.success,
-        deepLink: response.deep_link,
-        error: response.error,
-      };
-    } catch (error) {
-      console.error('[DLMan] Failed to show dialog:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-      };
-    }
-  }
-
-  /**
-   * Pause a download
-   */
   async pauseDownload(id: string): Promise<{ success: boolean; error?: string }> {
     try {
-      return await this.httpRequest<{ success: boolean; error?: string }>('POST', `/api/downloads/${id}/pause`);
+      return await this.httpRequest<{ success: boolean; error?: string }>(
+        'POST',
+        `/api/downloads/${id}/pause`,
+      );
     } catch (error) {
-      console.error('[DLMan] Failed to pause download:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -381,14 +297,13 @@ export class DlmanClient {
     }
   }
 
-  /**
-   * Resume a download
-   */
   async resumeDownload(id: string): Promise<{ success: boolean; error?: string }> {
     try {
-      return await this.httpRequest<{ success: boolean; error?: string }>('POST', `/api/downloads/${id}/resume`);
+      return await this.httpRequest<{ success: boolean; error?: string }>(
+        'POST',
+        `/api/downloads/${id}/resume`,
+      );
     } catch (error) {
-      console.error('[DLMan] Failed to resume download:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -396,14 +311,13 @@ export class DlmanClient {
     }
   }
 
-  /**
-   * Cancel a download
-   */
   async cancelDownload(id: string): Promise<{ success: boolean; error?: string }> {
     try {
-      return await this.httpRequest<{ success: boolean; error?: string }>('POST', `/api/downloads/${id}/cancel`);
+      return await this.httpRequest<{ success: boolean; error?: string }>(
+        'POST',
+        `/api/downloads/${id}/cancel`,
+      );
     } catch (error) {
-      console.error('[DLMan] Failed to cancel download:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -412,11 +326,15 @@ export class DlmanClient {
   }
 }
 
-// Singleton instance
+// ============================================================================
+// Singleton
+// ============================================================================
+
 let clientInstance: DlmanClient | null = null;
 
 /**
- * Get or create the DLMan client instance
+ * Get or create the singleton DLMan client.
+ * Options are only used when creating the first instance.
  */
 export function getDlmanClient(options?: Partial<DlmanClientOptions>): DlmanClient {
   if (!clientInstance) {
@@ -429,7 +347,7 @@ export function getDlmanClient(options?: Partial<DlmanClientOptions>): DlmanClie
 }
 
 /**
- * Reset the client instance (for testing or port change)
+ * Reset the client (used when port changes or for testing).
  */
 export function resetDlmanClient(): void {
   clientInstance?.disconnect();

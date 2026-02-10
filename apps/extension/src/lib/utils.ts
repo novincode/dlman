@@ -133,13 +133,6 @@ export function getCurrentHostname(): string {
 }
 
 /**
- * Generate a unique message ID
- */
-export function generateMessageId(): string {
-  return `msg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-}
-
-/**
  * Truncate text with ellipsis
  */
 export function truncate(text: string, maxLength: number): string {

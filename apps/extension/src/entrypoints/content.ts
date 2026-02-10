@@ -113,7 +113,6 @@ export default defineContentScript({
      */
     interface Message {
       type: string;
-      deepLink?: string;
     }
 
     browser.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
@@ -140,25 +139,6 @@ export default defineContentScript({
 
         case 'ping':
           sendResponse({ pong: true });
-          return true;
-
-        case 'open-deep-link':
-          // Open a deep link URL to trigger the desktop app
-          if (msg.deepLink) {
-            try {
-              // Create a hidden anchor and click it to trigger the protocol handler
-              const link = document.createElement('a');
-              link.href = msg.deepLink;
-              link.style.display = 'none';
-              document.body.appendChild(link);
-              link.click();
-              document.body.removeChild(link);
-              sendResponse({ success: true });
-            } catch (error) {
-              console.error('[DLMan] Failed to open deep link:', error);
-              sendResponse({ success: false, error: String(error) });
-            }
-          }
           return true;
           
         default:

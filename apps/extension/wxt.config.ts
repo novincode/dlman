@@ -64,6 +64,7 @@ export default defineConfig({
       'notifications',  // Notify when download is added or app not running
       'activeTab',      // Get current tab URL for referrer header
       'clipboardRead',  // Paste URLs from clipboard in popup
+      'alarms',         // Periodic reconnection to DLMan desktop app
     ],
     host_permissions: [
       'http://localhost:*/*',  // Communicate with DLMan desktop app HTTP API

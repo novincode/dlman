@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ExternalLink, Plus } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 import { usePopupStore } from '../store';
 
 export function AddWithApp() {
