@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.9.2] - 2026-02-10
+
+### ✨ New Features
+
+**Cookie-Based Session Authentication**
+- Browser extension now automatically reads session cookies for download URLs
+- Enables authenticated downloads from sites that use cookie-based sessions (e.g. Rapidgator, file hosting services)
+- Cookies are transparently passed from the browser to the download engine — no user interaction needed
+- Works alongside existing HTTP Basic Auth credentials — both can be used simultaneously
+- Cookies are persisted in the database and survive app restarts, pause/resume, and crash recovery
+- Applied on all HTTP requests: URL probing (HEAD/GET), and every download segment
+
+### 🔧 Internal
+
+- Added `cookies` permission and `<all_urls>` host permission to browser extension manifest
+- Extension reads cookies via `browser.cookies.getAll()` and formats as standard `Cookie` header
+- Full pipeline: Extension → HTTP server → Tauri event → Frontend → Tauri command → Core → Database → Engine → HTTP request
+- Added `cookies: Option<String>` field to `Download` struct with database migration
+- `SegmentWorker` and `DownloadTask` inject `Cookie:` header on all outgoing requests
+- Frontend `events.ts` parses structured event payloads (url, referrer, filename, cookies)
+- `NewDownloadDialog` reads and forwards pending cookies to `add_download` command
+
 ## [1.9.1] - 2026-02-10
 
 ### ✨ New Features
