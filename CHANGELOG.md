@@ -1,5 +1,38 @@
 # Changelog
 
+## [1.9.0] - 2026-02-10
+
+### ✨ New Features
+
+**Site Logins & Saved Credentials**
+- Save site login credentials per domain (IDM-inspired)
+- Auto-apply saved credentials for authenticated downloads (HTTP Basic Auth)
+- Auth detection during URL probe — amber warning shown in New Download dialog before starting
+- Credential prompt dialog on 401/403 failures with "Sign In & Retry"
+- Pre-fills existing credentials when they fail, with warning to update
+- "Saved Logins" tab in Settings with full CRUD management
+- Enable/disable individual credentials without deleting
+
+**Queue Auto-Advance**
+- Queue manager now automatically starts the next pending downloads when active ones complete
+- Fills all available queue slots (respects max concurrent limit)
+- Background listener watches for status changes in real-time
+
+**Clear Filters Button**
+- "Clear" button appears in the filter bar when any filter is active
+- Resets status, queue, category, and search filters in one click
+- Only shown when needed — hidden when all filters are at defaults
+
+### 🐛 Bug Fixes
+- Fixed critical overflow panic when downloading from auth-required URLs (size=0 causing u64 underflow)
+- Fixed auth-required URLs not being detected during probe — now properly returns 401/403 status
+- Fixed extension manifest version out of sync with app version
+
+### 🎨 UI/UX Improvements
+- Replaced native HTML `<select>` with shadcn `<Select>` component in Settings credential form
+- Auth warning banner with shield icon in New Download dialog for protected URLs
+- "Saved Logins" button in auth warning opens Settings directly
+
 ## [1.8.2] - 2026-01-07
 
 ### 🐛 Bug Fixes

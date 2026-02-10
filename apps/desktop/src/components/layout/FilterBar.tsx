@@ -1,4 +1,4 @@
-import { Search, ArrowUpDown, SortAsc, SortDesc, Activity, ListTodo, Folder } from "lucide-react";
+import { Search, ArrowUpDown, SortAsc, SortDesc, Activity, ListTodo, Folder, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -63,6 +63,16 @@ export function FilterBar() {
   const currentFilter = FILTERS.find(f => f.value === filter) || FILTERS[0];
   const selectedQueue = selectedQueueId ? queues.find(q => q.id === selectedQueueId) : null;
   const selectedCategory = selectedCategoryId ? categories.find(c => c.id === selectedCategoryId) : null;
+
+  // Check if any filters are active (not at default values)
+  const hasActiveFilters = filter !== "all" || selectedQueueId !== null || selectedCategoryId !== null || searchQuery !== "";
+
+  const clearAllFilters = () => {
+    setFilter("all");
+    setSelectedQueue(null);
+    setSelectedCategory(null);
+    setSearchQuery("");
+  };
 
   return (
     <div className="flex items-center gap-2 px-3 py-2 border-b bg-card/50">
@@ -143,6 +153,19 @@ export function FilterBar() {
             })}
           </SelectContent>
         </Select>
+
+        {/* Clear All Filters */}
+        {hasActiveFilters && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground gap-1"
+            onClick={clearAllFilters}
+          >
+            <X className="h-3 w-3" />
+            Clear
+          </Button>
+        )}
       </div>
 
       {/* Spacer */}

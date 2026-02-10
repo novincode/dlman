@@ -70,12 +70,21 @@ If you care about **speed, reliability, and control**, DLMan is for you.
 - Select active days of the week
 - Post-download actions: Sleep, Shutdown, Hibernate
 - Run custom commands after downloads complete
+- Queue auto-advance: next downloads start automatically when slots free up
 
 ### 🗂️ Organization
 - Queue management with priorities
 - Categories with custom download folders
 - Batch import multiple URLs
 - Drag and drop support
+- Quick "Clear Filters" button when any filter is active
+
+### 🔐 Site Logins & Credentials
+- Save site login credentials per domain
+- Auto-apply credentials for authenticated downloads (HTTP Basic Auth)
+- Auth detection during URL probe — warning shown before download starts
+- Credential prompt on 401/403 failures with retry
+- Manage saved logins in Settings
 
 ### 🎨 Interface
 - Modern, clean UI

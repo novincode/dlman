@@ -43,7 +43,7 @@ export default defineConfig({
   manifest: {
     name: 'DLMan - Download Manager',
     description: 'Intercept browser downloads and send them to DLMan desktop app for faster, resumable downloads with queue management.',
-    version: '1.7.5',
+    version: '1.9.0',
     // Firefox-specific settings - REQUIRED for Firefox Add-ons
     browser_specific_settings: {
       gecko: {
