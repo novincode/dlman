@@ -8,6 +8,9 @@ import type { ExtensionSettings } from '@/types';
 export default defineBackground(() => {
   console.log('[DLMan] Background service worker started');
 
+  // Compat shim: browser.action (MV3) vs browser.browserAction (Firefox MV2)
+  const actionApi = browser.action ?? (browser as any).browserAction;
+
   let currentSettings: ExtensionSettings | null = null;
   let connectionStatus: 'connected' | 'disconnected' | 'connecting' = 'disconnected';
 
@@ -372,23 +375,25 @@ export default defineBackground(() => {
   // ============================================================================
 
   function updateBadge() {
+    if (!actionApi) return; // Safety: no badge API available
+
     if (!currentSettings?.enabled) {
-      browser.action.setBadgeText({ text: 'OFF' });
-      browser.action.setBadgeBackgroundColor({ color: '#6b7280' });
+      actionApi.setBadgeText({ text: 'OFF' });
+      actionApi.setBadgeBackgroundColor({ color: '#6b7280' });
       return;
     }
 
     switch (connectionStatus) {
       case 'connected':
-        browser.action.setBadgeText({ text: '' });
+        actionApi.setBadgeText({ text: '' });
         break;
       case 'connecting':
-        browser.action.setBadgeText({ text: '...' });
-        browser.action.setBadgeBackgroundColor({ color: '#f59e0b' });
+        actionApi.setBadgeText({ text: '...' });
+        actionApi.setBadgeBackgroundColor({ color: '#f59e0b' });
         break;
       case 'disconnected':
-        browser.action.setBadgeText({ text: '!' });
-        browser.action.setBadgeBackgroundColor({ color: '#ef4444' });
+        actionApi.setBadgeText({ text: '!' });
+        actionApi.setBadgeBackgroundColor({ color: '#ef4444' });
         break;
     }
   }
