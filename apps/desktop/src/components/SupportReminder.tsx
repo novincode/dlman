@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { X, Star, Heart, Frown, Meh, HeartHandshake } from "lucide-react";
+import { X, Star, Heart, Frown, Meh, HeartHandshake, HeartPulse } from "lucide-react";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
 import { useSettingsStore } from "@/stores/settings";
 import { cn } from "@/lib/utils";
@@ -129,7 +129,7 @@ export function SupportReminder() {
         return <HeartHandshake className="h-8 w-8 text-pink-500" />;
       default:
         // Default - poker face / neutral
-        return <Meh className="h-8 w-8 text-blue-500" />;
+        return <HeartPulse className="h-8 w-8 text-red-500" />;
     }
   };
 

@@ -1,6 +1,7 @@
 import type {
-  AddDownloadRequest,
-  AddDownloadResponse,
+  ShowDialogRequest,
+  ShowDialogResponse,
+  ShowBatchDialogRequest,
   StatusResponse,
   Queue,
   Download,
@@ -271,11 +272,35 @@ export class DlmanClient {
     }
   }
 
-  async addDownload(request: AddDownloadRequest): Promise<AddDownloadResponse> {
+  async addDownload(request: ShowDialogRequest): Promise<ShowDialogResponse> {
+    return this.showDialog(request);
+  }
+
+  /**
+   * Show the single download dialog in the desktop app.
+   * Does NOT start the download — opens the dialog for user confirmation.
+   */
+  async showDialog(request: ShowDialogRequest): Promise<ShowDialogResponse> {
     try {
-      return await this.httpRequest<AddDownloadResponse>('POST', '/api/downloads', request);
+      return await this.httpRequest<ShowDialogResponse>('POST', '/api/show-dialog', request);
     } catch (error) {
-      console.error('[DLMan] Failed to add download:', error);
+      console.error('[DLMan] Failed to show dialog:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  /**
+   * Show the batch download dialog in the desktop app.
+   * Sends multiple URLs at once; app opens batch import dialog.
+   */
+  async showBatchDialog(request: ShowBatchDialogRequest): Promise<ShowDialogResponse> {
+    try {
+      return await this.httpRequest<ShowDialogResponse>('POST', '/api/show-dialog/batch', request);
+    } catch (error) {
+      console.error('[DLMan] Failed to show batch dialog:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',

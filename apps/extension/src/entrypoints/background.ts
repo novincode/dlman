@@ -321,7 +321,7 @@ export default defineBackground(() => {
   }
 
   // ============================================================================
-  // Download Handler — direct HTTP POST, no deep links
+  // Download Handler — opens dialog in desktop app, NEVER auto-starts
   // ============================================================================
 
   async function handleDownload(url: string, referrer?: string, suggestedFilename?: string) {
@@ -343,29 +343,55 @@ export default defineBackground(() => {
       return;
     }
 
-    // Add download directly via HTTP POST
-    const result = await client.addDownload({
+    // Open the download dialog in the desktop app (does NOT start the download)
+    const result = await client.showDialog({
       url,
       filename: suggestedFilename || extractFilename(url),
       referrer,
-      queue_id: currentSettings?.defaultQueueId || undefined,
     });
 
-    if (result.success) {
-      if (currentSettings?.showNotifications) {
-        browser.notifications.create({
-          type: 'basic',
-          iconUrl: 'icon/128.png',
-          title: 'Download Added',
-          message: result.download?.filename || extractFilename(url),
-        });
-      }
-    } else {
+    if (!result.success) {
       browser.notifications.create({
         type: 'basic',
         iconUrl: 'icon/128.png',
-        title: 'Download Failed',
-        message: result.error || 'Failed to add download',
+        title: 'DLMan Error',
+        message: result.error || 'Failed to open download dialog',
+      });
+    }
+  }
+
+  /**
+   * Handle bulk download — sends all URLs to the desktop app's batch dialog.
+   */
+  async function handleBatchDownload(urls: string[], referrer?: string) {
+    const client = getDlmanClient();
+
+    const isAvailable = await client.ping();
+    if (!isAvailable) {
+      if (currentSettings?.fallbackToBrowser) {
+        // Fallback: download each one via browser
+        for (const url of urls) {
+          browser.downloads.download({ url });
+        }
+        return;
+      }
+      browser.notifications.create({
+        type: 'basic',
+        iconUrl: 'icon/128.png',
+        title: 'DLMan Not Running',
+        message: 'Please start DLMan to download files',
+      });
+      return;
+    }
+
+    const result = await client.showBatchDialog({ urls, referrer });
+
+    if (!result.success) {
+      browser.notifications.create({
+        type: 'basic',
+        iconUrl: 'icon/128.png',
+        title: 'DLMan Error',
+        message: result.error || 'Failed to open batch download dialog',
       });
     }
   }
@@ -448,26 +474,16 @@ export default defineBackground(() => {
               return;
             }
 
-            const result = await client.addDownload({
+            // Open dialog in the desktop app (never auto-start)
+            const result = await client.showDialog({
               url: msg.url || '',
               referrer: msg.referrer,
-              queue_id: currentSettings?.defaultQueueId || undefined,
             });
 
             sendResponse({
               success: result.success,
               error: result.error,
-              download: result.download,
             });
-
-            if (result.success && currentSettings?.showNotifications) {
-              browser.notifications.create({
-                type: 'basic',
-                iconUrl: 'icon/128.png',
-                title: 'Download Added',
-                message: result.download?.filename || extractFilename(msg.url || ''),
-              });
-            }
           } catch (error) {
             sendResponse({ success: false, error: (error as Error).message });
           }
@@ -482,11 +498,9 @@ export default defineBackground(() => {
         return true;
 
       case 'all-links':
-        // Handle links from content script
-        if (msg.links && Array.isArray(msg.links)) {
-          msg.links.forEach((url: string) => {
-            handleDownload(url, sender.tab?.url);
-          });
+        // Handle links from content script — open batch dialog
+        if (msg.links && Array.isArray(msg.links) && msg.links.length > 0) {
+          handleBatchDownload(msg.links, sender.tab?.url);
         }
         return true;
 

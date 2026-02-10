@@ -139,6 +139,26 @@ export interface AddDownloadResponse {
   error?: string;
 }
 
+/** Request to show the single download dialog in the desktop app */
+export interface ShowDialogRequest {
+  url: string;
+  referrer?: string;
+  filename?: string;
+  cookies?: string;
+}
+
+/** Request to show the batch download dialog in the desktop app */
+export interface ShowBatchDialogRequest {
+  urls: string[];
+  referrer?: string;
+}
+
+/** Response from show-dialog endpoints */
+export interface ShowDialogResponse {
+  success: boolean;
+  error?: string;
+}
+
 export interface StatusResponse {
   connected: boolean;
   version: string;

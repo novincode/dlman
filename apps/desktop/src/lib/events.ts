@@ -310,6 +310,20 @@ export function setupEventListeners(): () => void {
     }
   ));
 
+  // Listen for show-batch-download-dialog event (from extension bulk download)
+  registerListener(listen<string[]>(
+    "show-batch-download-dialog",
+    (event) => {
+      if (isCleanedUp) return;
+      const urls = event.payload;
+      
+      if (urls && urls.length > 0) {
+        setPendingDropUrls(urls);
+        useUIStore.getState().setShowBatchImportDialog(true);
+      }
+    }
+  ));
+
   // Cleanup function - marks as cleaned up and unsubscribes all already-resolved listeners
   return () => {
     isCleanedUp = true;

@@ -7,6 +7,7 @@
 //! - HTTP REST is the PRIMARY transport (always reliable if server is up)
 //! - WebSocket is OPTIONAL for real-time progress events only
 //! - No deep links, no protocol handlers — just direct HTTP calls
+//! - Extension sends URLs → server emits Tauri events → frontend opens dialogs
 
 use axum::{
     extract::{
@@ -19,43 +20,39 @@ use axum::{
     Router,
 };
 use dlman_core::DlmanCore;
-use dlman_types::{CoreEvent, Download, Queue};
+use dlman_types::{CoreEvent, Download};
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::{broadcast, mpsc, RwLock};
 use tower_http::cors::{Any, CorsLayer};
-use uuid::Uuid;
 
 // ============================================================================
 // Request/Response types
 // ============================================================================
 
-/// Request to add a new download from the browser extension
+/// Request to show the download dialog (single URL)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AddDownloadRequest {
+pub struct ShowDialogRequest {
     pub url: String,
-    pub filename: Option<String>,
-    pub destination: Option<String>,
-    pub queue_id: Option<String>,
     pub referrer: Option<String>,
+    pub filename: Option<String>,
     pub cookies: Option<String>,
-    pub headers: Option<HashMap<String, String>>,
-    #[serde(default = "default_auto_start")]
-    pub auto_start: bool,
 }
 
-fn default_auto_start() -> bool {
-    true
-}
-
-/// Response after adding a download
+/// Request to show the batch download dialog (multiple URLs)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AddDownloadResponse {
+pub struct ShowBatchDialogRequest {
+    pub urls: Vec<String>,
+    pub referrer: Option<String>,
+}
+
+/// Response after requesting a dialog
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShowDialogResponse {
     pub success: bool,
-    pub download: Option<Download>,
     pub error: Option<String>,
 }
 
@@ -101,19 +98,30 @@ pub struct WsEvent {
 }
 
 // ============================================================================
+// Shared state — holds DlmanCore + Tauri AppHandle
+// ============================================================================
+
+pub struct ServerState {
+    pub core: DlmanCore,
+    pub app_handle: AppHandle,
+}
+
+// ============================================================================
 // Browser Server
 // ============================================================================
 
 pub struct BrowserServer {
     core: DlmanCore,
+    app_handle: AppHandle,
     port: u16,
     shutdown_tx: Option<broadcast::Sender<()>>,
 }
 
 impl BrowserServer {
-    pub fn new(core: DlmanCore, port: u16) -> Self {
+    pub fn new(core: DlmanCore, app_handle: AppHandle, port: u16) -> Self {
         Self {
             core,
+            app_handle,
             port,
             shutdown_tx: None,
         }
@@ -123,8 +131,10 @@ impl BrowserServer {
         let (shutdown_tx, _) = broadcast::channel::<()>(1);
         self.shutdown_tx = Some(shutdown_tx.clone());
 
-        let core = self.core.clone();
-        let shared_state = Arc::new(RwLock::new(core));
+        let shared_state = Arc::new(RwLock::new(ServerState {
+            core: self.core.clone(),
+            app_handle: self.app_handle.clone(),
+        }));
 
         let cors = CorsLayer::new()
             .allow_origin(Any)
@@ -134,11 +144,13 @@ impl BrowserServer {
         let app = Router::new()
             // Health check — extension pings this to check if app is running
             .route("/ping", get(|| async { "pong" }))
-            // REST API
+            // Dialog endpoints — extension sends URLs, app shows dialogs
+            .route("/api/show-dialog", post(handle_show_dialog))
+            .route("/api/show-dialog/batch", post(handle_show_batch_dialog))
+            // REST API (data queries, download control)
             .route("/api/status", get(handle_status))
             .route("/api/queues", get(handle_get_queues))
             .route("/api/downloads", get(handle_get_downloads))
-            .route("/api/downloads", post(handle_add_download))
             // Download control
             .route("/api/downloads/:id/pause", post(handle_pause_download))
             .route("/api/downloads/:id/resume", post(handle_resume_download))
@@ -174,14 +186,98 @@ impl BrowserServer {
 // HTTP Handlers
 // ============================================================================
 
-type SharedState = Arc<RwLock<DlmanCore>>;
+type SharedState = Arc<RwLock<ServerState>>;
+
+/// Helper: bring the app window to attention (dock bounce on macOS, taskbar flash on Windows)
+fn request_attention(app_handle: &AppHandle) {
+    if let Some(window) = app_handle.get_webview_window("main") {
+        // Show the window if hidden
+        let _ = window.show();
+        let _ = window.unminimize();
+        // Request user attention (bounces dock icon on macOS, flashes taskbar on Windows)
+        let _ = window.request_user_attention(Some(tauri::UserAttentionType::Informational));
+    }
+}
+
+/// POST /api/show-dialog — single download dialog
+async fn handle_show_dialog(
+    State(state): axum::extract::State<SharedState>,
+    axum::Json(req): axum::Json<ShowDialogRequest>,
+) -> impl axum::response::IntoResponse {
+    let state = state.read().await;
+    let app_handle = &state.app_handle;
+
+    // Emit event to frontend with the URL
+    let payload = serde_json::json!(req.url);
+    if let Err(e) = app_handle.emit("show-new-download-dialog", payload) {
+        tracing::error!("Failed to emit show-new-download-dialog: {}", e);
+        return axum::Json(ShowDialogResponse {
+            success: false,
+            error: Some(format!("Failed to open dialog: {}", e)),
+        });
+    }
+
+    // Bounce dock / flash taskbar
+    request_attention(app_handle);
+
+    axum::Json(ShowDialogResponse {
+        success: true,
+        error: None,
+    })
+}
+
+/// POST /api/show-dialog/batch — bulk download dialog
+async fn handle_show_batch_dialog(
+    State(state): axum::extract::State<SharedState>,
+    axum::Json(req): axum::Json<ShowBatchDialogRequest>,
+) -> impl axum::response::IntoResponse {
+    let state = state.read().await;
+    let app_handle = &state.app_handle;
+
+    if req.urls.is_empty() {
+        return axum::Json(ShowDialogResponse {
+            success: false,
+            error: Some("No URLs provided".to_string()),
+        });
+    }
+
+    // If single URL, use the single dialog
+    if req.urls.len() == 1 {
+        let payload = serde_json::json!(req.urls[0]);
+        if let Err(e) = app_handle.emit("show-new-download-dialog", payload) {
+            tracing::error!("Failed to emit show-new-download-dialog: {}", e);
+            return axum::Json(ShowDialogResponse {
+                success: false,
+                error: Some(format!("Failed to open dialog: {}", e)),
+            });
+        }
+    } else {
+        // Multiple URLs → batch dialog
+        let payload = serde_json::json!(req.urls);
+        if let Err(e) = app_handle.emit("show-batch-download-dialog", payload) {
+            tracing::error!("Failed to emit show-batch-download-dialog: {}", e);
+            return axum::Json(ShowDialogResponse {
+                success: false,
+                error: Some(format!("Failed to open dialog: {}", e)),
+            });
+        }
+    }
+
+    // Bounce dock / flash taskbar
+    request_attention(app_handle);
+
+    axum::Json(ShowDialogResponse {
+        success: true,
+        error: None,
+    })
+}
 
 async fn handle_status(
     State(state): axum::extract::State<SharedState>,
 ) -> impl axum::response::IntoResponse {
-    let core = state.read().await;
-    let downloads = core.get_all_downloads().await.unwrap_or_default();
-    let queues = core.get_queues().await;
+    let state = state.read().await;
+    let downloads = state.core.get_all_downloads().await.unwrap_or_default();
+    let queues = state.core.get_queues().await;
 
     let active = downloads
         .iter()
@@ -204,52 +300,18 @@ async fn handle_status(
 async fn handle_get_queues(
     State(state): axum::extract::State<SharedState>,
 ) -> impl axum::response::IntoResponse {
-    let core = state.read().await;
-    let queues = core.get_queues().await;
+    let state = state.read().await;
+    let queues = state.core.get_queues().await;
     axum::Json(queues)
 }
 
 async fn handle_get_downloads(
     State(state): axum::extract::State<SharedState>,
 ) -> impl axum::response::IntoResponse {
-    let core = state.read().await;
-    match core.get_all_downloads().await {
+    let state = state.read().await;
+    match state.core.get_all_downloads().await {
         Ok(downloads) => axum::Json(downloads),
         Err(_) => axum::Json(Vec::<Download>::new()),
-    }
-}
-
-async fn handle_add_download(
-    State(state): axum::extract::State<SharedState>,
-    axum::Json(req): axum::Json<AddDownloadRequest>,
-) -> impl axum::response::IntoResponse {
-    let core = state.write().await;
-
-    let queue_id = req
-        .queue_id
-        .and_then(|s| Uuid::parse_str(&s).ok())
-        .unwrap_or(Uuid::nil());
-
-    let settings = core.get_settings().await;
-    let destination = req
-        .destination
-        .map(std::path::PathBuf::from)
-        .unwrap_or(settings.default_download_path);
-
-    match core
-        .add_download(&req.url, destination, queue_id, None)
-        .await
-    {
-        Ok(download) => axum::Json(AddDownloadResponse {
-            success: true,
-            download: Some(download),
-            error: None,
-        }),
-        Err(e) => axum::Json(AddDownloadResponse {
-            success: false,
-            download: None,
-            error: Some(e.to_string()),
-        }),
     }
 }
 
@@ -257,15 +319,15 @@ async fn handle_pause_download(
     State(state): axum::extract::State<SharedState>,
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> impl axum::response::IntoResponse {
-    let Ok(uuid) = Uuid::parse_str(&id) else {
+    let Ok(uuid) = uuid::Uuid::parse_str(&id) else {
         return axum::Json(ControlResponse {
             success: false,
             error: Some("Invalid download ID".to_string()),
         });
     };
 
-    let core = state.write().await;
-    match core.pause_download(uuid).await {
+    let state = state.write().await;
+    match state.core.pause_download(uuid).await {
         Ok(_) => axum::Json(ControlResponse {
             success: true,
             error: None,
@@ -281,15 +343,15 @@ async fn handle_resume_download(
     State(state): axum::extract::State<SharedState>,
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> impl axum::response::IntoResponse {
-    let Ok(uuid) = Uuid::parse_str(&id) else {
+    let Ok(uuid) = uuid::Uuid::parse_str(&id) else {
         return axum::Json(ControlResponse {
             success: false,
             error: Some("Invalid download ID".to_string()),
         });
     };
 
-    let core = state.write().await;
-    match core.resume_download(uuid).await {
+    let state = state.write().await;
+    match state.core.resume_download(uuid).await {
         Ok(_) => axum::Json(ControlResponse {
             success: true,
             error: None,
@@ -305,15 +367,15 @@ async fn handle_cancel_download(
     State(state): axum::extract::State<SharedState>,
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> impl axum::response::IntoResponse {
-    let Ok(uuid) = Uuid::parse_str(&id) else {
+    let Ok(uuid) = uuid::Uuid::parse_str(&id) else {
         return axum::Json(ControlResponse {
             success: false,
             error: Some("Invalid download ID".to_string()),
         });
     };
 
-    let core = state.write().await;
-    match core.cancel_download(uuid).await {
+    let state = state.write().await;
+    match state.core.cancel_download(uuid).await {
         Ok(_) => axum::Json(ControlResponse {
             success: true,
             error: None,
@@ -352,9 +414,9 @@ async fn handle_ws_connection(socket: WebSocket, state: SharedState) {
     });
 
     // Task 2: Forward core events → mpsc channel
-    let core = state.read().await;
-    let mut event_rx = core.subscribe();
-    drop(core);
+    let server_state = state.read().await;
+    let mut event_rx = server_state.core.subscribe();
+    drop(server_state);
 
     let event_tx = tx.clone();
     let forward_task = tokio::spawn(async move {

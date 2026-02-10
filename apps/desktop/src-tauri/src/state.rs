@@ -29,7 +29,7 @@ impl AppState {
     }
 
     /// Start the browser integration server
-    pub fn start_browser_server(&self) {
+    pub fn start_browser_server(&self, app_handle: AppHandle) {
         let core = self.core.clone();
         
         tauri::async_runtime::spawn(async move {
@@ -40,7 +40,7 @@ impl AppState {
                 let core_clone = core.clone();
                 drop(guard); // Release lock before starting server
                 
-                let mut server = BrowserServer::new(core_clone, port);
+                let mut server = BrowserServer::new(core_clone, app_handle, port);
                 if let Err(e) = server.start().await {
                     tracing::error!("Failed to start browser integration server: {}", e);
                 }

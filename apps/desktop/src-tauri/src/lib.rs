@@ -58,7 +58,7 @@ pub fn run() {
                     state.start_event_forwarding(app.handle().clone());
                     
                     // Start browser integration server
-                    state.start_browser_server();
+                    state.start_browser_server(app.handle().clone());
                     
                     app.manage(state);
                     tracing::info!("DLMan initialized successfully");
