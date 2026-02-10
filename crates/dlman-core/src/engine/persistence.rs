@@ -4,7 +4,7 @@
 //! This is the SINGLE SOURCE OF TRUTH for all persistent data.
 
 use crate::error::DlmanError;
-use dlman_types::{Download, DownloadStatus, Segment, Settings, Theme};
+use dlman_types::{Download, DownloadStatus, Segment, Settings, SiteCredential, Theme};
 use sqlx::{sqlite::{SqliteConnectOptions, SqlitePool}, Row, SqlitePool as Pool};
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
@@ -86,9 +86,22 @@ impl DownloadDatabase {
                 proxy_settings TEXT
             );
             
+            CREATE TABLE IF NOT EXISTS site_credentials (
+                id TEXT PRIMARY KEY,
+                domain TEXT NOT NULL,
+                protocol TEXT NOT NULL DEFAULT 'any',
+                username TEXT NOT NULL,
+                password TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL,
+                last_used_at TEXT,
+                notes TEXT
+            );
+            
             CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
             CREATE INDEX IF NOT EXISTS idx_downloads_queue ON downloads(queue_id);
             CREATE INDEX IF NOT EXISTS idx_segments_download ON segments(download_id);
+            CREATE INDEX IF NOT EXISTS idx_site_credentials_domain ON site_credentials(domain);
             "#,
         )
         .execute(&pool)
@@ -111,6 +124,35 @@ impl DownloadDatabase {
         .execute(pool)
         .await
         .ok(); // Ignore error if column already exists
+        
+        // Migration: Create site_credentials table if it doesn't exist
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS site_credentials (
+                id TEXT PRIMARY KEY,
+                domain TEXT NOT NULL,
+                protocol TEXT NOT NULL DEFAULT 'any',
+                username TEXT NOT NULL,
+                password TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL,
+                last_used_at TEXT,
+                notes TEXT
+            )
+            "#,
+        )
+        .execute(pool)
+        .await
+        .ok();
+        
+        sqlx::query(
+            r#"
+            CREATE INDEX IF NOT EXISTS idx_site_credentials_domain ON site_credentials(domain)
+            "#,
+        )
+        .execute(pool)
+        .await
+        .ok();
         
         Ok(())
     }
@@ -515,6 +557,99 @@ impl DownloadDatabase {
         tracing::info!("Settings saved to database: default_segments={}", settings.default_segments);
         Ok(())
     }
+    
+    // ========================================================================
+    // Site Credentials CRUD
+    // ========================================================================
+    
+    /// Save or update a site credential
+    pub async fn upsert_credential(&self, credential: &SiteCredential) -> Result<(), DlmanError> {
+        sqlx::query(
+            r#"
+            INSERT INTO site_credentials (
+                id, domain, protocol, username, password, enabled,
+                created_at, last_used_at, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                domain = excluded.domain,
+                protocol = excluded.protocol,
+                username = excluded.username,
+                password = excluded.password,
+                enabled = excluded.enabled,
+                last_used_at = excluded.last_used_at,
+                notes = excluded.notes
+            "#,
+        )
+        .bind(credential.id.to_string())
+        .bind(&credential.domain)
+        .bind(&credential.protocol)
+        .bind(&credential.username)
+        .bind(&credential.password)
+        .bind(if credential.enabled { 1i64 } else { 0i64 })
+        .bind(credential.created_at.to_rfc3339())
+        .bind(credential.last_used_at.map(|d| d.to_rfc3339()))
+        .bind(credential.notes.as_ref())
+        .execute(&self.pool)
+        .await?;
+        
+        Ok(())
+    }
+    
+    /// Load all site credentials
+    pub async fn load_all_credentials(&self) -> Result<Vec<SiteCredential>, DlmanError> {
+        let rows = sqlx::query("SELECT * FROM site_credentials ORDER BY domain ASC")
+            .fetch_all(&self.pool)
+            .await?;
+        
+        let mut credentials = Vec::new();
+        for row in rows {
+            credentials.push(row_to_credential(row)?);
+        }
+        
+        Ok(credentials)
+    }
+    
+    /// Load a site credential by ID
+    pub async fn load_credential(&self, id: Uuid) -> Result<Option<SiteCredential>, DlmanError> {
+        let row = sqlx::query("SELECT * FROM site_credentials WHERE id = ?")
+            .bind(id.to_string())
+            .fetch_optional(&self.pool)
+            .await?;
+        
+        match row {
+            Some(r) => Ok(Some(row_to_credential(r)?)),
+            None => Ok(None),
+        }
+    }
+    
+    /// Find credentials matching a URL
+    pub async fn find_credentials_for_url(&self, url: &str) -> Result<Vec<SiteCredential>, DlmanError> {
+        let all = self.load_all_credentials().await?;
+        let matching: Vec<SiteCredential> = all
+            .into_iter()
+            .filter(|c| c.matches_url(url))
+            .collect();
+        Ok(matching)
+    }
+    
+    /// Update the last_used_at timestamp for a credential
+    pub async fn touch_credential(&self, id: Uuid) -> Result<(), DlmanError> {
+        sqlx::query("UPDATE site_credentials SET last_used_at = ? WHERE id = ?")
+            .bind(chrono::Utc::now().to_rfc3339())
+            .bind(id.to_string())
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+    
+    /// Delete a site credential
+    pub async fn delete_credential(&self, id: Uuid) -> Result<(), DlmanError> {
+        sqlx::query("DELETE FROM site_credentials WHERE id = ?")
+            .bind(id.to_string())
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
 }
 
 /// Convert a database row to a Download struct
@@ -560,5 +695,27 @@ fn row_to_download(row: sqlx::sqlite::SqliteRow, segments: Vec<Segment>) -> Resu
             .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
             .map(|dt| dt.with_timezone(&Utc)),
         retry_count: row.get::<i64, _>("retry_count") as u32,
+    })
+}
+
+/// Convert a database row to a SiteCredential struct
+fn row_to_credential(row: sqlx::sqlite::SqliteRow) -> Result<SiteCredential, DlmanError> {
+    use chrono::{DateTime, Utc};
+    
+    Ok(SiteCredential {
+        id: Uuid::parse_str(row.get::<String, _>("id").as_str())
+            .map_err(|e| DlmanError::Unknown(e.to_string()))?,
+        domain: row.get("domain"),
+        protocol: row.get("protocol"),
+        username: row.get("username"),
+        password: row.get("password"),
+        enabled: row.get::<i64, _>("enabled") != 0,
+        created_at: DateTime::parse_from_rfc3339(row.get::<String, _>("created_at").as_str())
+            .map_err(|e| DlmanError::Unknown(e.to_string()))?
+            .with_timezone(&Utc),
+        last_used_at: row.get::<Option<String>, _>("last_used_at")
+            .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
+            .map(|dt| dt.with_timezone(&Utc)),
+        notes: row.get("notes"),
     })
 }

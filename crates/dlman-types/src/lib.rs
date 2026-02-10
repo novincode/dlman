@@ -396,6 +396,12 @@ pub enum CoreEvent {
     QueueCompleted {
         id: Uuid,
     },
+    CredentialRequired {
+        download_id: Uuid,
+        domain: String,
+        url: String,
+        status_code: u16,
+    },
     Error {
         message: String,
         context: Option<String>,
@@ -416,6 +422,112 @@ pub struct LinkInfo {
     pub content_type: Option<String>,
     pub resumable: bool,
     pub error: Option<String>,
+}
+
+// ============================================================================
+// Site Credentials Types
+// ============================================================================
+
+/// Saved login credentials for a domain/site
+/// Used to automatically authenticate when downloading from subscription-based sites
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SiteCredential {
+    pub id: Uuid,
+    /// The domain pattern (e.g., "example.com", "*.example.com")
+    pub domain: String,
+    /// Protocol: "http", "https", "ftp", or "any"
+    #[serde(default = "default_protocol")]
+    pub protocol: String,
+    /// Username for authentication
+    pub username: String,
+    /// Password for authentication
+    pub password: String,
+    /// Whether this credential is enabled
+    #[serde(default = "default_enabled")]
+    pub enabled: bool,
+    /// When this credential was created
+    pub created_at: DateTime<Utc>,
+    /// When this credential was last used
+    pub last_used_at: Option<DateTime<Utc>>,
+    /// Optional notes/description
+    #[serde(default)]
+    pub notes: Option<String>,
+}
+
+fn default_protocol() -> String {
+    "any".to_string()
+}
+
+fn default_enabled() -> bool {
+    true
+}
+
+impl SiteCredential {
+    pub fn new(domain: String, username: String, password: String) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            domain,
+            protocol: "any".to_string(),
+            username,
+            password,
+            enabled: true,
+            created_at: Utc::now(),
+            last_used_at: None,
+            notes: None,
+        }
+    }
+    
+    /// Check if this credential matches a given URL
+    pub fn matches_url(&self, url: &str) -> bool {
+        if !self.enabled {
+            return false;
+        }
+        
+        // Parse the URL to extract domain and protocol
+        let parsed = match url::Url::parse(url) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        
+        let url_host = match parsed.host_str() {
+            Some(h) => h.to_lowercase(),
+            None => return false,
+        };
+        
+        let url_scheme = parsed.scheme().to_lowercase();
+        
+        // Check protocol match
+        if self.protocol != "any" {
+            if self.protocol.to_lowercase() != url_scheme {
+                return false;
+            }
+        }
+        
+        // Check domain match
+        let domain = self.domain.to_lowercase();
+        
+        // Wildcard domain matching (e.g., "*.example.com")
+        if domain.starts_with("*.") {
+            let suffix = &domain[2..]; // Remove "*."
+            return url_host == suffix || url_host.ends_with(&format!(".{}", suffix));
+        }
+        
+        // Exact domain match (also match subdomains)
+        url_host == domain || url_host.ends_with(&format!(".{}", domain))
+    }
+}
+
+/// Event emitted when credentials are needed for a download
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CredentialRequest {
+    /// The download ID that needs credentials
+    pub download_id: Uuid,
+    /// The domain that needs authentication
+    pub domain: String,
+    /// The full URL being downloaded
+    pub url: String,
+    /// HTTP status code that triggered the request (401, 403)
+    pub status_code: u16,
 }
 
 /// Result of a batch import

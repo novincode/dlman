@@ -195,8 +195,13 @@ impl QueueManager {
         self.running.read().await.contains(&queue_id)
     }
     
-    /// Try to start the next download in a queue
-    pub async fn try_start_next_download(
+    /// Try to start the next download(s) in a queue.
+    /// This fills up to `max_concurrent` slots with queued downloads.
+    /// Called when:
+    /// - A download completes, fails, or is cancelled
+    /// - Queue's max_concurrent is updated
+    /// - Queue is started
+    pub async fn try_start_next_downloads(
         &self,
         core: crate::DlmanCore,
         queue_id: Uuid,
@@ -217,18 +222,55 @@ impl QueueManager {
             .filter(|d| d.status == DownloadStatus::Downloading)
             .count();
         
-        // If under limit, start next queued download
-        if active_count < queue.max_concurrent as usize {
-            let next = downloads
-                .into_iter()
-                .find(|d| d.status == DownloadStatus::Queued);
+        // Calculate how many slots are available
+        let available_slots = (queue.max_concurrent as usize).saturating_sub(active_count);
+        
+        if available_slots == 0 {
+            return Ok(());
+        }
+        
+        // Get all queued downloads, sorted by creation time (FIFO)
+        let mut queued: Vec<_> = downloads
+            .into_iter()
+            .filter(|d| d.status == DownloadStatus::Queued)
+            .collect();
+        queued.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+        
+        // Start up to available_slots downloads
+        let mut started = 0;
+        for download in queued {
+            if started >= available_slots {
+                break;
+            }
             
-            if let Some(download) = next {
-                info!("Auto-starting next download in queue: {}", download.filename);
-                core.resume_download(download.id).await?;
+            info!("Auto-starting next download in queue: {}", download.filename);
+            if let Err(e) = core.resume_download(download.id).await {
+                tracing::warn!("Failed to auto-start download {}: {}", download.id, e);
+            } else {
+                started += 1;
             }
         }
         
+        if started > 0 {
+            info!("Auto-started {} download(s) in queue {} ({} active, {} max)", 
+                  started, queue.name, active_count + started, queue.max_concurrent);
+        }
+        
+        // Check if queue has no more work (all completed/failed, none queued)
+        if started == 0 && active_count == 0 {
+            info!("Queue '{}' has no more downloads to process, marking as completed", queue.name);
+            self.stop_queue(queue_id).await?;
+        }
+        
         Ok(())
+    }
+
+    /// Legacy alias - kept for backwards compatibility
+    pub async fn try_start_next_download(
+        &self,
+        core: crate::DlmanCore,
+        queue_id: Uuid,
+    ) -> Result<(), DlmanError> {
+        self.try_start_next_downloads(core, queue_id).await
     }
 }

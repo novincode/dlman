@@ -39,6 +39,8 @@ pub struct SegmentWorker {
     paused: Arc<AtomicBool>,
     cancelled: Arc<AtomicBool>,
     downloaded_bytes: Arc<AtomicU64>,
+    /// Optional credentials for authenticated downloads
+    credentials: Option<(String, String)>, // (username, password)
 }
 
 impl SegmentWorker {
@@ -73,6 +75,43 @@ impl SegmentWorker {
             paused,
             cancelled,
             downloaded_bytes,
+            credentials: None,
+        }
+    }
+    
+    /// Create a new segment worker with credentials
+    pub fn new_with_credentials(
+        download_id: Uuid,
+        segment: Segment,
+        url: String,
+        temp_dir: PathBuf,
+        client: Client,
+        rate_limiter: RateLimiter,
+        db: DownloadDatabase,
+        event_tx: broadcast::Sender<CoreEvent>,
+        paused: Arc<AtomicBool>,
+        cancelled: Arc<AtomicBool>,
+        downloaded_bytes: Arc<AtomicU64>,
+        credentials: Option<(String, String)>,
+    ) -> Self {
+        let temp_file_path = temp_dir.join(format!(
+            "{}_segment_{}.part",
+            download_id, segment.index
+        ));
+        
+        Self {
+            download_id,
+            segment,
+            url,
+            temp_file_path,
+            client,
+            rate_limiter,
+            db,
+            event_tx,
+            paused,
+            cancelled,
+            downloaded_bytes,
+            credentials,
         }
     }
     
@@ -144,7 +183,7 @@ impl SegmentWorker {
         // Build HTTP request
         // For unknown size (end = MAX), use open-ended range "bytes=N-"
         // For known size, use "bytes=N-M"
-        let request = if unknown_size {
+        let mut request = if unknown_size {
             if start_byte == 0 {
                 // No resume, just download from the beginning
                 self.client.get(&self.url)
@@ -161,10 +200,28 @@ impl SegmentWorker {
             self.client.get(&self.url).header("Range", range_header)
         };
         
+        // Apply credentials if available (HTTP Basic Auth)
+        if let Some((ref username, ref password)) = self.credentials {
+            request = request.basic_auth(username, Some(password));
+        }
+        
         let response = request.send().await?;
         
         // Check response status
         let status = response.status();
+        if status.as_u16() == 401 || status.as_u16() == 403 {
+            // Authentication required - extract domain for credential lookup
+            let domain = url::Url::parse(&self.url)
+                .ok()
+                .and_then(|u| u.host_str().map(|h| h.to_string()))
+                .unwrap_or_else(|| "unknown".to_string());
+            
+            return Err(DlmanError::AuthenticationRequired {
+                domain,
+                url: self.url.clone(),
+                status: status.as_u16(),
+            });
+        }
         if !status.is_success() && status.as_u16() != 206 {
             return Err(DlmanError::ServerError {
                 status: status.as_u16(),

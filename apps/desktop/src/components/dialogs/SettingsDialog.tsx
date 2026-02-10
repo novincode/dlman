@@ -26,6 +26,9 @@ import {
   Plus,
   Trash2,
   MessageSquare,
+  KeyRound,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 import {
@@ -46,11 +49,12 @@ import { Separator } from '@/components/ui/separator';
 import { useUIStore } from '@/stores/ui';
 import { useSettingsStore } from '@/stores/settings';
 import { useCategoryStore, Category } from '@/stores/categories';
+import { useCredentialsStore } from '@/stores/credentials';
 import { getIconComponent } from '@/lib/categoryIcons';
 import { CategoryDialog } from './CategoryDialog';
-import type { Settings as SettingsType, Theme, ProxySettings } from '@/types';
+import type { Settings as SettingsType, Theme, ProxySettings, SiteCredential } from '@/types';
 
-type SettingsTab = 'downloads' | 'categories' | 'notifications' | 'appearance' | 'extensions' | 'proxy' | 'advanced';
+type SettingsTab = 'downloads' | 'categories' | 'notifications' | 'appearance' | 'extensions' | 'proxy' | 'saved-logins' | 'advanced';
 
 const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
   { id: 'downloads', label: 'Downloads', icon: <Download className="h-4 w-4" /> },
@@ -59,6 +63,7 @@ const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
   { id: 'appearance', label: 'Appearance', icon: <Palette className="h-4 w-4" /> },
   { id: 'extensions', label: 'Extensions', icon: <Layers className="h-4 w-4" /> },
   { id: 'proxy', label: 'Proxy', icon: <Network className="h-4 w-4" /> },
+  { id: 'saved-logins', label: 'Saved Logins', icon: <KeyRound className="h-4 w-4" /> },
   { id: 'advanced', label: 'Advanced', icon: <Gauge className="h-4 w-4" /> },
 ];
 
@@ -66,6 +71,7 @@ export function SettingsDialog() {
   const { showSettingsDialog, setShowSettingsDialog, consoleLogLimits, setConsoleLogLimits } = useUIStore();
   const { settings, updateSettings, setTheme } = useSettingsStore();
   const { categories, updateCategory, removeCategory } = useCategoryStore();
+  const { credentials, loadFromBackend: loadCredentials, addCredential, updateCredential, deleteCredential } = useCredentialsStore();
 
   const [activeTab, setActiveTab] = useState<SettingsTab>('downloads');
   const [localSettings, setLocalSettings] = useState<SettingsType>(settings);
@@ -76,6 +82,19 @@ export function SettingsDialog() {
   // Category dialog state
   const [showCategoryDialog, setShowCategoryDialog] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  
+  // Credential form state
+  const [showCredentialForm, setShowCredentialForm] = useState(false);
+  const [editingCredential, setEditingCredential] = useState<SiteCredential | null>(null);
+  const [credentialForm, setCredentialForm] = useState({
+    domain: '',
+    protocol: 'https',
+    username: '',
+    password: '',
+    notes: '',
+    enabled: true,
+  });
+  const [showPasswords, setShowPasswords] = useState<Set<string>>(new Set());
 
   // Sync local settings when dialog opens or settings change
   useEffect(() => {
@@ -88,8 +107,72 @@ export function SettingsDialog() {
       });
       setCategoryPaths(paths);
       setHasChanges(false);
+      // Load credentials when dialog opens
+      loadCredentials();
     }
-  }, [showSettingsDialog, settings, categories]);
+  }, [showSettingsDialog, settings, categories, loadCredentials]);
+
+  // Credential form helpers
+  const resetCredentialForm = useCallback(() => {
+    setShowCredentialForm(false);
+    setEditingCredential(null);
+    setCredentialForm({ domain: '', protocol: 'https', username: '', password: '', notes: '', enabled: true });
+  }, []);
+
+  const handleEditCredential = useCallback((cred: SiteCredential) => {
+    setEditingCredential(cred);
+    setCredentialForm({
+      domain: cred.domain,
+      protocol: cred.protocol,
+      username: cred.username,
+      password: cred.password,
+      notes: cred.notes || '',
+      enabled: cred.enabled,
+    });
+    setShowCredentialForm(true);
+  }, []);
+
+  const handleSaveCredential = useCallback(async () => {
+    if (!credentialForm.domain || !credentialForm.username || !credentialForm.password) return;
+    try {
+      const now = new Date().toISOString();
+      if (editingCredential) {
+        await updateCredential({
+          ...editingCredential,
+          domain: credentialForm.domain,
+          protocol: credentialForm.protocol,
+          username: credentialForm.username,
+          password: credentialForm.password,
+          notes: credentialForm.notes || null,
+          enabled: credentialForm.enabled,
+        });
+      } else {
+        await addCredential({
+          id: crypto.randomUUID(),
+          domain: credentialForm.domain,
+          protocol: credentialForm.protocol,
+          username: credentialForm.username,
+          password: credentialForm.password,
+          enabled: credentialForm.enabled,
+          created_at: now,
+          last_used_at: null,
+          notes: credentialForm.notes || null,
+        });
+      }
+      resetCredentialForm();
+    } catch (err) {
+      console.error('Failed to save credential:', err);
+    }
+  }, [credentialForm, editingCredential, addCredential, updateCredential, resetCredentialForm]);
+
+  const togglePasswordVisibility = useCallback((id: string) => {
+    setShowPasswords((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
 
   const handleChange = useCallback(
     <K extends keyof SettingsType>(key: K, value: SettingsType[K]) => {
@@ -1049,6 +1132,208 @@ export function SettingsDialog() {
                       Limits how many logs of each type are kept in memory.
                     </p>
                   </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'saved-logins':
+        return (
+          <div className="space-y-6">
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium flex items-center gap-2">
+                  <KeyRound className="h-4 w-4" />
+                  Saved Logins
+                </h3>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    resetCredentialForm();
+                    setShowCredentialForm(true);
+                  }}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add Login
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Save credentials for subscription-based websites. Matching credentials are automatically applied when downloading from these domains.
+              </p>
+
+              {/* Credential Form (Add/Edit) */}
+              {showCredentialForm && (
+                <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
+                  <h4 className="text-sm font-medium">
+                    {editingCredential ? 'Edit Login' : 'Add New Login'}
+                  </h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="credDomain" className="text-xs">Domain</Label>
+                      <Input
+                        id="credDomain"
+                        placeholder="example.com or *.example.com"
+                        value={credentialForm.domain}
+                        onChange={(e) => setCredentialForm({ ...credentialForm, domain: e.target.value })}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="credProtocol" className="text-xs">Protocol</Label>
+                      <select
+                        id="credProtocol"
+                        value={credentialForm.protocol}
+                        onChange={(e) => setCredentialForm({ ...credentialForm, protocol: e.target.value })}
+                        className="h-8 text-sm w-full rounded-md border border-input bg-background px-3 py-1"
+                      >
+                        <option value="https">HTTPS</option>
+                        <option value="http">HTTP</option>
+                        <option value="ftp">FTP</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="credUsername" className="text-xs">Username</Label>
+                      <Input
+                        id="credUsername"
+                        placeholder="Username"
+                        value={credentialForm.username}
+                        onChange={(e) => setCredentialForm({ ...credentialForm, username: e.target.value })}
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="credPassword" className="text-xs">Password</Label>
+                      <div className="relative">
+                        <Input
+                          id="credPassword"
+                          type={showPasswords.has('form') ? 'text' : 'password'}
+                          placeholder="Password"
+                          value={credentialForm.password}
+                          onChange={(e) => setCredentialForm({ ...credentialForm, password: e.target.value })}
+                          className="h-8 text-sm pr-8"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => togglePasswordVisibility('form')}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                        >
+                          {showPasswords.has('form') ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="credNotes" className="text-xs">Notes (optional)</Label>
+                    <Input
+                      id="credNotes"
+                      placeholder="e.g., Premium subscription account"
+                      value={credentialForm.notes}
+                      onChange={(e) => setCredentialForm({ ...credentialForm, notes: e.target.value })}
+                      className="h-8 text-sm"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Switch
+                        id="credEnabled"
+                        checked={credentialForm.enabled}
+                        onCheckedChange={(checked: boolean) => setCredentialForm({ ...credentialForm, enabled: checked })}
+                      />
+                      <Label htmlFor="credEnabled" className="text-xs cursor-pointer">Enabled</Label>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={resetCredentialForm}>
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={handleSaveCredential}
+                        disabled={!credentialForm.domain || !credentialForm.username || !credentialForm.password}
+                      >
+                        {editingCredential ? 'Update' : 'Save'}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Credentials List */}
+              <div className="space-y-2">
+                {credentials.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <KeyRound className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                    <p className="text-sm">No saved logins yet</p>
+                    <p className="text-xs mt-1">Add credentials for subscription-based download sites</p>
+                  </div>
+                ) : (
+                  credentials.map((cred) => (
+                    <div
+                      key={cred.id}
+                      className={`flex items-center justify-between p-3 rounded-lg border ${
+                        cred.enabled ? 'bg-background' : 'bg-muted/50 opacity-60'
+                      }`}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium truncate">{cred.domain}</span>
+                          <span className="text-[10px] text-muted-foreground uppercase px-1.5 py-0.5 rounded bg-muted">
+                            {cred.protocol}
+                          </span>
+                          {!cred.enabled && (
+                            <span className="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">
+                              Disabled
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3 mt-0.5">
+                          <span className="text-xs text-muted-foreground">{cred.username}</span>
+                          <span className="text-xs text-muted-foreground">
+                            •
+                          </span>
+                          <span className="text-xs text-muted-foreground font-mono">
+                            {showPasswords.has(cred.id) ? cred.password : '••••••••'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => togglePasswordVisibility(cred.id)}
+                            className="text-muted-foreground hover:text-foreground"
+                          >
+                            {showPasswords.has(cred.id) ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                          </button>
+                        </div>
+                        {cred.notes && (
+                          <p className="text-[11px] text-muted-foreground mt-0.5">{cred.notes}</p>
+                        )}
+                        {cred.last_used_at && (
+                          <p className="text-[10px] text-muted-foreground mt-0.5">
+                            Last used: {new Date(cred.last_used_at).toLocaleDateString()}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          onClick={() => handleEditCredential(cred)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 text-destructive hover:text-destructive"
+                          onClick={() => deleteCredential(cred.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))
                 )}
               </div>
             </div>

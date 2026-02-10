@@ -9,3 +9,4 @@ export { AboutDialog } from './AboutDialog';
 export { ConfirmDialog } from './ConfirmDialog';
 export { DeleteConfirmDialog } from './DeleteConfirmDialog';
 export { BulkDeleteConfirmDialog } from './BulkDeleteConfirmDialog';
+export { CredentialPromptDialog } from './CredentialPromptDialog';

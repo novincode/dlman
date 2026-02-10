@@ -42,6 +42,9 @@ pub enum DlmanError {
     #[error("Server error: {status} - {message}")]
     ServerError { status: u16, message: String },
 
+    #[error("Authentication required for {domain} (HTTP {status})")]
+    AuthenticationRequired { domain: String, url: String, status: u16 },
+
     #[error("Timeout")]
     Timeout,
 
@@ -55,6 +58,7 @@ impl DlmanError {
         match self {
             DlmanError::Network(_) | DlmanError::Timeout => true,
             DlmanError::ServerError { status, .. } => *status >= 500,
+            DlmanError::AuthenticationRequired { .. } => true, // Retryable after user provides credentials
             _ => false,
         }
     }

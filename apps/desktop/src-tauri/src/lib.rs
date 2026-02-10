@@ -127,6 +127,11 @@ pub fn run() {
             // Settings commands
             commands::get_settings,
             commands::update_settings,
+            // Credentials commands
+            commands::get_credentials,
+            commands::add_credential,
+            commands::update_credential,
+            commands::delete_credential,
             // Data commands
             commands::export_data,
             commands::import_data,

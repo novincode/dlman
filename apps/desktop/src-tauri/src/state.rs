@@ -71,6 +71,7 @@ impl AppState {
                                 CoreEvent::DownloadRemoved { .. } => "download-removed",
                                 CoreEvent::QueueStarted { .. } => "queue-started",
                                 CoreEvent::QueueCompleted { .. } => "queue-completed",
+                                CoreEvent::CredentialRequired { .. } => "credential-required",
                                 CoreEvent::Error { .. } => "core-error",
                             };
                             
@@ -150,6 +151,17 @@ impl AppState {
                                         "payload": {
                                             "message": message,
                                             "context": context
+                                        }
+                                    })
+                                }
+                                CoreEvent::CredentialRequired { download_id, domain, url, status_code } => {
+                                    serde_json::json!({
+                                        "type": "CredentialRequired",
+                                        "payload": {
+                                            "downloadId": download_id.to_string(),
+                                            "domain": domain,
+                                            "url": url,
+                                            "statusCode": status_code
                                         }
                                     })
                                 }

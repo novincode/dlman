@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { useDownloadStore } from "@/stores/downloads";
 import { useQueueStore } from "@/stores/queues";
 import { useUIStore } from "@/stores/ui";
+import { useCredentialsStore } from "@/stores/credentials";
 import { CoreEvent } from "@/types";
 import {
   notifyDownloadComplete,
@@ -253,6 +254,19 @@ export function setupEventListeners(): () => void {
           notifyQueueComplete(queue.name);
         }
       }
+    }
+  }));
+
+  // Listen for credential required events (401/403 from server)
+  registerListener(listen<CoreEvent>("credential-required", (event) => {
+    if (isCleanedUp) return;
+    const data = event.payload;
+    if (data.type === "CredentialRequired") {
+      toast.info(`Authentication required for ${data.payload.domain}`, {
+        description: "Please provide credentials to continue downloading.",
+      });
+      // Set the pending request to open the credential prompt dialog
+      useCredentialsStore.getState().setPendingRequest(data.payload);
     }
   }));
 

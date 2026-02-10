@@ -275,6 +275,7 @@ impl DownloadManager {
         segment_count: u32,
         max_retries: u32,
         retry_delay_secs: u32,
+        credentials: Option<(String, String)>,
     ) -> Result<(), DlmanError> {
         let id = download.id;
         
@@ -316,7 +317,7 @@ impl DownloadManager {
         let task_id = id;
         
         // Create download task with its own rate limiter
-        let task = DownloadTask::new(
+        let task = DownloadTask::new_with_credentials(
             download,
             self.temp_dir.clone(),
             self.client.clone(),
@@ -328,6 +329,7 @@ impl DownloadManager {
             segment_count,
             max_retries,
             retry_delay_secs,
+            credentials,
         );
         
         // Spawn task with cleanup
@@ -389,6 +391,7 @@ impl DownloadManager {
         segment_count: u32,
         max_retries: u32,
         retry_delay_secs: u32,
+        credentials: Option<(String, String)>,
     ) -> Result<(), DlmanError> {
         // Check if task is still running (might be if pause was very recent)
         {
@@ -428,7 +431,7 @@ impl DownloadManager {
             .ok_or(DlmanError::NotFound(id))?;
         
         // Start the download with the effective speed limit
-        self.start(download, effective_speed_limit, segment_count, max_retries, retry_delay_secs).await?;
+        self.start(download, effective_speed_limit, segment_count, max_retries, retry_delay_secs, credentials).await?;
         
         Ok(())
     }
@@ -564,7 +567,7 @@ impl DownloadManager {
             // Queue resolution should be done at API layer
             let segment_count = if download.segments.is_empty() { 4 } else { download.segments.len() as u32 };
             // Use default retry settings
-            self.resume(download.id, download.speed_limit, segment_count, 5, 30).await?;
+            self.resume(download.id, download.speed_limit, segment_count, 5, 30, None).await?;
         }
         
         Ok(())

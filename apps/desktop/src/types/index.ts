@@ -119,6 +119,27 @@ export interface ProxySettings {
 
 export type Theme = "light" | "dark" | "system";
 
+// Site Credential types
+
+export interface SiteCredential {
+  id: string;
+  domain: string;
+  protocol: string;
+  username: string;
+  password: string;
+  enabled: boolean;
+  created_at: string;
+  last_used_at: string | null;
+  notes: string | null;
+}
+
+export interface CredentialRequest {
+  downloadId: string;
+  domain: string;
+  url: string;
+  statusCode: number;
+}
+
 // Event types
 
 export type CoreEvent =
@@ -184,6 +205,10 @@ export type CoreEvent =
         message: string;
         context: string | null;
       };
+    }
+  | {
+      type: "CredentialRequired";
+      payload: CredentialRequest;
     };
 
 // API types

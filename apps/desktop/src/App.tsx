@@ -12,6 +12,7 @@ import {
   AboutDialog,
   ConfirmDialog,
   BulkDeleteConfirmDialog,
+  CredentialPromptDialog,
 } from "@/components/dialogs";
 import { DropZoneOverlay } from "@/components/DropZoneOverlay";
 import { ContextMenuProvider } from "@/components/ContextMenu";
@@ -20,6 +21,7 @@ import { SupportReminder } from "@/components/SupportReminder";
 import { useSettingsStore, loadSettingsFromBackend } from "@/stores/settings";
 import { useUIStore } from "@/stores/ui";
 import { useDownloadStore } from "@/stores/downloads";
+import { loadCredentialsFromBackend } from "@/stores/credentials";
 import { setupEventListeners, setPendingClipboardUrls, setPendingDropUrls } from "@/lib/events";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useUpdateCheck } from "@/hooks/useUpdateCheck";
@@ -163,6 +165,8 @@ function AppContent() {
   useEffect(() => {
     // Load settings from SQLite on startup - this is the single source of truth
     loadSettingsFromBackend().catch(console.error);
+    // Load saved credentials
+    loadCredentialsFromBackend().catch(console.error);
   }, []);
 
   // Set up Tauri event listeners
@@ -253,6 +257,7 @@ function AppContent() {
       <QueueManagerDialog />
       <AboutDialog />
       <ConfirmDialog />
+      <CredentialPromptDialog />
       <BulkDeleteConfirmDialog
         open={showBulkDeleteDialog}
         onOpenChange={setShowBulkDeleteDialog}

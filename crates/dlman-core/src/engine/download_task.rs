@@ -33,6 +33,8 @@ pub struct DownloadTask {
     max_retries: u32,
     /// Delay between retries in seconds
     retry_delay_secs: u32,
+    /// Optional credentials for authenticated downloads
+    credentials: Option<(String, String)>,
 }
 
 impl DownloadTask {
@@ -49,6 +51,27 @@ impl DownloadTask {
         segment_count: u32,
         max_retries: u32,
         retry_delay_secs: u32,
+    ) -> Self {
+        Self::new_with_credentials(
+            download, temp_dir, client, rate_limiter, db, event_tx,
+            paused, cancelled, segment_count, max_retries, retry_delay_secs, None,
+        )
+    }
+    
+    /// Create a new download task with credentials
+    pub fn new_with_credentials(
+        download: Download,
+        temp_dir: PathBuf,
+        client: Client,
+        rate_limiter: RateLimiter,
+        db: DownloadDatabase,
+        event_tx: broadcast::Sender<CoreEvent>,
+        paused: Arc<AtomicBool>,
+        cancelled: Arc<AtomicBool>,
+        segment_count: u32,
+        max_retries: u32,
+        retry_delay_secs: u32,
+        credentials: Option<(String, String)>,
     ) -> Self {
         // Calculate total downloaded from segments if available, otherwise use download.downloaded
         let total_from_segments: u64 = download.segments.iter().map(|s| s.downloaded).sum();
@@ -72,6 +95,7 @@ impl DownloadTask {
             segment_count,
             max_retries,
             retry_delay_secs,
+            credentials,
         }
     }
     
@@ -263,7 +287,7 @@ impl DownloadTask {
         // Use final_url if available (after redirects), otherwise use original url
         let url = self.effective_url().to_string();
         
-        let worker = SegmentWorker::new(
+        let worker = SegmentWorker::new_with_credentials(
             self.download.id,
             segment,
             url,
@@ -275,6 +299,7 @@ impl DownloadTask {
             self.paused.clone(),
             self.cancelled.clone(),
             self.total_downloaded.clone(),
+            self.credentials.clone(),
         );
         
         // Start progress reporter
@@ -344,7 +369,7 @@ impl DownloadTask {
             
             // Spawn a worker for each segment that needs downloading
             for segment in &segments_to_download {
-                let worker = SegmentWorker::new(
+                let worker = SegmentWorker::new_with_credentials(
                     self.download.id,
                     segment.clone(),
                     url.clone(),
@@ -356,6 +381,7 @@ impl DownloadTask {
                     self.paused.clone(),
                     self.cancelled.clone(),
                     self.total_downloaded.clone(),
+                    self.credentials.clone(),
                 );
                 
                 let segment_index = segment.index;

@@ -25,7 +25,7 @@ pub use queue::*;
 pub use scheduler::*;
 pub use storage::*;
 
-use dlman_types::{CoreEvent, Download, DownloadStatus, LinkInfo, Queue, QueueOptions, Settings};
+use dlman_types::{CoreEvent, Download, DownloadStatus, LinkInfo, Queue, QueueOptions, Settings, SiteCredential};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
@@ -88,6 +88,10 @@ impl DlmanCore {
         // Start the scheduler background task
         core.scheduler.start(core.clone()).await;
         
+        // Start the queue auto-advance listener
+        // This watches for download completions/failures and starts the next queued downloads
+        core.start_queue_advance_listener();
+        
         Ok(core)
     }
     
@@ -99,6 +103,41 @@ impl DlmanCore {
     /// Emit an event
     pub fn emit(&self, event: CoreEvent) {
         let _ = self.event_tx.send(event);
+    }
+    
+    /// Start a background listener that auto-advances queues when downloads complete/fail/cancel
+    fn start_queue_advance_listener(&self) {
+        let mut rx = self.event_tx.subscribe();
+        let core = self.clone();
+        
+        tokio::spawn(async move {
+            loop {
+                match rx.recv().await {
+                    Ok(CoreEvent::DownloadStatusChanged { id, status, .. }) => {
+                        // When a download completes, fails, or is cancelled, try to start next in queue
+                        if matches!(status, DownloadStatus::Completed | DownloadStatus::Failed | DownloadStatus::Cancelled) {
+                            // Look up the download's queue
+                            if let Ok(Some(download)) = core.download_manager.db().load_download(id).await {
+                                let queue_id = download.queue_id;
+                                info!("Download {} finished with status {:?}, checking queue {} for next downloads", 
+                                      id, status, queue_id);
+                                if let Err(e) = core.queue_manager.try_start_next_downloads(core.clone(), queue_id).await {
+                                    tracing::warn!("Failed to auto-advance queue {}: {}", queue_id, e);
+                                }
+                            }
+                        }
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                        tracing::warn!("Queue advance listener lagged by {} messages", n);
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                        info!("Event channel closed, stopping queue advance listener");
+                        break;
+                    }
+                    _ => {} // Ignore other events
+                }
+            }
+        });
     }
     
     // ========================================================================
@@ -329,8 +368,11 @@ impl DlmanCore {
         info!("resume_download: effective_speed_limit={:?}, segment_count={}, max_retries={}", 
               effective_speed_limit, segment_count, max_retries);
         
+        // Look up saved credentials for this URL
+        let credentials = self.find_credentials_for_download(&download.url).await;
+        
         // Note: manager.resume() already emits DownloadStatusChanged event
-        self.download_manager.resume(id, effective_speed_limit, segment_count, max_retries, retry_delay_secs).await?;
+        self.download_manager.resume(id, effective_speed_limit, segment_count, max_retries, retry_delay_secs, credentials).await?;
         
         Ok(())
     }
@@ -389,12 +431,14 @@ impl DlmanCore {
         drop(settings);
         
         // Start immediately
+        let credentials = self.find_credentials_for_download(&download.url).await;
         self.download_manager.start(
             download,
             effective_limit,
             segment_count,
             max_retries,
             retry_delay,
+            credentials,
         ).await?;
         
         Ok(())
@@ -464,7 +508,7 @@ impl DlmanCore {
         
         // Update speed limits for all active downloads in this queue that use queue limit
         let downloads = self.download_manager.db().get_downloads_by_queue(id).await?;
-        for download in downloads {
+        for download in &downloads {
             // Only update if download has no override (uses queue limit)
             if download.speed_limit.is_none() && self.download_manager.is_active(download.id).await {
                 // Update the effective limit for this active download
@@ -474,6 +518,14 @@ impl DlmanCore {
                     None,  // Keep the download's stored value as None
                     effective_limit,
                 ).await?;
+            }
+        }
+        
+        // If the queue is running, try to fill any newly available slots
+        // (e.g., user increased max_concurrent from 2 to 4)
+        if self.queue_manager.is_running(id).await {
+            if let Err(e) = self.queue_manager.try_start_next_downloads(self.clone(), id).await {
+                tracing::warn!("Failed to auto-advance queue after update: {}", e);
             }
         }
         
@@ -598,6 +650,55 @@ impl DlmanCore {
     /// Pause all downloads
     pub async fn pause_all_downloads(&self) -> Result<(), DlmanError> {
         self.download_manager.pause_all().await
+    }
+    
+    // ========================================================================
+    // Credentials
+    // ========================================================================
+    
+    /// Get all saved site credentials
+    pub async fn get_all_credentials(&self) -> Result<Vec<SiteCredential>, DlmanError> {
+        self.download_manager.db().load_all_credentials().await
+    }
+    
+    /// Get a single credential by ID
+    pub async fn get_credential(&self, id: Uuid) -> Result<SiteCredential, DlmanError> {
+        self.download_manager.db().load_credential(id).await?
+            .ok_or(DlmanError::NotFound(id))
+    }
+    
+    /// Add or update a credential
+    pub async fn upsert_credential(&self, credential: SiteCredential) -> Result<SiteCredential, DlmanError> {
+        self.download_manager.db().upsert_credential(&credential).await?;
+        Ok(credential)
+    }
+    
+    /// Delete a credential
+    pub async fn delete_credential(&self, id: Uuid) -> Result<(), DlmanError> {
+        self.download_manager.db().delete_credential(id).await
+    }
+    
+    /// Find matching credentials for a download URL and return (username, password) if found
+    async fn find_credentials_for_download(&self, url: &str) -> Option<(String, String)> {
+        match self.download_manager.db().find_credentials_for_url(url).await {
+            Ok(creds) => {
+                if let Some(cred) = creds.first() {
+                    // Touch last_used_at in background
+                    let db = self.download_manager.db().clone();
+                    let cred_id = cred.id;
+                    tokio::spawn(async move {
+                        let _ = db.touch_credential(cred_id).await;
+                    });
+                    Some((cred.username.clone(), cred.password.clone()))
+                } else {
+                    None
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Failed to look up credentials for URL: {}", e);
+                None
+            }
+        }
     }
     
     // ========================================================================

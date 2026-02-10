@@ -1,7 +1,7 @@
 //! Tauri commands for the desktop application
 
 use crate::state::AppState;
-use dlman_types::{Download, LinkInfo, Queue, QueueOptions, Settings};
+use dlman_types::{Download, LinkInfo, Queue, QueueOptions, Settings, SiteCredential};
 use std::path::PathBuf;
 use tauri::{Manager, State};
 use uuid::Uuid;
@@ -343,6 +343,48 @@ pub async fn update_settings(
     tracing::info!("update_settings called with default_segments={}", settings.default_segments);
     state
         .with_core_async(|core| async move { core.update_settings(settings).await })
+        .await
+}
+
+// ============================================================================
+// Credentials Commands
+// ============================================================================
+
+#[tauri::command]
+pub async fn get_credentials(state: State<'_, AppState>) -> Result<Vec<SiteCredential>, String> {
+    state
+        .with_core_async(|core| async move { core.get_all_credentials().await })
+        .await
+}
+
+#[tauri::command]
+pub async fn add_credential(
+    state: State<'_, AppState>,
+    credential: SiteCredential,
+) -> Result<SiteCredential, String> {
+    state
+        .with_core_async(|core| async move { core.upsert_credential(credential).await })
+        .await
+}
+
+#[tauri::command]
+pub async fn update_credential(
+    state: State<'_, AppState>,
+    credential: SiteCredential,
+) -> Result<SiteCredential, String> {
+    state
+        .with_core_async(|core| async move { core.upsert_credential(credential).await })
+        .await
+}
+
+#[tauri::command]
+pub async fn delete_credential(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), String> {
+    let uuid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
+    state
+        .with_core_async(|core| async move { core.delete_credential(uuid).await })
         .await
 }
 
