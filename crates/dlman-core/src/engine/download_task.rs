@@ -179,7 +179,7 @@ impl DownloadTask {
                 self.download.segments = vec![Segment {
                     index: 0,
                     start: 0,
-                    end: if size == u64::MAX { u64::MAX } else { size - 1 },
+                    end: if size == u64::MAX || size == 0 { u64::MAX } else { size - 1 },
                     downloaded: 0,
                     complete: false,
                 }];
@@ -221,6 +221,17 @@ impl DownloadTask {
                     self.emit_status_change(DownloadStatus::Cancelled, None).await;
                     return Ok(());
                 } else {
+                    // Check if this is an authentication error — emit credential required event
+                    if let DlmanError::AuthenticationRequired { ref domain, ref url, status } = e {
+                        info!("Download requires authentication for domain: {}", domain);
+                        let _ = self.event_tx.send(CoreEvent::CredentialRequired {
+                            download_id: self.download.id,
+                            domain: domain.clone(),
+                            url: url.clone(),
+                            status_code: status,
+                        });
+                    }
+                    
                     error!("Download failed: {} - {}", self.download.filename, e);
                     self.download.status = DownloadStatus::Failed;
                     let error_msg = e.to_string();
@@ -580,7 +591,29 @@ impl DownloadTask {
     /// Probe URL to determine if range requests are supported
     /// Uses HEAD first, then falls back to partial GET for size/resumability detection
     async fn probe_url(&mut self) -> Result<bool, DlmanError> {
-        let response = self.client.head(&self.download.url).send().await?;
+        let mut request = self.client.head(&self.download.url);
+        
+        // Apply credentials if available
+        if let Some((ref username, ref password)) = self.credentials {
+            request = request.basic_auth(username, Some(password));
+        }
+        
+        let response = request.send().await?;
+        
+        // Check for authentication required
+        let status = response.status();
+        if status.as_u16() == 401 || status.as_u16() == 403 {
+            let domain = url::Url::parse(&self.download.url)
+                .ok()
+                .and_then(|u| u.host_str().map(|h| h.to_string()))
+                .unwrap_or_else(|| "unknown".to_string());
+            
+            return Err(DlmanError::AuthenticationRequired {
+                domain,
+                url: self.download.url.clone(),
+                status: status.as_u16(),
+            });
+        }
         
         let mut supports_range = response
             .headers()

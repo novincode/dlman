@@ -422,6 +422,9 @@ pub struct LinkInfo {
     pub content_type: Option<String>,
     pub resumable: bool,
     pub error: Option<String>,
+    /// Whether the URL requires authentication (401/403 detected during probe)
+    #[serde(default)]
+    pub requires_auth: bool,
 }
 
 // ============================================================================

@@ -16,7 +16,9 @@ import {
   Clock,
   FileText,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  KeyRound,
+  ShieldAlert,
 } from 'lucide-react';
 
 import {
@@ -79,6 +81,7 @@ export function NewDownloadDialog() {
   const [fileSize, setFileSize] = useState<number | null>(null);
   const [isProbing, setIsProbing] = useState(false);
   const [probeError, setProbeError] = useState<string | null>(null);
+  const [requiresAuth, setRequiresAuth] = useState(false);
   const [isAdding] = useState(false); // Kept for button disabled state during brief window
   const [rememberPathForCategory, setRememberPathForCategory] = useState(false);
   const [pathCustomized, setPathCustomized] = useState(false);
@@ -177,6 +180,7 @@ export function NewDownloadDialog() {
       setFilename('');
       setFileSize(null);
       setProbeError(null);
+      setRequiresAuth(false);
       return;
     }
 
@@ -187,6 +191,7 @@ export function NewDownloadDialog() {
         if (cancelled) return;
         setIsProbing(true);
         setProbeError(null);
+        setRequiresAuth(false);
 
         const results = await invoke<LinkInfo[]>('probe_links', { urls: [url] });
         if (cancelled) return;
@@ -196,6 +201,7 @@ export function NewDownloadDialog() {
           setProbeError(info.error);
           setFilename('');
           setFileSize(null);
+          setRequiresAuth(false);
         } else if (info) {
           setFilename(info.filename);
           // Only set custom filename if user hasn't edited it
@@ -204,6 +210,7 @@ export function NewDownloadDialog() {
           }
           setFileSize(info.size ?? null);
           setProbeError(null);
+          setRequiresAuth(info.requires_auth ?? false);
           // Auto-detect category from filename
           updateCategoryFromFilename(info.filename);
         }
@@ -410,7 +417,7 @@ export function NewDownloadDialog() {
                       <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                     </motion.div>
                   )}
-                  {!isProbing && filename && !probeError && (
+                  {!isProbing && filename && !probeError && !requiresAuth && (
                     <motion.div
                       initial={{ opacity: 0, scale: 0.8 }}
                       animate={{ opacity: 1, scale: 1 }}
@@ -418,6 +425,16 @@ export function NewDownloadDialog() {
                       className="absolute right-3 inset-y-0 flex items-center"
                     >
                       <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    </motion.div>
+                  )}
+                  {!isProbing && requiresAuth && !probeError && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.8 }}
+                      className="absolute right-3 inset-y-0 flex items-center"
+                    >
+                      <ShieldAlert className="h-4 w-4 text-amber-500" />
                     </motion.div>
                   )}
                   {!isProbing && probeError && (
@@ -445,6 +462,41 @@ export function NewDownloadDialog() {
               <p className="text-sm text-destructive">{probeError}</p>
             )}
           </div>
+
+          {/* Authentication Required Warning */}
+          <AnimatePresence>
+            {requiresAuth && !probeError && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3"
+              >
+                <div className="flex items-center gap-3">
+                  <ShieldAlert className="h-5 w-5 text-amber-500 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-amber-600 dark:text-amber-400">
+                      Authentication Required
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      This URL requires a login. Add credentials in Settings → Saved Logins, then the download will authenticate automatically.
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-shrink-0 border-amber-500/30 text-amber-600 hover:bg-amber-500/10 dark:text-amber-400"
+                    onClick={() => {
+                      useUIStore.getState().setShowSettingsDialog(true);
+                    }}
+                  >
+                    <KeyRound className="h-3.5 w-3.5 mr-1.5" />
+                    Saved Logins
+                  </Button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* File Info - Shows detected file name and size */}
           <AnimatePresence>

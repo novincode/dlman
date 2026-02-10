@@ -221,6 +221,8 @@ export interface LinkInfo {
   content_type: string | null;
   resumable: boolean;
   error: string | null;
+  /** Whether the URL requires authentication (401/403 detected during probe) */
+  requires_auth?: boolean;
 }
 
 export interface ImportResult {

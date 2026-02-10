@@ -45,6 +45,13 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 import { useUIStore } from '@/stores/ui';
 import { useSettingsStore } from '@/stores/settings';
@@ -1182,16 +1189,19 @@ export function SettingsDialog() {
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="credProtocol" className="text-xs">Protocol</Label>
-                      <select
-                        id="credProtocol"
+                      <Select
                         value={credentialForm.protocol}
-                        onChange={(e) => setCredentialForm({ ...credentialForm, protocol: e.target.value })}
-                        className="h-8 text-sm w-full rounded-md border border-input bg-background px-3 py-1"
+                        onValueChange={(value) => setCredentialForm({ ...credentialForm, protocol: value })}
                       >
-                        <option value="https">HTTPS</option>
-                        <option value="http">HTTP</option>
-                        <option value="ftp">FTP</option>
-                      </select>
+                        <SelectTrigger id="credProtocol" className="h-8 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="https">HTTPS</SelectItem>
+                          <SelectItem value="http">HTTP</SelectItem>
+                          <SelectItem value="ftp">FTP</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">

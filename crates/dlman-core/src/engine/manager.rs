@@ -163,6 +163,26 @@ impl DownloadManager {
         // Try HEAD first
         let response = self.client.head(url.as_str()).send().await?;
         
+        // Check for authentication required
+        let status = response.status();
+        if status.as_u16() == 401 || status.as_u16() == 403 {
+            info!("URL requires authentication (HTTP {})", status.as_u16());
+            let filename = url.path_segments()
+                .and_then(|s| s.last())
+                .unwrap_or("download")
+                .to_string();
+            return Ok(LinkInfo {
+                url: url.to_string(),
+                final_url: Some(response.url().to_string()),
+                filename,
+                size: None,
+                content_type: None,
+                resumable: false,
+                error: None,
+                requires_auth: true,
+            });
+        }
+        
         let final_url = response.url().to_string();
         let mut size = response
             .headers()
@@ -264,6 +284,7 @@ impl DownloadManager {
             content_type,
             resumable,
             error: None,
+            requires_auth: false,
         })
     }
     

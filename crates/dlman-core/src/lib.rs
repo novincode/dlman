@@ -597,6 +597,7 @@ impl DlmanCore {
                     size: None,
                     content_type: None,
                     resumable: false,
+                    requires_auth: false,
                     error: Some(e.to_string()),
                 }),
                 Err(_) => LinkInfo {
@@ -606,6 +607,7 @@ impl DlmanCore {
                     size: None,
                     content_type: None,
                     resumable: false,
+                    requires_auth: false,
                     error: Some("Invalid URL".to_string()),
                 },
             };
