@@ -165,6 +165,12 @@ export default defineBackground(() => {
     });
 
     browser.contextMenus.create({
+      id: 'download-selected-links',
+      title: 'Download selected links with DLMan',
+      contexts: ['selection'],
+    });
+
+    browser.contextMenus.create({
       id: 'download-all-links',
       title: 'Download all links with DLMan',
       contexts: ['page'],
@@ -173,7 +179,7 @@ export default defineBackground(() => {
     browser.contextMenus.create({
       id: 'separator-1',
       type: 'separator',
-      contexts: ['page', 'link'],
+      contexts: ['page', 'link', 'selection'],
     });
 
     browser.contextMenus.create({
@@ -188,8 +194,40 @@ export default defineBackground(() => {
       case 'download-with-dlman':
         if (info.linkUrl) {
           await handleDownload(info.linkUrl, tab?.url);
+          // Show toast in the page
+          if (tab?.id) {
+            browser.tabs.sendMessage(tab.id, { type: 'show-toast', count: 1 }).catch(() => {});
+          }
         } else if (info.srcUrl) {
           await handleDownload(info.srcUrl, tab?.url);
+          if (tab?.id) {
+            browser.tabs.sendMessage(tab.id, { type: 'show-toast', count: 1 }).catch(() => {});
+          }
+        }
+        break;
+
+      case 'download-selected-links':
+        if (tab?.id) {
+          try {
+            const response = await browser.tabs.sendMessage(tab.id, { type: 'get-selected-links' }) as { links?: string[] };
+            const links = response?.links || [];
+            if (links.length === 0) {
+              browser.notifications.create({
+                type: 'basic',
+                iconUrl: 'icon/128.png',
+                title: 'DLMan',
+                message: 'No links found in selection',
+              });
+            } else if (links.length === 1) {
+              await handleDownload(links[0], tab.url);
+              browser.tabs.sendMessage(tab.id, { type: 'show-toast', count: 1 }).catch(() => {});
+            } else {
+              await handleBatchDownload(links, tab.url);
+              browser.tabs.sendMessage(tab.id, { type: 'show-toast', count: links.length }).catch(() => {});
+            }
+          } catch (error) {
+            console.error('[DLMan] Failed to get selected links:', error);
+          }
         }
         break;
 
@@ -317,12 +355,28 @@ export default defineBackground(() => {
       }
 
       await handleDownload(url, downloadItem.referrer, downloadItem.filename);
+
+      // Show in-page toast so the user knows the download was redirected
+      showToastInTab(1);
     });
   }
 
   // ============================================================================
   // Download Handler — opens dialog in desktop app, NEVER auto-starts
   // ============================================================================
+
+  /**
+   * Send a toast to the active tab's content script.
+   */
+  function showToastInTab(count: number) {
+    // Get the active tab and send a toast message
+    browser.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
+      const tabId = tabs[0]?.id;
+      if (tabId) {
+        browser.tabs.sendMessage(tabId, { type: 'show-toast', count }).catch(() => {});
+      }
+    }).catch(() => {});
+  }
 
   async function handleDownload(url: string, referrer?: string, suggestedFilename?: string) {
     const client = getDlmanClient();
@@ -500,7 +554,11 @@ export default defineBackground(() => {
       case 'all-links':
         // Handle links from content script — open batch dialog
         if (msg.links && Array.isArray(msg.links) && msg.links.length > 0) {
-          handleBatchDownload(msg.links, sender.tab?.url);
+          handleBatchDownload(msg.links, sender.tab?.url).then(() => {
+            if (sender.tab?.id) {
+              browser.tabs.sendMessage(sender.tab.id, { type: 'show-toast', count: msg.links!.length }).catch(() => {});
+            }
+          });
         }
         return true;
 

@@ -1,5 +1,34 @@
 # Changelog
 
+## [1.9.1] - 2026-02-10
+
+### ✨ New Features
+
+**Download Selected Links**
+- Right-click any text selection containing links → "Download selected links with DLMan"
+- Automatically detects all `<a href>` elements and text URLs within the selection
+- Single link → opens single download dialog; multiple links → opens batch import dialog
+
+**In-Page Toast Notifications**
+- Beautiful DLMan-branded toast notification slides in from the top-right corner
+- Shown whenever downloads are intercepted or sent to DLMan from the browser
+- Displays "Sent to DLMan — N links sent to download manager" with download icon
+- Dark, modern design matching DLMan's navy/blue brand — auto-dismisses after 3.5s
+
+### 🐛 Bug Fixes
+
+**Extension Never Auto-Starts Downloads**
+- Extension now opens the download dialog in the desktop app instead of auto-starting
+- Single download → New Download dialog for user confirmation
+- Bulk download ("Download all links") → Batch Import dialog
+- macOS dock bounce + window focus when download arrives from browser extension
+
+### 🔧 Internal
+
+- Added `POST /api/show-dialog` and `POST /api/show-dialog/batch` endpoints
+- Removed direct download creation from browser server — all downloads require user confirmation
+- Browser server now holds `AppHandle` for Tauri event emission and window attention requests
+
 ## [1.9.0] - 2026-02-10
 
 ### ✨ New Features
