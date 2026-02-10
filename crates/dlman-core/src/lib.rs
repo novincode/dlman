@@ -198,6 +198,7 @@ impl DlmanCore {
         destination: PathBuf,
         queue_id: Uuid,
         category_id: Option<Uuid>,
+        cookies: Option<String>,
     ) -> Result<Download, DlmanError> {
         // Validate URL
         let parsed_url = url::Url::parse(url)
@@ -226,6 +227,7 @@ impl DlmanCore {
         download.size = None; // Will be set when download starts
         download.final_url = None; // Will be set when download starts
         download.status = DownloadStatus::Queued;
+        download.cookies = cookies;
         
         // Note: download.speed_limit stays None - the queue's speed_limit will be used at runtime
         // This way if queue settings change, downloads will use the new limit
@@ -263,6 +265,7 @@ impl DlmanCore {
         destination: PathBuf,
         queue_id: Uuid,
         category_id: Option<Uuid>,
+        cookies: Option<String>,
     ) -> Result<Download, DlmanError> {
         // Validate URL
         let parsed_url = url::Url::parse(url)
@@ -290,6 +293,7 @@ impl DlmanCore {
         download.size = None;
         download.final_url = None;
         download.status = DownloadStatus::Queued; // Stay queued, don't auto-start
+        download.cookies = cookies;
         
         // Save to database
         self.download_manager.db().upsert_download(&download).await?;

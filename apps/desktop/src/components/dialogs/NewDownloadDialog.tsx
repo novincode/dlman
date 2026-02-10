@@ -44,7 +44,7 @@ import { useUIStore } from '@/stores/ui';
 import { useQueuesArray, useQueueStore } from '@/stores/queues';
 import { useDownloadStore } from '@/stores/downloads';
 import { useCategoryStore } from '@/stores/categories';
-import { getPendingClipboardUrls, getPendingDropUrls } from '@/lib/events';
+import { getPendingClipboardUrls, getPendingDropUrls, getPendingCookies } from '@/lib/events';
 import { getDefaultBasePath, getCategoryDownloadPath, detectCategoryFromFilename } from '@/lib/download-path';
 import type { LinkInfo, Download as DownloadType } from '@/types';
 
@@ -89,6 +89,8 @@ export function NewDownloadDialog() {
   const pathCustomizedRef = useRef(false);
   // Trigger to force re-probe when dialog opens (even with same URL)
   const [probeTrigger, setProbeTrigger] = useState(0);
+  // Browser cookies passed from extension for session-based auth
+  const [browserCookies, setBrowserCookies] = useState<string | undefined>(undefined);
 
   // Reset state and check for pending URLs when dialog opens
   useEffect(() => {
@@ -97,6 +99,10 @@ export function NewDownloadDialog() {
       const clipboardUrls = getPendingClipboardUrls();
       const dropUrls = getPendingDropUrls();
       const pendingUrls = clipboardUrls.length > 0 ? clipboardUrls : dropUrls;
+      
+      // Check for pending cookies from browser extension
+      const cookies = getPendingCookies();
+      setBrowserCookies(cookies);
       
       if (pendingUrls.length > 0) {
         setUrl(pendingUrls[0]);
@@ -345,6 +351,7 @@ export function NewDownloadDialog() {
           category_id: categoryId || undefined,
           probed_info: probedInfo,
           start_later: startLater,
+          cookies: browserCookies || undefined,
         });
         
         // Remove our optimistic placeholder - the real download is added via DownloadAdded event
@@ -361,7 +368,7 @@ export function NewDownloadDialog() {
         toast.error('Failed to add download', { description: errorMsg });
       }
     }
-  }, [url, destination, queueId, categoryId, filename, customFilename, filenameEdited, fileSize, addDownload, removeDownload, setShowNewDownloadDialog, rememberPathForCategory, updateCategory, selectedCategoryId, setSelectedCategory, setFilter, setSelectedQueue, selectedQueueId]);
+  }, [url, destination, queueId, categoryId, filename, customFilename, filenameEdited, fileSize, browserCookies, addDownload, removeDownload, setShowNewDownloadDialog, rememberPathForCategory, updateCategory, selectedCategoryId, setSelectedCategory, setFilter, setSelectedQueue, selectedQueueId]);
 
   const formatFileSize = (bytes: number) => {
     if (bytes >= 1024 * 1024 * 1024) {

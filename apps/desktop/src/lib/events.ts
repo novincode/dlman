@@ -45,6 +45,8 @@ async function updateAppBadge() {
 let pendingDropUrls: string[] = [];
 // Store for clipboard URLs to pass to dialog
 let pendingClipboardUrls: string[] = [];
+// Store for cookies passed from browser extension
+let pendingCookies: string | undefined = undefined;
 
 export function getPendingDropUrls(): string[] {
   const urls = [...pendingDropUrls];
@@ -64,6 +66,16 @@ export function getPendingClipboardUrls(): string[] {
 
 export function setPendingClipboardUrls(urls: string[]) {
   pendingClipboardUrls = urls;
+}
+
+export function getPendingCookies(): string | undefined {
+  const cookies = pendingCookies;
+  pendingCookies = undefined;
+  return cookies;
+}
+
+export function setPendingCookies(cookies: string | undefined) {
+  pendingCookies = cookies;
 }
 
 export function setupEventListeners(): () => void {
@@ -294,15 +306,24 @@ export function setupEventListeners(): () => void {
   ));
 
   // Listen for show-new-download-dialog event (from deep links / extension)
-  registerListener(listen<string | null>(
+  // Payload can be a plain URL string (legacy) or structured object with url, referrer, filename, cookies
+  registerListener(listen<string | { url: string; referrer?: string; filename?: string; cookies?: string } | null>(
     "show-new-download-dialog",
     (event) => {
       if (isCleanedUp) return;
-      const url = event.payload;
+      const payload = event.payload;
       
-      // Set the URL as pending if provided
-      if (url) {
-        setPendingClipboardUrls([url]);
+      // Parse payload - can be string (URL) or structured object
+      if (payload) {
+        if (typeof payload === 'string') {
+          // Legacy: plain URL string
+          setPendingClipboardUrls([payload]);
+          setPendingCookies(undefined);
+        } else if (typeof payload === 'object' && payload.url) {
+          // Structured payload from browser extension
+          setPendingClipboardUrls([payload.url]);
+          setPendingCookies(payload.cookies);
+        }
       }
       
       // Show the new download dialog

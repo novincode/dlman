@@ -378,6 +378,27 @@ export default defineBackground(() => {
     }).catch(() => {});
   }
 
+  /**
+   * Read browser cookies for a URL's domain and format as HTTP Cookie header.
+   * Returns `name1=value1; name2=value2` string, or undefined if no cookies.
+   */
+  async function getCookiesForUrl(url: string): Promise<string | undefined> {
+    try {
+      const cookies = await browser.cookies.getAll({ url });
+      if (!cookies || cookies.length === 0) return undefined;
+
+      // Format as standard HTTP Cookie header
+      const cookieStr = cookies
+        .map((c) => `${c.name}=${c.value}`)
+        .join('; ');
+
+      return cookieStr || undefined;
+    } catch (error) {
+      console.error('[DLMan] Failed to read cookies for', url, error);
+      return undefined;
+    }
+  }
+
   async function handleDownload(url: string, referrer?: string, suggestedFilename?: string) {
     const client = getDlmanClient();
 
@@ -397,11 +418,15 @@ export default defineBackground(() => {
       return;
     }
 
+    // Read browser cookies for this domain — enables session-authenticated downloads
+    const cookies = await getCookiesForUrl(url);
+
     // Open the download dialog in the desktop app (does NOT start the download)
     const result = await client.showDialog({
       url,
       filename: suggestedFilename || extractFilename(url),
       referrer,
+      cookies,
     });
 
     if (!result.success) {

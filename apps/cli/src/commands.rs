@@ -28,7 +28,7 @@ pub async fn add_download(
         None => Uuid::nil(), // Default queue
     };
 
-    let download = core.add_download(url, destination, queue_id, None).await?;
+    let download = core.add_download(url, destination, queue_id, None, None).await?;
 
     match format {
         OutputFormat::Json => {

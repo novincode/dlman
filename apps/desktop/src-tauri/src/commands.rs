@@ -28,6 +28,7 @@ pub async fn add_download(
     category_id: Option<String>,
     probed_info: Option<ProbedInfo>,
     start_later: Option<bool>,
+    cookies: Option<String>,
 ) -> Result<Download, String> {
     let queue_uuid = Uuid::parse_str(&queue_id).map_err(|e| e.to_string())?;
     let category_uuid = category_id.map(|s| Uuid::parse_str(&s).map_err(|e| e.to_string())).transpose()?;
@@ -37,9 +38,9 @@ pub async fn add_download(
     state
         .with_core_async(|core| async move { 
             let mut download = if should_start_later {
-                core.add_download_queued(&url, dest_path, queue_uuid, category_uuid).await?
+                core.add_download_queued(&url, dest_path, queue_uuid, category_uuid, cookies.clone()).await?
             } else {
-                core.add_download(&url, dest_path, queue_uuid, category_uuid).await?
+                core.add_download(&url, dest_path, queue_uuid, category_uuid, cookies.clone()).await?
             };
             
             // Apply probed info if provided (from batch import)
@@ -97,9 +98,9 @@ pub async fn add_downloads_batch(
             for req in downloads {
                 // Use add_download (auto-start) or add_download_queued based on start_immediately flag
                 let add_result = if should_start {
-                    core.add_download(&req.url, dest_path.clone(), queue_uuid, category_uuid).await
+                    core.add_download(&req.url, dest_path.clone(), queue_uuid, category_uuid, None).await
                 } else {
-                    core.add_download_queued(&req.url, dest_path.clone(), queue_uuid, category_uuid).await
+                    core.add_download_queued(&req.url, dest_path.clone(), queue_uuid, category_uuid, None).await
                 };
                 
                 match add_result {

@@ -311,6 +311,7 @@ impl DownloadTask {
             self.cancelled.clone(),
             self.total_downloaded.clone(),
             self.credentials.clone(),
+            self.download.cookies.clone(),
         );
         
         // Start progress reporter
@@ -393,6 +394,7 @@ impl DownloadTask {
                     self.cancelled.clone(),
                     self.total_downloaded.clone(),
                     self.credentials.clone(),
+                    self.download.cookies.clone(),
                 );
                 
                 let segment_index = segment.index;
@@ -598,6 +600,11 @@ impl DownloadTask {
             request = request.basic_auth(username, Some(password));
         }
         
+        // Apply browser cookies if available (session-based auth)
+        if let Some(ref cookies) = self.download.cookies {
+            request = request.header(reqwest::header::COOKIE, cookies);
+        }
+        
         let response = request.send().await?;
         
         // Check for authentication required
@@ -643,11 +650,16 @@ impl DownloadTask {
             let probe_url = self.download.final_url.as_ref().unwrap_or(&self.download.url);
             info!("HEAD didn't return Content-Length, trying partial GET on {}", probe_url);
             
-            match self.client
+            let mut range_req = self.client
                 .get(probe_url)
-                .header(reqwest::header::RANGE, "bytes=0-0")
-                .send()
-                .await
+                .header(reqwest::header::RANGE, "bytes=0-0");
+            
+            // Apply cookies to the fallback probe too
+            if let Some(ref cookies) = self.download.cookies {
+                range_req = range_req.header(reqwest::header::COOKIE, cookies);
+            }
+            
+            match range_req.send().await
             {
                 Ok(range_response) => {
                     let status = range_response.status();

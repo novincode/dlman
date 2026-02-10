@@ -34,6 +34,10 @@ pub struct Download {
     /// Number of retry attempts made for this download
     #[serde(default)]
     pub retry_count: u32,
+    /// Optional browser cookies for session-authenticated downloads
+    /// Format: "name1=value1; name2=value2" (standard HTTP Cookie header format)
+    #[serde(default)]
+    pub cookies: Option<String>,
 }
 
 impl Download {
@@ -62,6 +66,7 @@ impl Download {
             created_at: Utc::now(),
             completed_at: None,
             retry_count: 0,
+            cookies: None,
         }
     }
 

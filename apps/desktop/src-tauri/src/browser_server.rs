@@ -207,8 +207,13 @@ async fn handle_show_dialog(
     let state = state.read().await;
     let app_handle = &state.app_handle;
 
-    // Emit event to frontend with the URL
-    let payload = serde_json::json!(req.url);
+    // Emit event to frontend with the full request (url, referrer, filename, cookies)
+    let payload = serde_json::json!({
+        "url": req.url,
+        "referrer": req.referrer,
+        "filename": req.filename,
+        "cookies": req.cookies,
+    });
     if let Err(e) = app_handle.emit("show-new-download-dialog", payload) {
         tracing::error!("Failed to emit show-new-download-dialog: {}", e);
         return axum::Json(ShowDialogResponse {
@@ -243,7 +248,10 @@ async fn handle_show_batch_dialog(
 
     // If single URL, use the single dialog
     if req.urls.len() == 1 {
-        let payload = serde_json::json!(req.urls[0]);
+        let payload = serde_json::json!({
+            "url": req.urls[0],
+            "referrer": req.referrer,
+        });
         if let Err(e) = app_handle.emit("show-new-download-dialog", payload) {
             tracing::error!("Failed to emit show-new-download-dialog: {}", e);
             return axum::Json(ShowDialogResponse {

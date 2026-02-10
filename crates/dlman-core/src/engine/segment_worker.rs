@@ -41,6 +41,8 @@ pub struct SegmentWorker {
     downloaded_bytes: Arc<AtomicU64>,
     /// Optional credentials for authenticated downloads
     credentials: Option<(String, String)>, // (username, password)
+    /// Optional browser cookies for session-based authentication
+    cookies: Option<String>,
 }
 
 impl SegmentWorker {
@@ -76,10 +78,11 @@ impl SegmentWorker {
             cancelled,
             downloaded_bytes,
             credentials: None,
+            cookies: None,
         }
     }
     
-    /// Create a new segment worker with credentials
+    /// Create a new segment worker with credentials and cookies
     pub fn new_with_credentials(
         download_id: Uuid,
         segment: Segment,
@@ -93,6 +96,7 @@ impl SegmentWorker {
         cancelled: Arc<AtomicBool>,
         downloaded_bytes: Arc<AtomicU64>,
         credentials: Option<(String, String)>,
+        cookies: Option<String>,
     ) -> Self {
         let temp_file_path = temp_dir.join(format!(
             "{}_segment_{}.part",
@@ -112,6 +116,7 @@ impl SegmentWorker {
             cancelled,
             downloaded_bytes,
             credentials,
+            cookies,
         }
     }
     
@@ -203,6 +208,11 @@ impl SegmentWorker {
         // Apply credentials if available (HTTP Basic Auth)
         if let Some((ref username, ref password)) = self.credentials {
             request = request.basic_auth(username, Some(password));
+        }
+        
+        // Apply browser cookies if available (session-based auth)
+        if let Some(ref cookies) = self.cookies {
+            request = request.header(reqwest::header::COOKIE, cookies);
         }
         
         let response = request.send().await?;

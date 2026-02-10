@@ -154,6 +154,16 @@ impl DownloadDatabase {
         .await
         .ok();
         
+        // Migration: Add cookies column to downloads table if it doesn't exist
+        sqlx::query(
+            r#"
+            ALTER TABLE downloads ADD COLUMN cookies TEXT
+            "#,
+        )
+        .execute(pool)
+        .await
+        .ok(); // Ignore error if column already exists
+        
         Ok(())
     }
     
@@ -167,8 +177,9 @@ impl DownloadDatabase {
             INSERT INTO downloads (
                 id, url, final_url, filename, destination, size, downloaded,
                 status, queue_id, category_id, color, error, speed_limit,
-                created_at, completed_at, retry_count, etag, last_modified, supports_range
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                created_at, completed_at, retry_count, etag, last_modified, supports_range,
+                cookies
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 url = excluded.url,
                 final_url = excluded.final_url,
@@ -186,7 +197,8 @@ impl DownloadDatabase {
                 retry_count = excluded.retry_count,
                 etag = excluded.etag,
                 last_modified = excluded.last_modified,
-                supports_range = excluded.supports_range
+                supports_range = excluded.supports_range,
+                cookies = excluded.cookies
             "#,
         )
         .bind(download.id.to_string())
@@ -208,6 +220,7 @@ impl DownloadDatabase {
         .bind(None::<String>) // etag - will add later
         .bind(None::<String>) // last_modified - will add later
         .bind(0i64) // supports_range - will add later
+        .bind(download.cookies.as_ref())
         .execute(&mut *tx)
         .await?;
         
@@ -695,6 +708,7 @@ fn row_to_download(row: sqlx::sqlite::SqliteRow, segments: Vec<Segment>) -> Resu
             .and_then(|s| DateTime::parse_from_rfc3339(&s).ok())
             .map(|dt| dt.with_timezone(&Utc)),
         retry_count: row.get::<i64, _>("retry_count") as u32,
+        cookies: row.get("cookies"),
     })
 }
 

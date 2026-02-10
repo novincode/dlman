@@ -65,10 +65,12 @@ export default defineConfig({
       'activeTab',      // Get current tab URL for referrer header
       'clipboardRead',  // Paste URLs from clipboard in popup
       'alarms',         // Periodic reconnection to DLMan desktop app
+      'cookies',        // Read browser cookies to pass session auth to downloads
     ],
     host_permissions: [
       'http://localhost:*/*',  // Communicate with DLMan desktop app HTTP API
       'ws://localhost:*/*',    // WebSocket connection for real-time download progress
+      '<all_urls>',            // Read cookies for any download domain
     ],
     // Extension icons - copied from desktop app by copy-icons script
     icons: {
