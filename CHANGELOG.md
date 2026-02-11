@@ -12,7 +12,19 @@
 - Cookies are persisted in the database and survive app restarts, pause/resume, and crash recovery
 - Applied on all HTTP requests: URL probing (HEAD/GET), and every download segment
 
-### 🔧 Internal
+### � Bug Fixes
+
+**Download Info Immediately Visible**
+- "Download Later" now correctly shows the probed filename and file size in the download list
+- Previously, downloads showed a URL-extracted name (or UUID-like string) until actually started
+- Fixed by emitting `DownloadUpdated` event after applying probed metadata (filename, size, final URL)
+- Applies to both single downloads and batch imports
+
+**Firefox Addon Validation**
+- Replaced `innerHTML` with safe DOM APIs in toast notification
+- Eliminates "Unsafe assignment to innerHTML" validation warning
+
+### �🔧 Internal
 
 - Added `cookies` permission and `<all_urls>` host permission to browser extension manifest
 - Extension reads cookies via `browser.cookies.getAll()` and formats as standard `Cookie` header
