@@ -43,7 +43,7 @@ pub async fn add_download(
                 core.add_download(&url, dest_path, queue_uuid, category_uuid, cookies.clone()).await?
             };
             
-            // Apply probed info if provided (from batch import)
+            // Apply probed info if provided (filename, size from dialog probe)
             if let Some(info) = probed_info {
                 let mut updated = false;
                 if let Some(filename) = info.filename {
@@ -60,6 +60,10 @@ pub async fn add_download(
                 }
                 if updated {
                     core.download_manager.db().upsert_download(&download).await?;
+                    // Emit update event so UI reflects the probed filename/size
+                    core.emit(dlman_types::CoreEvent::DownloadUpdated {
+                        download: download.clone(),
+                    });
                 }
             }
             
@@ -122,6 +126,10 @@ pub async fn add_downloads_batch(
                             }
                             if updated {
                                 core.download_manager.db().upsert_download(&download).await?;
+                                // Emit update event so UI reflects the probed filename/size
+                                core.emit(dlman_types::CoreEvent::DownloadUpdated {
+                                    download: download.clone(),
+                                });
                             }
                         }
                         results.push(download);

@@ -261,19 +261,41 @@ export default defineContentScript({
       toast.className = 'dlman-toast';
 
       const noun = count === 1 ? 'link' : 'links';
-      toast.innerHTML = `
-        <div class="dlman-toast-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="7 10 12 15 17 10"/>
-            <line x1="12" y1="15" x2="12" y2="3"/>
-          </svg>
-        </div>
-        <div class="dlman-toast-body">
-          <div class="dlman-toast-title">Sent to DLMan</div>
-          <div class="dlman-toast-message"><span class="dlman-toast-accent">${count}</span> ${noun} sent to download manager</div>
-        </div>
-      `;
+
+      // Build toast DOM safely (no innerHTML) to pass Firefox addon validation
+      const iconDiv = document.createElement('div');
+      iconDiv.className = 'dlman-toast-icon';
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', '0 0 24 24');
+      svg.setAttribute('fill', 'none');
+      svg.setAttribute('stroke', 'currentColor');
+      svg.setAttribute('stroke-width', '2.5');
+      svg.setAttribute('stroke-linecap', 'round');
+      svg.setAttribute('stroke-linejoin', 'round');
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      path.setAttribute('d', 'M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4');
+      const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+      polyline.setAttribute('points', '7 10 12 15 17 10');
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', '12'); line.setAttribute('y1', '15');
+      line.setAttribute('x2', '12'); line.setAttribute('y2', '3');
+      svg.append(path, polyline, line);
+      iconDiv.appendChild(svg);
+
+      const bodyDiv = document.createElement('div');
+      bodyDiv.className = 'dlman-toast-body';
+      const titleDiv = document.createElement('div');
+      titleDiv.className = 'dlman-toast-title';
+      titleDiv.textContent = 'Sent to DLMan';
+      const msgDiv = document.createElement('div');
+      msgDiv.className = 'dlman-toast-message';
+      const accentSpan = document.createElement('span');
+      accentSpan.className = 'dlman-toast-accent';
+      accentSpan.textContent = String(count);
+      msgDiv.append(accentSpan, ` ${noun} sent to download manager`);
+      bodyDiv.append(titleDiv, msgDiv);
+
+      toast.append(iconDiv, bodyDiv);
 
       toastContainer.appendChild(toast);
 
