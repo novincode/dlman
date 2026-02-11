@@ -125,3 +125,15 @@ body {
   @apply bg-background text-foreground;
 }
 }
+
+/* Strip Shiki's own background in both modes — we control bg via card/border */
+.shiki-light pre,
+.shiki-light code,
+.shiki-dark pre,
+.shiki-dark code {
+  background: transparent !important;
+}
+.shiki-light .shiki,
+.shiki-dark .shiki {
+  background: transparent !important;
+}

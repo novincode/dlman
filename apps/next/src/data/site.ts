@@ -45,16 +45,19 @@ export const footerLinks = {
     { label: "About", href: "/about" },
   ],
   docs: [
+    { label: "Introduction", href: "/docs/introduction" },
     { label: "Getting Started", href: "/docs" },
     { label: "CLI", href: "/docs/cli" },
     { label: "Browser Extension", href: "/docs/extension" },
+    { label: "Core Engine", href: "/docs/core-engine" },
     { label: "Architecture", href: "/docs/architecture" },
+    { label: "Contributing", href: "/docs/contributing" },
   ],
   github: [
     { label: "Repository", href: "https://github.com/novincode/dlman" },
     { label: "Releases", href: "https://github.com/novincode/dlman/releases" },
     { label: "Issues", href: "https://github.com/novincode/dlman/issues" },
-    { label: "Contributing", href: "https://github.com/novincode/dlman/blob/main/CONTRIBUTING.md" },
+    { label: "Contributing", href: "/docs/contributing" },
   ],
   community: [
     { label: "Support", href: "/support" },

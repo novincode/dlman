@@ -13,32 +13,53 @@ export interface DocPage {
 
 export const docPages: DocPage[] = [
   {
+    slug: "introduction",
+    title: "Introduction",
+    description: "Why DLMan exists, what makes it different, and how it compares.",
+    order: 0,
+    category: "Overview",
+  },
+  {
     slug: "getting-started",
     title: "Getting Started",
     description: "Install DLMan and start downloading.",
-    order: 0,
-    category: "Basics",
+    order: 1,
+    category: "Overview",
   },
   {
     slug: "cli",
     title: "CLI",
     description: "Command-line interface for automation and scripting.",
-    order: 1,
+    order: 2,
     category: "Tools",
   },
   {
     slug: "extension",
     title: "Browser Extension",
     description: "Capture downloads from Chrome, Firefox, and Edge.",
-    order: 2,
+    order: 3,
     category: "Tools",
+  },
+  {
+    slug: "core-engine",
+    title: "Core Engine",
+    description: "Multi-segment downloads, persistence, and rate limiting.",
+    order: 4,
+    category: "Technical",
   },
   {
     slug: "architecture",
     title: "Architecture",
     description: "System design and technical details.",
-    order: 3,
+    order: 5,
     category: "Technical",
+  },
+  {
+    slug: "contributing",
+    title: "Contributing",
+    description: "Setup, code style, and pull request guidelines.",
+    order: 6,
+    category: "Community",
   },
 ];
 

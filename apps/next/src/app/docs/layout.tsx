@@ -28,7 +28,7 @@ function DocsSidebar({ onNavigate }: { onNavigate?: () => void }) {
           <ul className="space-y-0.5">
             {pages.map((page) => {
               const href = page.slug === "getting-started" ? "/docs" : `/docs/${page.slug}`;
-              const isActive = pathname === href;
+              const isActive = pathname === href || (page.slug === "getting-started" && pathname === "/docs/");
               return (
                 <li key={page.slug}>
                   <Link

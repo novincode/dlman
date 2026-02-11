@@ -52,11 +52,7 @@ export async function HeroSection() {
               <Button size="lg" className="gap-2">
                 <IconDownload className="h-4 w-4" />
                 Download
-                {release && (
-                  <Badge variant="secondary" className="ml-1 text-[10px] font-mono">
-                    v{release.version}
-                  </Badge>
-                )}
+               
               </Button>
             </Link>
             <Link href={siteConfig.github.url} target="_blank" rel="noopener">
