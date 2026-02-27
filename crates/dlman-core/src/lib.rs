@@ -896,6 +896,16 @@ impl DlmanCore {
                         total_bytes,
                         segment_urls.len()
                     );
+
+                    // Try to remux .ts → .mp4 using ffmpeg (lossless, fast)
+                    let final_path = Self::try_remux_to_mp4(&out_path).await
+                        .unwrap_or_else(|| out_path.clone());
+                    let final_filename = final_path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or(&unique_filename)
+                        .to_string();
+
                     // Update download record as completed
                     let mut dl = Download::new(String::new(), PathBuf::new(), Uuid::nil());
                     if let Ok(Some(existing)) =
@@ -903,6 +913,7 @@ impl DlmanCore {
                     {
                         dl = existing;
                     }
+                    dl.filename = final_filename;
                     dl.size = Some(total_bytes);
                     dl.downloaded = total_bytes;
                     dl.status = DownloadStatus::Completed;
@@ -1029,6 +1040,42 @@ impl DlmanCore {
 
         file.flush().await?;
         Ok(total_bytes)
+    }
+
+    /// Try to remux a .ts file to .mp4 using ffmpeg (lossless copy, fast).
+    /// Returns the .mp4 path on success, or None if ffmpeg is unavailable.
+    async fn try_remux_to_mp4(ts_path: &std::path::Path) -> Option<std::path::PathBuf> {
+        let mp4_path = ts_path.with_extension("mp4");
+        let ts = ts_path.to_path_buf();
+        let mp4 = mp4_path.clone();
+
+        let result = tokio::process::Command::new("ffmpeg")
+            .args(["-y", "-i"])
+            .arg(&ts)
+            .args(["-c", "copy", "-movflags", "+faststart"])
+            .arg(&mp4)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .await;
+
+        match result {
+            Ok(status) if status.success() => {
+                info!("Remuxed to MP4: {}", mp4.display());
+                // Delete the .ts source file
+                let _ = tokio::fs::remove_file(&ts).await;
+                Some(mp4_path)
+            }
+            Ok(status) => {
+                tracing::warn!("ffmpeg remux failed with exit code {:?}, keeping .ts", status.code());
+                None
+            }
+            Err(e) => {
+                // ffmpeg not found or failed to execute — that's fine, keep .ts
+                tracing::debug!("ffmpeg not available ({}), keeping .ts file", e);
+                None
+            }
+        }
     }
 
     // ========================================================================

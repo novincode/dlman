@@ -47,6 +47,16 @@ impl HlsHandler {
             });
         }
         let text = response.text().await?;
+
+        // Validate this is actually an m3u8 playlist and not HTML/JSON garbage
+        if !text.trim_start().starts_with("#EXTM3U") {
+            return Err(DlmanError::InvalidOperation(format!(
+                "URL does not contain a valid HLS playlist (got {} bytes, starts with {:?})",
+                text.len(),
+                text.chars().take(40).collect::<String>()
+            )));
+        }
+
         Ok(text)
     }
 

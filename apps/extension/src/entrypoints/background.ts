@@ -426,13 +426,11 @@ export default defineBackground(() => {
   // 2. onHeadersReceived: check Content-Type header (catches API-served streams)
   // ============================================================================
 
-  // --- URL-based detection ---
-  // Extension-based: .m3u8, .mpd, .mp4, .webm, etc.
-  const EXT_PATTERN = /\.(m3u8|mpd|mp4|webm|mkv|mov|m4v|flv|ts)(\?|#|$)/i;
-  // Keyword-based: URLs containing HLS/DASH-related terms (for API endpoints)
-  const KEYWORD_PATTERN = /[?&/](m3u8|manifest|playlist|master\.m3u8|index\.m3u8|chunklist|mimeFeed=hls|mimeFeed=dash)/i;
-  // Path-based: common CDN video paths
-  const CDN_VIDEO_PATTERN = /\/(hls|dash|video|vod|stream|media)\//i;
+  // --- URL-based detection (protocol-based, NOT site-specific) ---
+  // Match ONLY by file extension — this is the reliable, non-hardcoded approach.
+  // .ts segments are excluded (HLS chunks, not manifests).
+  // API endpoints without extensions are caught by onHeadersReceived (Content-Type).
+  const EXT_PATTERN = /\.(m3u8|mpd|mp4|webm|mkv|mov|m4v|flv)(\?|#|$)/i;
 
   // --- MIME-based detection ---
   const MANIFEST_MIMES = new Set([
@@ -452,8 +450,8 @@ export default defineBackground(() => {
   ]);
 
   // --- Noise filters ---
-  // Skip ad/tracking domains that might serve video-like content
-  const AD_DOMAINS = /doubleclick\.net|googlesyndication|googleadservices|facebook\.com\/tr|analytics|adserver|adsystem/i;
+  // Skip ad/tracking/VAST domains that might serve video-like content or metadata
+  const AD_DOMAINS = /doubleclick\.net|googlesyndication|googleadservices|facebook\.com\/tr|analytics|adserver|adsystem|sabavision\.com|imasdk\.googleapis|moatads|serving-sys\.com/i;
   // Skip browser resource types that are never video
   const SKIP_TYPES = new Set(['image', 'stylesheet', 'font', 'beacon', 'csp_report', 'ping']);
   // Already-sent URLs per tab (avoid flooding content script)
@@ -495,17 +493,16 @@ export default defineBackground(() => {
           if (SKIP_TYPES.has(details.type as string)) return;
           if (AD_DOMAINS.test(url)) return;
 
-          // Check all URL patterns
-          const isExtMatch = EXT_PATTERN.test(url);
-          const isKeyword = KEYWORD_PATTERN.test(url);
+          // Only match by file extension — pure protocol detection
+          if (!EXT_PATTERN.test(url)) return;
 
-          // CDN path patterns combined with extension match (CDN path alone is too broad)
-          if (!isExtMatch && !isKeyword) return;
+          // Classify protocol from extension so content script knows the type
+          let protocol: string | undefined;
+          if (/\.m3u8(\?|#|$)/i.test(url)) protocol = 'hls';
+          else if (/\.mpd(\?|#|$)/i.test(url)) protocol = 'dash';
+          else protocol = 'direct';
 
-          // Skip .ts segments (HLS chunks) — we want the m3u8 manifest, not each 2-second chunk
-          if (/\.ts(\?|#|$)/i.test(url) && !isKeyword) return;
-
-          notifyContentScript(details.tabId, url);
+          notifyContentScript(details.tabId, url, protocol);
         },
         { urls: ['<all_urls>'] },
         [],
