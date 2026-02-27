@@ -209,12 +209,26 @@ async fn handle_show_dialog(
     let state = state.read().await;
     let app_handle = &state.app_handle;
 
+    // Auto-detect HLS/DASH streaming URLs and include media metadata
+    // so the frontend dialog routes to start_media_download instead of add_download.
+    let url_lower = req.url.split('?').next().unwrap_or(&req.url).to_lowercase();
+    let media_protocol = if url_lower.ends_with(".m3u8") || url_lower.contains(".m3u8/") {
+        Some("hls")
+    } else if url_lower.ends_with(".mpd") || url_lower.contains(".mpd/") {
+        Some("dash")
+    } else {
+        None
+    };
+
     // Emit event to frontend with the full request (url, referrer, filename, cookies)
     let payload = serde_json::json!({
         "url": req.url,
         "referrer": req.referrer,
         "filename": req.filename,
         "cookies": req.cookies,
+        // Include media metadata when URL is a streaming manifest
+        "media_protocol": media_protocol,
+        "media_master_url": if media_protocol.is_some() { Some(&req.url) } else { None },
     });
     if let Err(e) = app_handle.emit("show-new-download-dialog", payload) {
         tracing::error!("Failed to emit show-new-download-dialog: {}", e);

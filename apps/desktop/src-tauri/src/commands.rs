@@ -19,6 +19,19 @@ pub struct ProbedInfo {
     pub final_url: Option<String>,
 }
 
+/// Detect if a URL points to an HLS/DASH manifest.
+fn is_streaming_url(url: &str) -> Option<&'static str> {
+    // Check path component (ignore query params) for manifest extensions
+    let path = url.split('?').next().unwrap_or(url).to_lowercase();
+    if path.ends_with(".m3u8") || path.contains(".m3u8/") {
+        Some("hls")
+    } else if path.ends_with(".mpd") || path.contains(".mpd/") {
+        Some("dash")
+    } else {
+        None
+    }
+}
+
 #[tauri::command(rename_all = "snake_case")]
 pub async fn add_download(
     state: State<'_, AppState>,
@@ -30,6 +43,26 @@ pub async fn add_download(
     start_later: Option<bool>,
     cookies: Option<String>,
 ) -> Result<Download, String> {
+    // Auto-detect HLS/DASH streaming URLs and route to the streaming pipeline.
+    // This ensures m3u8/mpd URLs work regardless of how they arrive (extension,
+    // manual paste, context menu, etc.).
+    if let Some(_protocol) = is_streaming_url(&url) {
+        let filename = probed_info.as_ref().and_then(|p| p.filename.clone());
+        return state
+            .with_core_async(|core| async move {
+                core.download_hls_stream(
+                    &url,
+                    None,    // variant_index — let it pick best
+                    filename,
+                    None,    // page_title — not available in this path
+                    cookies.clone(),
+                    None,    // referrer
+                )
+                .await
+            })
+            .await;
+    }
+
     let queue_uuid = Uuid::parse_str(&queue_id).map_err(|e| e.to_string())?;
     let category_uuid = category_id.map(|s| Uuid::parse_str(&s).map_err(|e| e.to_string())).transpose()?;
     let dest_path = PathBuf::from(destination);

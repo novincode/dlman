@@ -636,7 +636,47 @@ export default defineBackground(() => {
     // Read browser cookies for this domain — enables session-authenticated downloads
     const cookies = await getCookiesForUrl(url);
 
-    // Open the download dialog in the desktop app (does NOT start the download)
+    // Auto-detect HLS/DASH streaming URLs and route through the media pipeline
+    // so the desktop app receives full media context (protocol, page title, etc.)
+    const urlPath = url.split('?')[0].toLowerCase();
+    const isHls = urlPath.endsWith('.m3u8') || urlPath.includes('.m3u8/');
+    const isDash = urlPath.endsWith('.mpd') || urlPath.includes('.mpd/');
+
+    if (isHls || isDash) {
+      // Get page title from active tab for better filename
+      let pageTitle: string | undefined;
+      try {
+        const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+        if (tabs[0]?.title) pageTitle = tabs[0].title;
+      } catch { /* ignore */ }
+
+      const result = await client.downloadMedia({
+        media: {
+          id: `manual-${Date.now()}`,
+          page_url: referrer || '',
+          page_title: pageTitle,
+          master_url: url,
+          protocol: isHls ? 'hls' : 'dash',
+          variants: [],
+          filename: suggestedFilename || undefined,
+          cookies: cookies || undefined,
+          referrer: referrer || undefined,
+        },
+        variant_index: undefined,
+      });
+
+      if (!result.success) {
+        browser.notifications.create({
+          type: 'basic',
+          iconUrl: 'icon/128.png',
+          title: 'DLMan Error',
+          message: result.error || 'Failed to start media download',
+        });
+      }
+      return;
+    }
+
+    // Regular file — open the download dialog in the desktop app
     const result = await client.showDialog({
       url,
       filename: suggestedFilename || extractFilename(url),
