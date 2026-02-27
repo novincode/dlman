@@ -55,6 +55,9 @@ export default defineBackground(() => {
     // Set up download interception
     setupDownloadInterception();
 
+    // Set up webRequest-based stream detection
+    setupStreamDetection();
+
     // Update badge
     updateBadge();
   }
@@ -165,6 +168,13 @@ export default defineBackground(() => {
       contexts: ['link', 'video', 'audio', 'image'],
     });
 
+    // "Download Video" — appears when right-clicking near a video
+    browser.contextMenus.create({
+      id: 'download-video-dlman',
+      title: 'Download Video with DLMan',
+      contexts: ['video', 'page'],
+    });
+
     browser.contextMenus.create({
       id: 'download-selected-links',
       title: 'Download selected links with DLMan',
@@ -195,7 +205,6 @@ export default defineBackground(() => {
       case 'download-with-dlman':
         if (info.linkUrl) {
           await handleDownload(info.linkUrl, tab?.url);
-          // Show toast in the page
           if (tab?.id) {
             browser.tabs.sendMessage(tab.id, { type: 'show-toast', count: 1 }).catch(() => {});
           }
@@ -203,6 +212,49 @@ export default defineBackground(() => {
           await handleDownload(info.srcUrl, tab?.url);
           if (tab?.id) {
             browser.tabs.sendMessage(tab.id, { type: 'show-toast', count: 1 }).catch(() => {});
+          }
+        }
+        break;
+
+      case 'download-video-dlman':
+        // Ask content script for the detected video near the click point
+        if (tab?.id) {
+          try {
+            // Read stored right-click coordinates from content script
+            const stored = await browser.storage.local.get('lastRightClick') as { lastRightClick?: { x: number; y: number } };
+            const x = stored?.lastRightClick?.x ?? 0;
+            const y = stored?.lastRightClick?.y ?? 0;
+
+            const resp = await browser.tabs.sendMessage(tab.id, {
+              type: 'get-video-at-point',
+              x,
+              y,
+            }) as { request?: MediaDownloadRequest };
+            if (resp?.request) {
+              const client = getDlmanClient();
+              const isAvailable = await client.ping();
+              if (isAvailable) {
+                await client.downloadMedia(resp.request);
+              } else if (resp.request.media.protocol === 'direct') {
+                await handleDownload(
+                  resp.request.media.master_url,
+                  resp.request.media.referrer,
+                  resp.request.media.filename || undefined,
+                );
+              }
+              browser.tabs.sendMessage(tab.id, { type: 'show-toast', count: 1 }).catch(() => {});
+            } else {
+              // No detected media — try srcUrl from the context
+              if (info.srcUrl) {
+                await handleDownload(info.srcUrl, tab.url);
+                browser.tabs.sendMessage(tab.id, { type: 'show-toast', count: 1 }).catch(() => {});
+              }
+            }
+          } catch {
+            // Content script not ready — fall back to srcUrl
+            if (info.srcUrl) {
+              await handleDownload(info.srcUrl, tab?.url);
+            }
           }
         }
         break;
@@ -360,6 +412,144 @@ export default defineBackground(() => {
       // Show in-page toast so the user knows the download was redirected
       showToastInTab(1);
     });
+  }
+
+  // ============================================================================
+  // Stream Detection via webRequest — catches HLS / DASH / direct video URLs
+  // that are loaded by the page's JS (invisible to content script).
+  //
+  // Two strategies:
+  // 1. onBeforeRequest: check URL patterns (extensions + keywords)
+  // 2. onHeadersReceived: check Content-Type header (catches API-served streams)
+  // ============================================================================
+
+  // --- URL-based detection ---
+  // Extension-based: .m3u8, .mpd, .mp4, .webm, etc.
+  const EXT_PATTERN = /\.(m3u8|mpd|mp4|webm|mkv|mov|m4v|flv|ts)(\?|#|$)/i;
+  // Keyword-based: URLs containing HLS/DASH-related terms (for API endpoints)
+  const KEYWORD_PATTERN = /[?&/](m3u8|manifest|playlist|master\.m3u8|index\.m3u8|chunklist|mimeFeed=hls|mimeFeed=dash)/i;
+  // Path-based: common CDN video paths
+  const CDN_VIDEO_PATTERN = /\/(hls|dash|video|vod|stream|media)\//i;
+
+  // --- MIME-based detection ---
+  const MANIFEST_MIMES = new Set([
+    'application/vnd.apple.mpegurl',
+    'application/x-mpegurl',
+    'audio/mpegurl',
+    'audio/x-mpegurl',
+    'application/dash+xml',
+  ]);
+  const VIDEO_MIMES = new Set([
+    'video/mp4',
+    'video/webm',
+    'video/x-matroska',
+    'video/mp2t',      // HLS .ts segments
+    'video/quicktime',
+    'video/x-flv',
+  ]);
+
+  // --- Noise filters ---
+  // Skip ad/tracking domains that might serve video-like content
+  const AD_DOMAINS = /doubleclick\.net|googlesyndication|googleadservices|facebook\.com\/tr|analytics|adserver|adsystem/i;
+  // Skip browser resource types that are never video
+  const SKIP_TYPES = new Set(['image', 'stylesheet', 'font', 'beacon', 'csp_report', 'ping']);
+  // Already-sent URLs per tab (avoid flooding content script)
+  const sentUrls = new Map<number, Set<string>>();
+
+  function urlBase(url: string): string {
+    try { const u = new URL(url); return u.origin + u.pathname; } catch { return url; }
+  }
+
+  function markSent(tabId: number, url: string): boolean {
+    let set = sentUrls.get(tabId);
+    if (!set) { set = new Set(); sentUrls.set(tabId, set); }
+    const key = urlBase(url);
+    if (set.has(key)) return false;
+    set.add(key);
+    return true;
+  }
+
+  function notifyContentScript(tabId: number, url: string): void {
+    if (!markSent(tabId, url)) return;
+    console.log('[DLMan] Stream detected:', url.substring(0, 120));
+    browser.tabs.sendMessage(tabId, { type: 'stream-detected', url }).catch(() => {});
+  }
+
+  function setupStreamDetection(): void {
+    // Clean up per-tab data when tabs close
+    browser.tabs.onRemoved.addListener((tabId) => { sentUrls.delete(tabId); });
+    browser.tabs.onUpdated.addListener((tabId, info) => {
+      if (info.status === 'loading') sentUrls.delete(tabId);
+    });
+
+    // Strategy 1: URL pattern matching (fires before request is made)
+    try {
+      browser.webRequest.onBeforeRequest.addListener(
+        (details) => {
+          if (details.tabId < 0) return;
+          const url = details.url;
+          if (!url || url.startsWith('http://localhost') || url.startsWith('http://127.0.0.1')) return;
+          if (SKIP_TYPES.has(details.type as string)) return;
+          if (AD_DOMAINS.test(url)) return;
+
+          // Check all URL patterns
+          const isExtMatch = EXT_PATTERN.test(url);
+          const isKeyword = KEYWORD_PATTERN.test(url);
+
+          if (!isExtMatch && !isKeyword) return;
+
+          // Skip .ts segments (HLS chunks) — we want the m3u8 manifest, not each 2-second chunk
+          if (/\.ts(\?|#|$)/i.test(url) && !isKeyword) return;
+
+          notifyContentScript(details.tabId, url);
+        },
+        { urls: ['<all_urls>'] },
+        [],
+      );
+    } catch (e) {
+      console.warn('[DLMan] webRequest.onBeforeRequest not available:', e);
+    }
+
+    // Strategy 2: Response Content-Type matching (catches API-served manifests)
+    try {
+      browser.webRequest.onHeadersReceived.addListener(
+        (details) => {
+          if (details.tabId < 0) return;
+          if (!details.responseHeaders) return;
+          if (details.url.startsWith('http://localhost') || details.url.startsWith('http://127.0.0.1')) return;
+          if (AD_DOMAINS.test(details.url)) return;
+
+          const ctHeader = details.responseHeaders.find(
+            (h) => h.name.toLowerCase() === 'content-type',
+          );
+          if (!ctHeader?.value) return;
+          const mime = ctHeader.value.toLowerCase().split(';')[0].trim();
+
+          const isManifest = MANIFEST_MIMES.has(mime);
+          const isVideo = VIDEO_MIMES.has(mime) || mime.startsWith('video/');
+
+          if (!isManifest && !isVideo) return;
+
+          // For direct video files, check Content-Length (skip tiny files < 100KB)
+          // For manifests, allow ANY size (m3u8 playlists are typically 1-5KB)
+          if (isVideo && !isManifest) {
+            const clHeader = details.responseHeaders.find(
+              (h) => h.name.toLowerCase() === 'content-length',
+            );
+            if (clHeader?.value) {
+              const size = parseInt(clHeader.value, 10);
+              if (size > 0 && size < 100_000) return; // Skip tiny video files
+            }
+          }
+
+          notifyContentScript(details.tabId, details.url);
+        },
+        { urls: ['<all_urls>'] },
+        ['responseHeaders'],
+      );
+    } catch (e) {
+      console.warn('[DLMan] webRequest.onHeadersReceived not available:', e);
+    }
   }
 
   // ============================================================================

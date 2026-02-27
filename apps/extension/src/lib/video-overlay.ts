@@ -1,531 +1,329 @@
 /**
- * Video Overlay — sticky download button on detected <video> elements.
+ * Video Overlay — IDM-style floating download button on videos.
  *
- * Renders a floating download button (IDM-style) on each detected video.
- * When clicked, shows a quality picker if multiple variants are available,
- * then sends the download request to the background script.
- *
- * Architecture:
- * - DOM is injected directly (no React — content scripts must be lightweight)
- * - Styles are scoped via unique class prefix to avoid page conflicts
- * - Overlay repositions on scroll/resize
- * - Each video gets at most one overlay instance
- *
- * Why not Shadow DOM?
- * - Firefox MV2 content scripts have limited Shadow DOM support
- * - Direct injection with scoped classes is simpler and cross-browser
+ * - Small, sleek pill with download icon
+ * - Close (×) button to dismiss
+ * - Quality dropdown when multiple variants exist
+ * - Single-click download when only one quality
+ * - Repositions on scroll / resize
+ * - Scoped CSS with dlman-vo- prefix
  */
 
 import type { DetectedMedia, MediaVariant, MediaDownloadRequest } from './media-types';
 
-// ============================================================================
-// Constants
-// ============================================================================
-
-const PREFIX = 'dlman-vo'; // Scoped class prefix: dlman-video-overlay
+const P = 'dlman-vo';
 const OVERLAY_ATTR = 'data-dlman-overlay-id';
-const Z_INDEX = 2147483646; // Just below toast container
+const Z = 2147483646;
 
-// ============================================================================
-// Style Injection
-// ============================================================================
+// Track dismissed overlays so they don't re-appear
+const dismissed = new Set<string>();
 
-let styleInjected = false;
+let stylesReady = false;
 
-function injectStyles(): void {
-  if (styleInjected) return;
-  styleInjected = true;
+function ensureStyles(): void {
+  if (stylesReady) return;
+  stylesReady = true;
 
-  const style = document.createElement('style');
-  style.textContent = `
-    .${PREFIX}-btn {
-      position: absolute;
-      z-index: ${Z_INDEX};
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 8px 14px;
-      border-radius: 8px;
-      background: linear-gradient(135deg, #1e3a5f 0%, #0f1f36 100%);
-      color: #e2e8f0;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      font-size: 13px;
-      font-weight: 600;
-      line-height: 1;
-      border: 1px solid rgba(59, 130, 246, 0.3);
-      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(59, 130, 246, 0.15);
-      cursor: pointer;
-      user-select: none;
-      pointer-events: auto;
-      opacity: 0;
-      transform: translateY(-4px);
-      transition: opacity 0.25s ease, transform 0.25s ease, background 0.15s ease;
-      backdrop-filter: blur(8px);
-      -webkit-backdrop-filter: blur(8px);
-      white-space: nowrap;
-    }
-
-    .${PREFIX}-btn.${PREFIX}-visible {
-      opacity: 1;
-      transform: translateY(0);
-    }
-
-    .${PREFIX}-btn:hover {
-      background: linear-gradient(135deg, #2563eb 0%, #1e3a5f 100%);
-      border-color: rgba(59, 130, 246, 0.6);
-      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(59, 130, 246, 0.3);
-    }
-
-    .${PREFIX}-btn:active {
-      transform: scale(0.97);
-    }
-
-    .${PREFIX}-icon {
-      width: 16px;
-      height: 16px;
-      flex-shrink: 0;
-    }
-
-    .${PREFIX}-dropdown {
-      position: absolute;
-      top: calc(100% + 6px);
-      right: 0;
-      z-index: ${Z_INDEX + 1};
-      min-width: 200px;
-      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-      border: 1px solid rgba(59, 130, 246, 0.25);
-      border-radius: 10px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-      padding: 6px 0;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      opacity: 0;
-      transform: translateY(-4px);
-      transition: opacity 0.2s ease, transform 0.2s ease;
-      pointer-events: none;
-    }
-
-    .${PREFIX}-dropdown.${PREFIX}-open {
-      opacity: 1;
-      transform: translateY(0);
-      pointer-events: auto;
-    }
-
-    .${PREFIX}-dropdown-title {
-      padding: 8px 14px 6px;
-      font-size: 11px;
-      font-weight: 600;
-      color: #64748b;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }
-
-    .${PREFIX}-dropdown-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      padding: 8px 14px;
-      font-size: 13px;
-      color: #e2e8f0;
-      cursor: pointer;
-      transition: background 0.12s ease;
-    }
-
-    .${PREFIX}-dropdown-item:hover {
-      background: rgba(59, 130, 246, 0.15);
-    }
-
-    .${PREFIX}-dropdown-item-label {
-      font-weight: 600;
-    }
-
-    .${PREFIX}-dropdown-item-meta {
-      font-size: 11px;
-      color: #64748b;
-    }
-
-    .${PREFIX}-dropdown-divider {
-      height: 1px;
-      background: rgba(59, 130, 246, 0.15);
-      margin: 4px 0;
-    }
+  const s = document.createElement('style');
+  s.textContent = `
+.${P}-wrap{position:absolute;z-index:${Z};display:flex;align-items:center;gap:0;opacity:0;transform:translateY(-6px);transition:opacity .22s ease,transform .22s ease;pointer-events:auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+.${P}-wrap.${P}-show{opacity:1;transform:translateY(0)}
+.${P}-btn{display:flex;align-items:center;gap:5px;padding:6px 10px;background:rgba(0,0,0,.78);color:#fff;font-size:11.5px;font-weight:600;line-height:1;border:1px solid rgba(255,255,255,.13);border-radius:6px 0 0 6px;cursor:pointer;user-select:none;white-space:nowrap;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);transition:background .15s ease}
+.${P}-btn:hover{background:rgba(37,99,235,.88)}
+.${P}-btn:active{transform:scale(.97)}
+.${P}-btn.${P}-solo{border-radius:6px}
+.${P}-chevron{display:flex;align-items:center;padding:6px 6px;background:rgba(0,0,0,.78);color:#fff;border:1px solid rgba(255,255,255,.13);border-left:1px solid rgba(255,255,255,.08);border-radius:0 6px 6px 0;cursor:pointer;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);transition:background .15s ease}
+.${P}-chevron:hover{background:rgba(37,99,235,.88)}
+.${P}-close{display:flex;align-items:center;justify-content:center;width:20px;height:20px;margin-left:4px;background:rgba(0,0,0,.55);color:rgba(255,255,255,.65);border:none;border-radius:50%;cursor:pointer;font-size:12px;line-height:1;transition:background .15s,color .15s}
+.${P}-close:hover{background:rgba(239,68,68,.85);color:#fff}
+.${P}-ico{width:14px;height:14px;flex-shrink:0}
+.${P}-dd{position:absolute;top:calc(100% + 4px);left:0;min-width:180px;background:rgba(15,23,42,.94);border:1px solid rgba(255,255,255,.1);border-radius:8px;box-shadow:0 8px 30px rgba(0,0,0,.55);padding:4px 0;opacity:0;transform:translateY(-4px);transition:opacity .18s ease,transform .18s ease;pointer-events:none;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+.${P}-dd.${P}-open{opacity:1;transform:translateY(0);pointer-events:auto}
+.${P}-dd-hdr{padding:6px 10px 4px;font-size:10px;font-weight:700;color:rgba(148,163,184,.8);text-transform:uppercase;letter-spacing:.04em}
+.${P}-dd-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 10px;font-size:12px;color:#e2e8f0;cursor:pointer;transition:background .1s}
+.${P}-dd-item:hover{background:rgba(59,130,246,.18)}
+.${P}-dd-item:first-of-type{border-radius:4px 4px 0 0}
+.${P}-dd-item:last-of-type{border-radius:0 0 4px 4px}
+.${P}-dd-lbl{font-weight:600}
+.${P}-dd-meta{font-size:10px;color:#64748b}
+.${P}-dd-sep{height:1px;background:rgba(255,255,255,.07);margin:3px 0}
   `;
-  document.documentElement.appendChild(style);
+  document.documentElement.appendChild(s);
 }
 
 // ============================================================================
-// SVG Icons
+// SVG Helpers
 // ============================================================================
 
-function downloadIconSVG(): string {
-  return `<svg class="${PREFIX}-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
+function icoDownload(): string {
+  return `<svg class="${P}-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
 }
 
-function chevronDownSVG(): string {
-  return `<svg class="${PREFIX}-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
+function icoChevron(): string {
+  return `<svg class="${P}-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
 }
 
 // ============================================================================
-// Video Overlay Manager
+// Formatters
+// ============================================================================
+
+function fmtSize(b: number): string {
+  if (b < 1024) return `${b} B`;
+  if (b < 1048576) return `${(b / 1024).toFixed(0)} KB`;
+  if (b < 1073741824) return `${(b / 1048576).toFixed(1)} MB`;
+  return `${(b / 1073741824).toFixed(2)} GB`;
+}
+
+function fmtBitrate(bps: number): string {
+  if (bps < 1000) return `${bps} bps`;
+  if (bps < 1e6) return `${(bps / 1000).toFixed(0)} kbps`;
+  return `${(bps / 1e6).toFixed(1)} Mbps`;
+}
+
+// ============================================================================
+// VideoOverlayManager
 // ============================================================================
 
 export type OnDownloadRequest = (request: MediaDownloadRequest) => void;
 
-interface OverlayInstance {
+interface Overlay {
   media: DetectedMedia;
-  videoElement: HTMLVideoElement | null;
-  buttonEl: HTMLElement;
-  dropdownEl: HTMLElement | null;
-  repositionHandler: (() => void) | null;
+  video: HTMLVideoElement | null;
+  wrap: HTMLElement;
+  dropdown: HTMLElement | null;
+  reposition: (() => void) | null;
 }
 
 export class VideoOverlayManager {
-  private overlays = new Map<string, OverlayInstance>();
+  private overlays = new Map<string, Overlay>();
   private onDownload: OnDownloadRequest;
 
   constructor(onDownload: OnDownloadRequest) {
     this.onDownload = onDownload;
-    injectStyles();
+    ensureStyles();
   }
 
-  /**
-   * Show an overlay for a detected media.
-   * If a video element is found, positions the button over it.
-   * If variants are available, shows a quality picker dropdown.
-   */
+  /** Show an overlay for detected media. */
   addOverlay(media: DetectedMedia, variants?: MediaVariant[]): void {
-    // Skip if already shown
+    if (dismissed.has(media.id)) return;
     if (this.overlays.has(media.id)) {
-      // Update variants if they arrived later
-      const existing = this.overlays.get(media.id)!;
-      if (variants && variants.length > 0) {
-        existing.media = { ...media, variants };
-      }
+      const o = this.overlays.get(media.id)!;
+      if (variants?.length) o.media = { ...media, variants };
       return;
     }
 
-    // Find the video element on the page
-    const videoEl = this.findVideoElement(media);
-    if (!videoEl) return; // No video element to attach to
+    const video = this.findVideo(media);
+    if (!video) return;
 
-    // Ensure the video's parent is positioned
-    const parent = videoEl.parentElement;
+    const parent = video.parentElement;
     if (parent) {
       const pos = getComputedStyle(parent).position;
-      if (pos === 'static') {
-        parent.style.position = 'relative';
-      }
+      if (pos === 'static') parent.style.position = 'relative';
     }
 
-    // Create the button
-    const btn = this.createButton(media, variants);
-    const overlay: OverlayInstance = {
+    const hasMulti = variants && variants.length > 1;
+    const wrap = document.createElement('div');
+    wrap.className = `${P}-wrap`;
+
+    // Main download button
+    const btn = document.createElement('div');
+    btn.className = `${P}-btn` + (hasMulti ? '' : ` ${P}-solo`);
+    btn.innerHTML = `${icoDownload()}<span>Download</span>`;
+
+    if (hasMulti) {
+      // Click main button = best quality
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        this.doDownload(media, variants, undefined);
+      });
+
+      // Chevron button
+      const chev = document.createElement('div');
+      chev.className = `${P}-chevron`;
+      chev.innerHTML = icoChevron();
+      chev.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        this.toggleDropdown(media.id, wrap, variants!);
+      });
+      wrap.appendChild(btn);
+      wrap.appendChild(chev);
+    } else {
+      // Single quality — click downloads
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        this.doDownload(media, variants, 0);
+      });
+      wrap.appendChild(btn);
+    }
+
+    // Close (×) button
+    const close = document.createElement('div');
+    close.className = `${P}-close`;
+    close.textContent = '×';
+    close.addEventListener('click', (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+      dismissed.add(media.id);
+      this.removeOverlay(media.id);
+    });
+    wrap.appendChild(close);
+
+    const overlay: Overlay = {
       media: variants ? { ...media, variants } : media,
-      videoElement: videoEl,
-      buttonEl: btn,
-      dropdownEl: null,
-      repositionHandler: null,
+      video,
+      wrap,
+      dropdown: null,
+      reposition: null,
     };
 
-    // Position the button
-    this.positionButton(btn, videoEl);
+    this.position(wrap, video);
+    (parent || document.body).appendChild(wrap);
 
-    // Insert into DOM (relative to video's parent)
-    (parent || document.body).appendChild(btn);
+    requestAnimationFrame(() => wrap.classList.add(`${P}-show`));
 
-    // Show with animation
-    requestAnimationFrame(() => {
-      btn.classList.add(`${PREFIX}-visible`);
-    });
-
-    // Reposition on scroll/resize
-    const reposition = () => this.positionButton(btn, videoEl);
-    window.addEventListener('scroll', reposition, { passive: true });
-    window.addEventListener('resize', reposition, { passive: true });
-    overlay.repositionHandler = reposition;
+    const repos = () => this.position(wrap, video);
+    window.addEventListener('scroll', repos, { passive: true });
+    window.addEventListener('resize', repos, { passive: true });
+    overlay.reposition = repos;
 
     this.overlays.set(media.id, overlay);
-
-    // Mark the video element so we don't double-process
-    videoEl.setAttribute(OVERLAY_ATTR, media.id);
+    video.setAttribute(OVERLAY_ATTR, media.id);
   }
 
-  /** Remove all overlays and clean up */
   destroy(): void {
-    for (const [, overlay] of this.overlays) {
-      this.removeOverlayInstance(overlay);
-    }
+    for (const o of this.overlays.values()) this.cleanup(o);
     this.overlays.clear();
   }
 
-  /** Remove a specific overlay */
   removeOverlay(id: string): void {
-    const overlay = this.overlays.get(id);
-    if (overlay) {
-      this.removeOverlayInstance(overlay);
+    const o = this.overlays.get(id);
+    if (o) {
+      this.cleanup(o);
       this.overlays.delete(id);
     }
   }
 
-  // ==========================================================================
-  // Private: Button Creation
-  // ==========================================================================
+  // ---------- Dropdown ----------
 
-  private createButton(media: DetectedMedia, variants?: MediaVariant[]): HTMLElement {
-    const btn = document.createElement('div');
-    btn.className = `${PREFIX}-btn`;
+  private toggleDropdown(id: string, anchor: HTMLElement, variants: MediaVariant[]): void {
+    const o = this.overlays.get(id);
+    if (!o) return;
+    if (o.dropdown) { this.closeDropdown(o); return; }
 
-    const hasMultipleQualities = variants && variants.length > 1;
+    const dd = document.createElement('div');
+    dd.className = `${P}-dd`;
 
-    btn.innerHTML = `
-      ${downloadIconSVG()}
-      <span>DLMan</span>
-      ${hasMultipleQualities ? chevronDownSVG() : ''}
-    `;
+    const hdr = document.createElement('div');
+    hdr.className = `${P}-dd-hdr`;
+    hdr.textContent = 'Quality';
+    dd.appendChild(hdr);
 
-    if (hasMultipleQualities) {
-      // Click toggles quality dropdown
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        this.toggleDropdown(media.id, btn, variants!);
-      });
-    } else {
-      // Single quality — download immediately
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        this.requestDownload(media, 0);
-      });
-    }
-
-    return btn;
-  }
-
-  // ==========================================================================
-  // Private: Quality Dropdown
-  // ==========================================================================
-
-  private toggleDropdown(
-    mediaId: string,
-    anchorBtn: HTMLElement,
-    variants: MediaVariant[],
-  ): void {
-    const overlay = this.overlays.get(mediaId);
-    if (!overlay) return;
-
-    // If dropdown exists and open, close it
-    if (overlay.dropdownEl) {
-      this.closeDropdown(overlay);
-      return;
-    }
-
-    // Create dropdown
-    const dropdown = document.createElement('div');
-    dropdown.className = `${PREFIX}-dropdown`;
-
-    const title = document.createElement('div');
-    title.className = `${PREFIX}-dropdown-title`;
-    title.textContent = 'Select Quality';
-    dropdown.appendChild(title);
-
-    variants.forEach((variant, index) => {
+    variants.forEach((v, i) => {
       const item = document.createElement('div');
-      item.className = `${PREFIX}-dropdown-item`;
-
-      const label = document.createElement('span');
-      label.className = `${PREFIX}-dropdown-item-label`;
-      label.textContent = variant.label;
-
+      item.className = `${P}-dd-item`;
+      const lbl = document.createElement('span');
+      lbl.className = `${P}-dd-lbl`;
+      lbl.textContent = v.label;
       const meta = document.createElement('span');
-      meta.className = `${PREFIX}-dropdown-item-meta`;
-      const metaParts: string[] = [];
-      if (variant.codecs) metaParts.push(variant.codecs.split(',')[0]);
-      if (variant.estimated_size) metaParts.push(formatSize(variant.estimated_size));
-      if (variant.bandwidth) metaParts.push(formatBitrate(variant.bandwidth));
-      meta.textContent = metaParts.join(' · ');
-
-      item.appendChild(label);
-      if (metaParts.length > 0) item.appendChild(meta);
-
+      meta.className = `${P}-dd-meta`;
+      const parts: string[] = [];
+      if (v.codecs) parts.push(v.codecs.split(',')[0]);
+      if (v.estimated_size) parts.push(fmtSize(v.estimated_size));
+      if (v.bandwidth) parts.push(fmtBitrate(v.bandwidth));
+      meta.textContent = parts.join(' · ');
+      item.appendChild(lbl);
+      if (parts.length) item.appendChild(meta);
       item.addEventListener('click', (e) => {
         e.stopPropagation();
         e.preventDefault();
-        this.requestDownload(overlay.media, index);
-        this.closeDropdown(overlay);
+        this.doDownload(o.media, variants, i);
+        this.closeDropdown(o);
       });
-
-      dropdown.appendChild(item);
+      dd.appendChild(item);
     });
 
-    // "Best Quality" option at top
-    if (variants.length > 1) {
-      const divider = document.createElement('div');
-      divider.className = `${PREFIX}-dropdown-divider`;
+    anchor.appendChild(dd);
+    o.dropdown = dd;
+    requestAnimationFrame(() => dd.classList.add(`${P}-open`));
 
-      const bestItem = document.createElement('div');
-      bestItem.className = `${PREFIX}-dropdown-item`;
-      bestItem.innerHTML = `<span class="${PREFIX}-dropdown-item-label">⚡ Best Quality</span>`;
-      bestItem.addEventListener('click', (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        this.requestDownload(overlay.media, undefined);
-        this.closeDropdown(overlay);
-      });
-
-      // Insert at beginning after title
-      dropdown.insertBefore(divider, title.nextSibling);
-      dropdown.insertBefore(bestItem, divider.nextSibling);
-    }
-
-    anchorBtn.appendChild(dropdown);
-    overlay.dropdownEl = dropdown;
-
-    // Open with animation
-    requestAnimationFrame(() => {
-      dropdown.classList.add(`${PREFIX}-open`);
-    });
-
-    // Close on outside click
-    const closeHandler = (e: MouseEvent) => {
-      if (!anchorBtn.contains(e.target as Node)) {
-        this.closeDropdown(overlay);
-        document.removeEventListener('click', closeHandler, true);
+    const outside = (e: MouseEvent) => {
+      if (!anchor.contains(e.target as Node)) {
+        this.closeDropdown(o);
+        document.removeEventListener('click', outside, true);
       }
     };
-    setTimeout(() => {
-      document.addEventListener('click', closeHandler, true);
-    }, 0);
+    setTimeout(() => document.addEventListener('click', outside, true), 0);
   }
 
-  private closeDropdown(overlay: OverlayInstance): void {
-    if (!overlay.dropdownEl) return;
-    overlay.dropdownEl.classList.remove(`${PREFIX}-open`);
-    setTimeout(() => {
-      overlay.dropdownEl?.remove();
-      overlay.dropdownEl = null;
-    }, 200);
+  private closeDropdown(o: Overlay): void {
+    if (!o.dropdown) return;
+    o.dropdown.classList.remove(`${P}-open`);
+    setTimeout(() => { o.dropdown?.remove(); o.dropdown = null; }, 200);
   }
 
-  // ==========================================================================
-  // Private: Download Request
-  // ==========================================================================
+  // ---------- Download ----------
 
-  private requestDownload(media: DetectedMedia, variantIndex?: number): void {
-    const request: MediaDownloadRequest = {
-      media,
-      variant_index: variantIndex,
-    };
-    this.onDownload(request);
+  private doDownload(media: DetectedMedia, variants?: MediaVariant[], idx?: number): void {
+    this.onDownload({ media: variants ? { ...media, variants } : media, variant_index: idx });
   }
 
-  // ==========================================================================
-  // Private: Positioning
-  // ==========================================================================
+  // ---------- Position ----------
 
-  private positionButton(btn: HTMLElement, video: HTMLVideoElement): void {
+  private position(wrap: HTMLElement, video: HTMLVideoElement): void {
     const parent = video.parentElement;
     if (!parent) return;
-
-    const parentRect = parent.getBoundingClientRect();
-    const videoRect = video.getBoundingClientRect();
-
-    // Position top-right of the video, inside the parent
-    const top = videoRect.top - parentRect.top + 12;
-    const right = parentRect.right - videoRect.right + 12;
-
-    btn.style.top = `${top}px`;
-    btn.style.right = `${right}px`;
-    btn.style.position = 'absolute';
+    const pr = parent.getBoundingClientRect();
+    const vr = video.getBoundingClientRect();
+    wrap.style.top = `${vr.top - pr.top + 10}px`;
+    wrap.style.right = `${pr.right - vr.right + 10}px`;
+    wrap.style.position = 'absolute';
   }
 
-  // ==========================================================================
-  // Private: Find Video Element
-  // ==========================================================================
+  // ---------- Find Video ----------
 
-  private findVideoElement(media: DetectedMedia): HTMLVideoElement | null {
-    // First, try to find a video element with a matching src
-    const videos = document.querySelectorAll('video');
-    for (const video of videos) {
-      const v = video as HTMLVideoElement;
-
-      // Skip if already has an overlay
-      if (v.getAttribute(OVERLAY_ATTR)) continue;
-
-      const src = v.currentSrc || v.src;
-      if (src && this.urlsMatch(src, media.master_url)) {
-        return v;
-      }
-
-      // Check <source> children
-      for (const source of v.querySelectorAll('source')) {
-        const sourceSrc = (source as HTMLSourceElement).src;
-        if (sourceSrc && this.urlsMatch(sourceSrc, media.master_url)) {
-          return v;
-        }
+  private findVideo(media: DetectedMedia): HTMLVideoElement | null {
+    for (const v of document.querySelectorAll('video')) {
+      const el = v as HTMLVideoElement;
+      if (el.getAttribute(OVERLAY_ATTR)) continue;
+      const src = el.currentSrc || el.src;
+      if (src && this.urlMatch(src, media.master_url)) return el;
+      for (const s of el.querySelectorAll('source')) {
+        if ((s as HTMLSourceElement).src && this.urlMatch((s as HTMLSourceElement).src, media.master_url)) return el;
       }
     }
-
-    // Fallback: find the largest visible video without an overlay
-    let bestVideo: HTMLVideoElement | null = null;
-    let bestArea = 0;
-
-    for (const video of videos) {
-      const v = video as HTMLVideoElement;
-      if (v.getAttribute(OVERLAY_ATTR)) continue;
-
-      const rect = v.getBoundingClientRect();
-      const area = rect.width * rect.height;
-      if (area > bestArea && rect.width > 100 && rect.height > 60) {
-        bestArea = area;
-        bestVideo = v;
-      }
+    // Fallback: largest video without overlay
+    let best: HTMLVideoElement | null = null;
+    let area = 0;
+    for (const v of document.querySelectorAll('video')) {
+      const el = v as HTMLVideoElement;
+      if (el.getAttribute(OVERLAY_ATTR)) continue;
+      const r = el.getBoundingClientRect();
+      const a = r.width * r.height;
+      if (a > area && r.width > 200 && r.height > 120) { area = a; best = el; }
     }
-
-    return bestVideo;
+    return best;
   }
 
-  /** Check if two URLs refer to the same resource (ignoring query params) */
-  private urlsMatch(a: string, b: string): boolean {
+  private urlMatch(a: string, b: string): boolean {
     try {
-      const urlA = new URL(a);
-      const urlB = new URL(b);
-      return urlA.origin === urlB.origin && urlA.pathname === urlB.pathname;
-    } catch {
-      return a === b;
-    }
+      const ua = new URL(a);
+      const ub = new URL(b);
+      return ua.origin === ub.origin && ua.pathname === ub.pathname;
+    } catch { return a === b; }
   }
 
-  // ==========================================================================
-  // Private: Cleanup
-  // ==========================================================================
+  // ---------- Cleanup ----------
 
-  private removeOverlayInstance(overlay: OverlayInstance): void {
-    overlay.buttonEl.remove();
-    overlay.dropdownEl?.remove();
-    if (overlay.repositionHandler) {
-      window.removeEventListener('scroll', overlay.repositionHandler);
-      window.removeEventListener('resize', overlay.repositionHandler);
+  private cleanup(o: Overlay): void {
+    o.wrap.remove();
+    o.dropdown?.remove();
+    if (o.reposition) {
+      window.removeEventListener('scroll', o.reposition);
+      window.removeEventListener('resize', o.reposition);
     }
-    if (overlay.videoElement) {
-      overlay.videoElement.removeAttribute(OVERLAY_ATTR);
-    }
+    if (o.video) o.video.removeAttribute(OVERLAY_ATTR);
   }
-}
-
-// ============================================================================
-// Formatting Helpers
-// ============================================================================
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-}
-
-function formatBitrate(bps: number): string {
-  if (bps < 1000) return `${bps} bps`;
-  if (bps < 1000000) return `${(bps / 1000).toFixed(0)} kbps`;
-  return `${(bps / 1000000).toFixed(1)} Mbps`;
 }

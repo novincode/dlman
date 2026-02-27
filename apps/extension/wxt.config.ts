@@ -66,6 +66,7 @@ export default defineConfig({
       'clipboardRead',  // Paste URLs from clipboard in popup
       'alarms',         // Periodic reconnection to DLMan desktop app
       'cookies',        // Read browser cookies to pass session auth to downloads
+      'webRequest',     // Detect media stream URLs (HLS/DASH/video) loaded by pages
     ],
     host_permissions: [
       'http://localhost:*/*',  // Communicate with DLMan desktop app HTTP API

@@ -395,14 +395,12 @@ export default defineContentScript({
     // ========================================================================
 
     const overlayManager = new VideoOverlayManager((request: MediaDownloadRequest) => {
-      // Send download request to background script
       browser.runtime.sendMessage({
         type: 'media-download',
         request,
       }).catch((err) => {
         console.error('[DLMan] Failed to send media download request:', err);
       });
-      // Show toast to confirm
       showDlmanToast(1);
     });
 
@@ -410,7 +408,6 @@ export default defineContentScript({
       onDetected: async (media: DetectedMedia) => {
         console.log('[DLMan] Media detected:', media.protocol, media.master_url);
 
-        // For HLS streams, resolve quality variants before showing overlay
         let variants = media.variants;
         if (media.protocol === 'hls' && variants.length === 0) {
           try {
@@ -425,23 +422,63 @@ export default defineContentScript({
           }
         }
 
-        // Show download overlay on the video element
         overlayManager.addOverlay(media, variants);
 
-        // Notify background script about detection
         browser.runtime.sendMessage({
           type: 'media-detected',
           media,
-        }).catch(() => {
-          // Background not ready, that's OK
-        });
+        }).catch(() => {});
       },
-      minDuration: 10,
-      interceptNetwork: true,
+      minDuration: 8,
       observeDOM: true,
     });
 
     detector.start();
+
+    // ========================================================================
+    // Messages from background: stream detection + context menu video lookup
+    // ========================================================================
+
+    browser.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
+      const msg = message as { type: string; url?: string; x?: number; y?: number };
+
+      if (msg.type === 'stream-detected' && msg.url) {
+        // Background's webRequest detected a stream URL — inject it into the detector
+        detector.injectStreamUrl(msg.url);
+        sendResponse({ ok: true });
+        return true;
+      }
+
+      if (msg.type === 'get-video-at-point') {
+        // Context menu "Download Video" — find detected media near click point
+        const x = msg.x ?? 0;
+        const y = msg.y ?? 0;
+        let media = detector.getMediaNearPoint(x, y);
+        if (!media) {
+          media = detector.getAnyDetectedMedia();
+        }
+        if (media) {
+          const request: MediaDownloadRequest = {
+            media,
+            variant_index: undefined,
+          };
+          sendResponse({ request });
+        } else {
+          sendResponse({ request: null });
+        }
+        return true;
+      }
+
+      return false; // Not handled here — let other listeners handle
+    });
+
+    // Store last right-click position for context menu video lookup
+    document.addEventListener('contextmenu', (e) => {
+      // Save last right-click coordinates in extension storage for the background
+      browser.storage.local.set({
+        lastRightClick: { x: e.clientX, y: e.clientY },
+      });
+    });
 
     // Clean up on page unload
     window.addEventListener('beforeunload', () => {

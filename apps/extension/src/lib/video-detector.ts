@@ -1,16 +1,18 @@
 /**
- * Video Detector — observes DOM and network for media streams.
+ * Video Detector — observes DOM for media elements and accepts
+ * externally-detected stream URLs from the background script.
  *
  * Detection strategies:
- * 1. DOM Observer: Watches for <video>, <source>, <audio> elements
- * 2. Source Sniffing: Monitors element src/currentSrc changes
- * 3. Network Intercept: Hooks into XHR/fetch to detect .m3u8/.mpd URLs
+ * 1. DOM scan: enumerate existing <video>, <audio>, <source> elements
+ * 2. MutationObserver: watch for newly-added media elements
+ * 3. External injection: accept URLs from background (via webRequest API)
+ * 4. Media events: listen for loadedmetadata / canplay / playing
  *
- * Architecture:
- * - Runs in content script context
- * - Emits detected media via callback
- * - Deduplicates by URL
- * - Cleans up on page unload
+ * Why no in-content-script network interception?
+ * Content scripts run in an isolated JavaScript world. Hooking
+ * window.fetch / XHR in the content script only intercepts our own
+ * requests, NOT the page's JS. Background script's webRequest API
+ * is used instead for reliable cross-world network monitoring.
  */
 
 import type { DetectedMedia, MediaProtocol } from './media-types';
@@ -19,20 +21,12 @@ import type { DetectedMedia, MediaProtocol } from './media-types';
 // Constants
 // ============================================================================
 
-/** File extensions that indicate direct video files */
-const DIRECT_VIDEO_EXTENSIONS = /\.(mp4|webm|mkv|avi|mov|m4v|flv|wmv|ogv)(\?|#|$)/i;
-
-/** File extensions that indicate direct audio files */
-const DIRECT_AUDIO_EXTENSIONS = /\.(mp3|m4a|aac|ogg|opus|flac|wav)(\?|#|$)/i;
-
-/** URL patterns for HLS manifests */
+const DIRECT_VIDEO_EXT = /\.(mp4|webm|mkv|avi|mov|m4v|flv|wmv|ogv)(\?|#|$)/i;
+const DIRECT_AUDIO_EXT = /\.(mp3|m4a|aac|ogg|opus|flac|wav)(\?|#|$)/i;
 const HLS_PATTERN = /\.m3u8(\?|#|$)/i;
-
-/** URL patterns for DASH manifests */
 const DASH_PATTERN = /\.mpd(\?|#|$)/i;
 
-/** MIME types that indicate media content */
-const MEDIA_MIME_TYPES: Record<string, MediaProtocol> = {
+const MEDIA_MIMES: Record<string, MediaProtocol> = {
   'application/vnd.apple.mpegurl': 'hls',
   'application/x-mpegurl': 'hls',
   'audio/mpegurl': 'hls',
@@ -47,55 +41,76 @@ const MEDIA_MIME_TYPES: Record<string, MediaProtocol> = {
   'audio/webm': 'direct',
 };
 
-/** Minimum video duration (seconds) to consider for detection — filters out ads */
-const MIN_DURATION_SECONDS = 10;
+/** Minimum video element dimensions to show overlay (filters thumbnails) */
+const MIN_WIDTH = 300;
+const MIN_HEIGHT = 200;
+
+/** Minimum duration in seconds — skip short clips / ads */
+const MIN_DURATION = 8;
+
+/** Data attribute used to tag video elements we've processed */
+const VID_ATTR = 'data-dlman-vid';
 
 // ============================================================================
-// URL Classification
+// Classification Helpers
 // ============================================================================
 
-/** Determine the media protocol from a URL */
 function classifyUrl(url: string): MediaProtocol | null {
   if (HLS_PATTERN.test(url)) return 'hls';
   if (DASH_PATTERN.test(url)) return 'dash';
-  if (DIRECT_VIDEO_EXTENSIONS.test(url)) return 'direct';
-  if (DIRECT_AUDIO_EXTENSIONS.test(url)) return 'direct';
+  if (DIRECT_VIDEO_EXT.test(url)) return 'direct';
+  if (DIRECT_AUDIO_EXT.test(url)) return 'direct';
   return null;
 }
 
-/** Determine protocol from MIME type */
 function classifyMime(mime: string): MediaProtocol | null {
-  const normalized = mime.toLowerCase().split(';')[0].trim();
-  return MEDIA_MIME_TYPES[normalized] ?? null;
+  return MEDIA_MIMES[mime.toLowerCase().split(';')[0].trim()] ?? null;
 }
 
-/** Generate a stable ID for a detected URL (for dedup) */
-function mediaId(url: string): string {
-  // Strip query params for dedup — same base URL = same media
+function stableId(url: string): string {
   try {
-    const parsed = new URL(url);
-    return `${parsed.origin}${parsed.pathname}`;
+    const u = new URL(url);
+    return `${u.origin}${u.pathname}`;
   } catch {
     return url;
   }
 }
 
-/** Extract a suggested filename from a URL */
 function suggestFilename(url: string): string | undefined {
   try {
-    const pathname = new URL(url).pathname;
-    const segment = pathname.split('/').pop();
-    if (segment && segment.includes('.')) {
-      return decodeURIComponent(segment.split('?')[0]);
-    }
+    const seg = new URL(url).pathname.split('/').pop();
+    if (seg?.includes('.')) return decodeURIComponent(seg.split('?')[0]);
   } catch {
-    // ignore
+    /* ignore */
   }
   return undefined;
 }
 
+function isVideoLargeEnough(el: HTMLVideoElement): boolean {
+  const r = el.getBoundingClientRect();
+  return r.width >= MIN_WIDTH && r.height >= MIN_HEIGHT;
+}
+
+/**
+ * Detect if a video element is a thumbnail/preview — NOT the main player.
+ * Thumbnail heuristics:
+ * - `loop` attribute = auto-replaying preview
+ * - `muted` + `autoplay` = hover/inline preview
+ * - `playsinline` + `muted` + no controls = embedded preview
+ * - Very short known duration = preview clip
+ */
+function isThumbnailVideo(el: HTMLVideoElement): boolean {
+  // Looping videos are almost always thumbnails / hover previews
+  if (el.loop) return true;
+  // Muted + autoplay = auto-playing preview (not user-initiated playback)
+  if (el.muted && el.autoplay) return true;
+  // If we know the duration and it's very short, it's a preview
+  if (el.duration && Number.isFinite(el.duration) && el.duration < 5) return true;
+  return false;
+}
+
 // ============================================================================
-// VideoDetector Class
+// VideoDetector
 // ============================================================================
 
 export type OnMediaDetected = (media: DetectedMedia) => void;
@@ -103,232 +118,242 @@ export type OnMediaDetected = (media: DetectedMedia) => void;
 export interface VideoDetectorOptions {
   /** Called when new media is detected */
   onDetected: OnMediaDetected;
-  /** Minimum video duration in seconds to detect (default: 10) */
+  /** Minimum video duration in seconds (default: 8) */
   minDuration?: number;
-  /** Whether to intercept network requests (default: true) */
-  interceptNetwork?: boolean;
   /** Whether to observe DOM mutations (default: true) */
   observeDOM?: boolean;
 }
 
 export class VideoDetector {
-  private options: Required<VideoDetectorOptions>;
-  private seenUrls = new Set<string>();
+  private cb: OnMediaDetected;
+  private minDur: number;
+  private seen = new Set<string>();
   private observer: MutationObserver | null = null;
-  private cleanupFns: Array<() => void> = [];
-  private destroyed = false;
+  private cleanups: Array<() => void> = [];
+  private dead = false;
 
-  constructor(options: VideoDetectorOptions) {
-    this.options = {
-      onDetected: options.onDetected,
-      minDuration: options.minDuration ?? MIN_DURATION_SECONDS,
-      interceptNetwork: options.interceptNetwork ?? true,
-      observeDOM: options.observeDOM ?? true,
-    };
+  /** All detected media keyed by ID — accessible for context menu lookups */
+  readonly detected = new Map<string, DetectedMedia>();
+
+  /** Stream URLs detected externally but not yet attached to a video element */
+  private pendingStreams: Array<{ url: string; protocol: MediaProtocol }> = [];
+
+  constructor(opts: VideoDetectorOptions) {
+    this.cb = opts.onDetected;
+    this.minDur = opts.minDuration ?? MIN_DURATION;
   }
 
   /** Start all detection strategies */
   start(): void {
-    if (this.destroyed) return;
+    if (this.dead) return;
 
-    // Strategy 1: Scan existing elements
-    this.scanExistingElements();
+    // Strategy 1 + 2: Scan existing elements + observe new ones
+    this.scanDOM();
+    this.startObserver();
+    this.startEventListeners();
 
-    // Strategy 2: Observe DOM mutations
-    if (this.options.observeDOM) {
-      this.startDOMObserver();
-    }
-
-    // Strategy 3: Intercept network requests
-    if (this.options.interceptNetwork) {
-      this.startNetworkIntercept();
-    }
-
-    // Strategy 4: Listen for video element events
-    this.startVideoEventListeners();
+    // Periodically re-check pending streams against visible videos
+    const interval = setInterval(() => this.matchPendingStreams(), 2500);
+    this.cleanups.push(() => clearInterval(interval));
   }
 
   /** Stop all detection and clean up */
   destroy(): void {
-    this.destroyed = true;
+    this.dead = true;
     this.observer?.disconnect();
     this.observer = null;
-    for (const fn of this.cleanupFns) {
-      fn();
-    }
-    this.cleanupFns = [];
-    this.seenUrls.clear();
+    this.cleanups.forEach((fn) => fn());
+    this.cleanups = [];
+    this.seen.clear();
+    this.detected.clear();
+    this.pendingStreams = [];
   }
 
-  // ==========================================================================
-  // Strategy 1: Scan existing DOM elements
-  // ==========================================================================
+  /**
+   * Inject a URL detected externally (e.g. via webRequest in background).
+   * If a matching large video element exists, attaches to it immediately.
+   * Otherwise the URL is queued and matched when a suitable video appears.
+   */
+  injectStreamUrl(url: string): void {
+    if (this.dead) return;
 
-  private scanExistingElements(): void {
-    // Scan <video> elements
-    document.querySelectorAll('video').forEach((video) => {
-      this.processVideoElement(video as HTMLVideoElement);
-    });
+    const protocol = classifyUrl(url);
+    if (!protocol) return;
 
-    // Scan <audio> elements
-    document.querySelectorAll('audio').forEach((audio) => {
-      this.processAudioElement(audio as HTMLAudioElement);
-    });
+    const id = stableId(url);
+    if (this.seen.has(id)) return;
 
-    // Scan <source> elements outside of <video>/<audio>
-    document.querySelectorAll('source').forEach((source) => {
-      const src = (source as HTMLSourceElement).src;
-      const type = (source as HTMLSourceElement).type;
-      if (src) {
-        this.processMediaUrl(src, type || undefined);
+    // Try to find a large video element to associate with
+    const video = this.findLargestUntaggedVideo();
+    if (video) {
+      this.seen.add(id);
+      this.emitMediaForVideo(url, protocol, video);
+    } else {
+      // Queue for later matching
+      if (!this.pendingStreams.some((s) => stableId(s.url) === id)) {
+        this.pendingStreams.push({ url, protocol });
       }
+    }
+  }
+
+  /**
+   * Get DetectedMedia for the video element closest to given viewport point.
+   * Used by right-click context menu.
+   */
+  getMediaNearPoint(x: number, y: number): DetectedMedia | null {
+    // Check elements directly at the point
+    const elements = document.elementsFromPoint(x, y);
+    for (const el of elements) {
+      const video =
+        el instanceof HTMLVideoElement ? el : (el.closest?.('video') as HTMLVideoElement | null);
+      if (video) {
+        const attr = video.getAttribute(VID_ATTR);
+        if (attr && this.detected.has(attr)) {
+          return this.detected.get(attr)!;
+        }
+        // Check by URL match
+        for (const media of this.detected.values()) {
+          if (this.videoMatchesMedia(video, media)) return media;
+        }
+      }
+    }
+
+    // Fallback: nearest large video within 500px
+    let bestMedia: DetectedMedia | null = null;
+    let bestDist = Infinity;
+    for (const v of document.querySelectorAll('video')) {
+      const rect = v.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const dist = Math.hypot(x - cx, y - cy);
+      if (dist < bestDist && dist < 500) {
+        for (const media of this.detected.values()) {
+          if (this.videoMatchesMedia(v as HTMLVideoElement, media)) {
+            bestDist = dist;
+            bestMedia = media;
+            break;
+          }
+        }
+      }
+    }
+    return bestMedia;
+  }
+
+  /**
+   * Get any detected media — returns the first detected item.
+   * Useful as a fallback for context menu when point matching fails.
+   */
+  getAnyDetectedMedia(): DetectedMedia | null {
+    for (const media of this.detected.values()) {
+      return media;
+    }
+    return null;
+  }
+
+  // --------------------------------------------------------------------------
+  // DOM Scanning
+  // --------------------------------------------------------------------------
+
+  private scanDOM(): void {
+    document.querySelectorAll('video').forEach((v) => {
+      this.processVideoElement(v as HTMLVideoElement);
+    });
+    document.querySelectorAll('audio').forEach((a) => {
+      this.processAudioElement(a as HTMLAudioElement);
+    });
+    document.querySelectorAll('source').forEach((s) => {
+      const src = (s as HTMLSourceElement).src;
+      const type = (s as HTMLSourceElement).type;
+      if (src) this.processMediaUrl(src, type || undefined);
     });
   }
 
-  // ==========================================================================
-  // Strategy 2: DOM Mutation Observer
-  // ==========================================================================
-
-  private startDOMObserver(): void {
+  private startObserver(): void {
     this.observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        // New nodes added
-        for (const node of mutation.addedNodes) {
+      for (const m of mutations) {
+        for (const node of m.addedNodes) {
           if (node.nodeType !== Node.ELEMENT_NODE) continue;
           const el = node as Element;
-
-          if (el.tagName === 'VIDEO') {
-            this.processVideoElement(el as HTMLVideoElement);
-          } else if (el.tagName === 'AUDIO') {
-            this.processAudioElement(el as HTMLAudioElement);
-          } else if (el.tagName === 'SOURCE') {
-            const src = (el as HTMLSourceElement).src;
-            const type = (el as HTMLSourceElement).type;
-            if (src) this.processMediaUrl(src, type || undefined);
-          }
-
-          // Also check descendants
-          el.querySelectorAll?.('video')?.forEach((v) => {
-            this.processVideoElement(v as HTMLVideoElement);
-          });
-          el.querySelectorAll?.('audio')?.forEach((a) => {
-            this.processAudioElement(a as HTMLAudioElement);
-          });
-        }
-
-        // Attribute changes (e.g., src changed)
-        if (mutation.type === 'attributes' && mutation.target.nodeType === Node.ELEMENT_NODE) {
-          const el = mutation.target as Element;
-          if (el.tagName === 'VIDEO' && mutation.attributeName === 'src') {
-            this.processVideoElement(el as HTMLVideoElement);
-          } else if (el.tagName === 'SOURCE' && mutation.attributeName === 'src') {
+          if (el.tagName === 'VIDEO') this.processVideoElement(el as HTMLVideoElement);
+          else if (el.tagName === 'AUDIO') this.processAudioElement(el as HTMLAudioElement);
+          else if (el.tagName === 'SOURCE') {
             const src = (el as HTMLSourceElement).src;
             if (src) this.processMediaUrl(src, (el as HTMLSourceElement).type || undefined);
           }
+          el.querySelectorAll?.('video')?.forEach((v) =>
+            this.processVideoElement(v as HTMLVideoElement),
+          );
+          el.querySelectorAll?.('audio')?.forEach((a) =>
+            this.processAudioElement(a as HTMLAudioElement),
+          );
+        }
+        if (
+          m.type === 'attributes' &&
+          m.target instanceof HTMLVideoElement &&
+          m.attributeName === 'src'
+        ) {
+          this.processVideoElement(m.target);
         }
       }
     });
-
     this.observer.observe(document.documentElement, {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ['src', 'currentSrc'],
+      attributeFilter: ['src'],
     });
   }
 
-  // ==========================================================================
-  // Strategy 3: Network Request Interception
-  // ==========================================================================
-
-  private startNetworkIntercept(): void {
-    // Hook XMLHttpRequest
-    const origXhrOpen = XMLHttpRequest.prototype.open;
-    const detector = this;
-
-    XMLHttpRequest.prototype.open = function (
-      this: XMLHttpRequest,
-      method: string,
-      url: string | URL,
-      ...rest: any[]
-    ) {
-      const urlStr = url.toString();
-      detector.processMediaUrl(urlStr);
-      return origXhrOpen.apply(this, [method, url, ...rest] as any);
-    };
-
-    this.cleanupFns.push(() => {
-      XMLHttpRequest.prototype.open = origXhrOpen;
-    });
-
-    // Hook fetch
-    const origFetch = window.fetch;
-
-    window.fetch = function (input: RequestInfo | URL, init?: RequestInit) {
-      let url: string | undefined;
-      if (typeof input === 'string') {
-        url = input;
-      } else if (input instanceof URL) {
-        url = input.toString();
-      } else if (input instanceof Request) {
-        url = input.url;
-      }
-      if (url) {
-        detector.processMediaUrl(url);
-      }
-      return origFetch.call(this, input, init);
-    };
-
-    this.cleanupFns.push(() => {
-      window.fetch = origFetch;
-    });
-  }
-
-  // ==========================================================================
-  // Strategy 4: Video element event listeners
-  // ==========================================================================
-
-  private startVideoEventListeners(): void {
-    // Listen for 'loadedmetadata' on the document (bubbles up from <video>)
+  private startEventListeners(): void {
     const handler = (e: Event) => {
-      const target = e.target;
-      if (target instanceof HTMLVideoElement) {
-        this.processVideoElement(target);
-      } else if (target instanceof HTMLAudioElement) {
-        this.processAudioElement(target);
-      }
+      if (e.target instanceof HTMLVideoElement) this.processVideoElement(e.target);
+      else if (e.target instanceof HTMLAudioElement) this.processAudioElement(e.target);
     };
-
     document.addEventListener('loadedmetadata', handler, true);
     document.addEventListener('canplay', handler, true);
-
-    this.cleanupFns.push(() => {
+    document.addEventListener('playing', handler, true);
+    this.cleanups.push(() => {
       document.removeEventListener('loadedmetadata', handler, true);
       document.removeEventListener('canplay', handler, true);
+      document.removeEventListener('playing', handler, true);
     });
   }
 
-  // ==========================================================================
+  // --------------------------------------------------------------------------
   // Element Processing
-  // ==========================================================================
+  // --------------------------------------------------------------------------
 
   private processVideoElement(video: HTMLVideoElement): void {
-    // Check currentSrc first (actual playing source), then src attribute
+    // Skip thumbnail/preview videos (loop, muted+autoplay, etc.)
+    if (isThumbnailVideo(video)) return;
+
+    // Must be large enough to be a real player (skip small thumbnails)
+    if (!isVideoLargeEnough(video)) return;
+
     const url = video.currentSrc || video.src;
+
+    // blob: or data: URLs — these come from MediaSource API (HLS/DASH players).
+    // The actual stream URL was fetched by the page's JS and caught by webRequest.
+    // Try to match this video element with a pending stream from background.
     if (!url || url.startsWith('blob:') || url.startsWith('data:')) {
-      // For blob URLs, check <source> children
-      video.querySelectorAll('source').forEach((source) => {
+      // First check <source> children for real URLs
+      let foundSrc = false;
+      for (const source of video.querySelectorAll('source')) {
         const src = (source as HTMLSourceElement).src;
-        const type = (source as HTMLSourceElement).type;
         if (src && !src.startsWith('blob:') && !src.startsWith('data:')) {
-          this.processMediaUrl(src, type || undefined, video);
+          this.processMediaUrl(src, (source as HTMLSourceElement).type || undefined, video);
+          foundSrc = true;
         }
-      });
+      }
+      // If no real source found, try matching with a webRequest-detected stream
+      if (!foundSrc) {
+        this.tryMatchPendingStream(video);
+      }
       return;
     }
 
-    // Filter out very short videos (likely ads or previews)
-    if (video.duration && video.duration < this.options.minDuration) {
+    // Filter short clips (ads, previews)
+    if (video.duration && Number.isFinite(video.duration) && video.duration < this.minDur) {
       return;
     }
 
@@ -341,30 +366,50 @@ export class VideoDetector {
     this.processMediaUrl(url);
   }
 
-  // ==========================================================================
+  // --------------------------------------------------------------------------
   // Core URL Processing
-  // ==========================================================================
+  // --------------------------------------------------------------------------
 
   private processMediaUrl(
     url: string,
     mimeType?: string,
-    videoElement?: HTMLVideoElement,
+    video?: HTMLVideoElement,
   ): void {
-    if (this.destroyed) return;
+    if (this.dead) return;
 
-    // Determine protocol
-    let protocol: MediaProtocol | null = classifyUrl(url);
-    if (!protocol && mimeType) {
-      protocol = classifyMime(mimeType);
+    let protocol = classifyUrl(url);
+    if (!protocol && mimeType) protocol = classifyMime(mimeType);
+    if (!protocol) return;
+
+    const id = stableId(url);
+    if (this.seen.has(id)) return;
+    this.seen.add(id);
+
+    if (video) {
+      this.emitMediaForVideo(url, protocol, video);
+    } else {
+      const media: DetectedMedia = {
+        id,
+        page_url: window.location.href,
+        page_title: document.title || undefined,
+        master_url: url,
+        protocol,
+        variants: [],
+        mime_type: mimeType,
+        filename: suggestFilename(url),
+        referrer: document.referrer || window.location.href,
+      };
+      this.detected.set(id, media);
+      this.cb(media);
     }
-    if (!protocol) return; // Not a recognized media URL
+  }
 
-    // Dedup
-    const id = mediaId(url);
-    if (this.seenUrls.has(id)) return;
-    this.seenUrls.add(id);
-
-    // Build detection result
+  private emitMediaForVideo(
+    url: string,
+    protocol: MediaProtocol,
+    video: HTMLVideoElement,
+  ): void {
+    const id = stableId(url);
     const media: DetectedMedia = {
       id,
       page_url: window.location.href,
@@ -372,28 +417,77 @@ export class VideoDetector {
       master_url: url,
       protocol,
       variants: [],
-      mime_type: mimeType,
       filename: suggestFilename(url),
-      duration: videoElement?.duration && Number.isFinite(videoElement.duration)
-        ? videoElement.duration
-        : undefined,
-      thumbnail: videoElement ? this.extractThumbnail(videoElement) : undefined,
+      duration:
+        video.duration && Number.isFinite(video.duration) ? video.duration : undefined,
+      thumbnail:
+        video.poster && !video.poster.startsWith('data:') ? video.poster : undefined,
       referrer: document.referrer || window.location.href,
+      element_rect: video.getBoundingClientRect(),
     };
-
-    // If we have the video element, store its position for overlay
-    if (videoElement) {
-      media.element_rect = videoElement.getBoundingClientRect();
-    }
-
-    this.options.onDetected(media);
+    video.setAttribute(VID_ATTR, id);
+    this.detected.set(id, media);
+    this.cb(media);
   }
 
-  /** Try to extract a poster or thumbnail from a video element */
-  private extractThumbnail(video: HTMLVideoElement): string | undefined {
-    if (video.poster && !video.poster.startsWith('data:')) {
-      return video.poster;
+  // --------------------------------------------------------------------------
+  // Pending Stream Matching
+  // --------------------------------------------------------------------------
+
+  private tryMatchPendingStream(video: HTMLVideoElement): void {
+    if (this.pendingStreams.length === 0) return;
+    if (!isVideoLargeEnough(video)) return;
+    if (video.getAttribute(VID_ATTR)) return;
+
+    const stream = this.pendingStreams.shift()!;
+    const id = stableId(stream.url);
+    if (this.seen.has(id)) return;
+    this.seen.add(id);
+    this.emitMediaForVideo(stream.url, stream.protocol, video);
+  }
+
+  private matchPendingStreams(): void {
+    if (this.pendingStreams.length === 0) return;
+    const video = this.findLargestUntaggedVideo();
+    if (!video) return;
+    this.tryMatchPendingStream(video);
+  }
+
+  // --------------------------------------------------------------------------
+  // Video Element Utilities
+  // --------------------------------------------------------------------------
+
+  private findLargestUntaggedVideo(): HTMLVideoElement | null {
+    let best: HTMLVideoElement | null = null;
+    let bestArea = 0;
+    for (const v of document.querySelectorAll('video')) {
+      const el = v as HTMLVideoElement;
+      if (el.getAttribute(VID_ATTR)) continue;
+      if (isThumbnailVideo(el)) continue;
+      const r = el.getBoundingClientRect();
+      const area = r.width * r.height;
+      if (area > bestArea && r.width >= MIN_WIDTH && r.height >= MIN_HEIGHT) {
+        bestArea = area;
+        best = el;
+      }
     }
-    return undefined;
+    return best;
+  }
+
+  private videoMatchesMedia(video: HTMLVideoElement, media: DetectedMedia): boolean {
+    // Match by data attribute
+    if (video.getAttribute(VID_ATTR) === media.id) return true;
+    // Match by URL
+    const src = video.currentSrc || video.src;
+    if (src && !src.startsWith('blob:')) {
+      try {
+        const a = new URL(src);
+        const b = new URL(media.master_url);
+        if (a.origin === b.origin && a.pathname === b.pathname) return true;
+      } catch {
+        /* ignore */
+      }
+    }
+    return false;
   }
 }
