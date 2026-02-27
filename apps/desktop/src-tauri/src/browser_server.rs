@@ -401,11 +401,11 @@ async fn handle_cancel_download(
 // Media Download — handles video stream downloads from extension
 // ============================================================================
 
-/// POST /api/media/download — download a detected media stream
+/// POST /api/media/download — show dialog for detected media stream
 ///
-/// For direct files: opens the download dialog (same as show-dialog).
-/// For HLS/DASH: emits a Tauri event with the full media info so the
-/// frontend can show a specialized media download dialog.
+/// UNIFIED PIPELINE: ALL protocols (Direct, HLS, DASH) go through the
+/// download dialog first. The user must approve before any download starts.
+/// This matches the standard download flow and enables pause/cancel.
 async fn handle_media_download(
     State(state): axum::extract::State<SharedState>,
     axum::Json(req): axum::Json<MediaDownloadRequest>,
@@ -413,10 +413,12 @@ async fn handle_media_download(
     let state = state.read().await;
     let app_handle = &state.app_handle;
 
-    match req.media.protocol {
+    // For ALL protocols, show the download dialog first.
+    // The dialog will call /api/media/start when the user confirms.
+    let download_url = match req.media.protocol {
         MediaProtocol::Direct => {
-            // Direct file — use the standard download dialog flow
-            let download_url = if let Some(idx) = req.variant_index {
+            // For direct files, use variant URL if specified
+            if let Some(idx) = req.variant_index {
                 req.media
                     .variants
                     .get(idx)
@@ -424,76 +426,59 @@ async fn handle_media_download(
                     .unwrap_or(req.media.master_url.clone())
             } else {
                 req.media.master_url.clone()
-            };
-
-            let payload = serde_json::json!({
-                "url": download_url,
-                "referrer": req.media.referrer,
-                "filename": req.output_filename.or(req.media.filename),
-                "cookies": req.media.cookies,
-            });
-
-            if let Err(e) = app_handle.emit("show-new-download-dialog", payload) {
-                return axum::Json(MediaDownloadResponse {
-                    success: false,
-                    download_id: None,
-                    error: Some(format!("Failed to open download dialog: {}", e)),
-                });
             }
-
-            request_attention(app_handle);
-
-            axum::Json(MediaDownloadResponse {
-                success: true,
-                download_id: None,
-                error: None,
-            })
         }
         MediaProtocol::Hls | MediaProtocol::Dash => {
-            // HLS/DASH: download ALL segments and concatenate into one file.
-            // Uses DlmanCore::download_hls_stream which:
-            //   1. Resolves the m3u8 → picks variant → parses segment URLs
-            //   2. Downloads every segment sequentially
-            //   3. Concatenates into a single .ts file
-            //   4. Reports progress via CoreEvent
-
-            let variant_index = req.variant_index;
-            let master_url = req.media.master_url.clone();
-            let filename = req.output_filename.or(req.media.filename);
-            let cookies = req.media.cookies.clone();
-            let referrer = req.media.referrer.clone();
-
-            match state
-                .core
-                .download_hls_stream(
-                    &master_url,
-                    variant_index,
-                    filename,
-                    cookies,
-                    referrer,
-                )
-                .await
-            {
-                Ok(download) => {
-                    request_attention(app_handle);
-
-                    axum::Json(MediaDownloadResponse {
-                        success: true,
-                        download_id: Some(download.id),
-                        error: None,
-                    })
-                }
-                Err(e) => {
-                    tracing::error!("HLS download failed to start: {}", e);
-                    axum::Json(MediaDownloadResponse {
-                        success: false,
-                        download_id: None,
-                        error: Some(format!("HLS download failed: {}", e)),
-                    })
-                }
-            }
+            // For streaming protocols, use the master URL
+            req.media.master_url.clone()
         }
+    };
+
+    // Build a human-readable filename from page title or URL
+    let filename = req.output_filename.clone()
+        .or_else(|| req.media.filename.clone())
+        .or_else(|| {
+            req.media.page_title.as_ref().map(|title| {
+                let sanitized: String = title
+                    .chars()
+                    .map(|c| if "/\\:*?\"<>|".contains(c) { '_' } else { c })
+                    .collect();
+                let sanitized = sanitized.trim().to_string();
+                if !sanitized.is_empty() && sanitized.len() <= 200 {
+                    sanitized
+                } else {
+                    "video".to_string()
+                }
+            })
+        });
+
+    let payload = serde_json::json!({
+        "url": download_url,
+        "referrer": req.media.referrer,
+        "filename": filename,
+        "cookies": req.media.cookies,
+        // Pass media metadata for HLS/DASH so the start command has full context
+        "media_protocol": format!("{:?}", req.media.protocol).to_lowercase(),
+        "media_master_url": req.media.master_url,
+        "media_page_title": req.media.page_title,
+        "variant_index": req.variant_index,
+    });
+
+    if let Err(e) = app_handle.emit("show-new-download-dialog", payload) {
+        return axum::Json(MediaDownloadResponse {
+            success: false,
+            download_id: None,
+            error: Some(format!("Failed to open download dialog: {}", e)),
+        });
     }
+
+    request_attention(app_handle);
+
+    axum::Json(MediaDownloadResponse {
+        success: true,
+        download_id: None,
+        error: None,
+    })
 }
 
 // ============================================================================

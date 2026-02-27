@@ -47,6 +47,13 @@ let pendingDropUrls: string[] = [];
 let pendingClipboardUrls: string[] = [];
 // Store for cookies passed from browser extension
 let pendingCookies: string | undefined = undefined;
+// Store for media metadata from browser extension (HLS/DASH streaming)
+let pendingMediaMeta: {
+  protocol: string;
+  master_url: string;
+  page_title?: string;
+  variant_index?: number;
+} | undefined = undefined;
 
 export function getPendingDropUrls(): string[] {
   const urls = [...pendingDropUrls];
@@ -76,6 +83,16 @@ export function getPendingCookies(): string | undefined {
 
 export function setPendingCookies(cookies: string | undefined) {
   pendingCookies = cookies;
+}
+
+export function getPendingMediaMeta() {
+  const meta = pendingMediaMeta;
+  pendingMediaMeta = undefined;
+  return meta;
+}
+
+export function setPendingMediaMeta(meta: typeof pendingMediaMeta) {
+  pendingMediaMeta = meta;
 }
 
 export function setupEventListeners(): () => void {
@@ -307,7 +324,8 @@ export function setupEventListeners(): () => void {
 
   // Listen for show-new-download-dialog event (from deep links / extension)
   // Payload can be a plain URL string (legacy) or structured object with url, referrer, filename, cookies
-  registerListener(listen<string | { url: string; referrer?: string; filename?: string; cookies?: string } | null>(
+  // For HLS/DASH media, also includes media_protocol, media_master_url, etc.
+  registerListener(listen<string | { url: string; referrer?: string; filename?: string; cookies?: string; media_protocol?: string; media_master_url?: string; media_page_title?: string; variant_index?: number } | null>(
     "show-new-download-dialog",
     (event) => {
       if (isCleanedUp) return;
@@ -319,10 +337,22 @@ export function setupEventListeners(): () => void {
           // Legacy: plain URL string
           setPendingClipboardUrls([payload]);
           setPendingCookies(undefined);
+          setPendingMediaMeta(undefined);
         } else if (typeof payload === 'object' && payload.url) {
           // Structured payload from browser extension
           setPendingClipboardUrls([payload.url]);
           setPendingCookies(payload.cookies);
+          // Store media metadata if this is an HLS/DASH stream
+          if (payload.media_protocol && payload.media_protocol !== 'direct') {
+            setPendingMediaMeta({
+              protocol: payload.media_protocol,
+              master_url: payload.media_master_url || payload.url,
+              page_title: payload.media_page_title,
+              variant_index: payload.variant_index,
+            });
+          } else {
+            setPendingMediaMeta(undefined);
+          }
         }
       }
       

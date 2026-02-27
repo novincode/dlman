@@ -44,7 +44,7 @@ import { useUIStore } from '@/stores/ui';
 import { useQueuesArray, useQueueStore } from '@/stores/queues';
 import { useDownloadStore } from '@/stores/downloads';
 import { useCategoryStore } from '@/stores/categories';
-import { getPendingClipboardUrls, getPendingDropUrls, getPendingCookies } from '@/lib/events';
+import { getPendingClipboardUrls, getPendingDropUrls, getPendingCookies, getPendingMediaMeta } from '@/lib/events';
 import { getDefaultBasePath, getCategoryDownloadPath, detectCategoryFromFilename } from '@/lib/download-path';
 import type { LinkInfo, Download as DownloadType } from '@/types';
 
@@ -91,6 +91,13 @@ export function NewDownloadDialog() {
   const [probeTrigger, setProbeTrigger] = useState(0);
   // Browser cookies passed from extension for session-based auth
   const [browserCookies, setBrowserCookies] = useState<string | undefined>(undefined);
+  // Media metadata for HLS/DASH streaming downloads (from browser extension)
+  const [mediaMeta, setMediaMeta] = useState<{
+    protocol: string;
+    master_url: string;
+    page_title?: string;
+    variant_index?: number;
+  } | undefined>(undefined);
 
   // Reset state and check for pending URLs when dialog opens
   useEffect(() => {
@@ -103,6 +110,10 @@ export function NewDownloadDialog() {
       // Check for pending cookies from browser extension
       const cookies = getPendingCookies();
       setBrowserCookies(cookies);
+      
+      // Check for media metadata (HLS/DASH streaming)
+      const meta = getPendingMediaMeta();
+      setMediaMeta(meta);
       
       if (pendingUrls.length > 0) {
         setUrl(pendingUrls[0]);
@@ -338,21 +349,35 @@ export function NewDownloadDialog() {
     // We just need to swap our temp ID for the real one
     if (isTauri()) {
       try {
-        const probedInfo = (filenameToUse || fileSize) ? {
-          filename: filenameToUse || undefined,
-          size: fileSize ?? undefined,
-          final_url: undefined,
-        } : undefined;
+        if (mediaMeta && (mediaMeta.protocol === 'hls' || mediaMeta.protocol === 'dash')) {
+          // HLS/DASH streaming — call the dedicated media download command
+          await invoke<DownloadType>('start_media_download', {
+            master_url: mediaMeta.master_url,
+            protocol: mediaMeta.protocol,
+            variant_index: mediaMeta.variant_index ?? null,
+            filename: filenameToUse || null,
+            page_title: mediaMeta.page_title || null,
+            cookies: browserCookies || null,
+            referrer: url !== mediaMeta.master_url ? url : null,
+          });
+        } else {
+          // Regular download — standard flow
+          const probedInfo = (filenameToUse || fileSize) ? {
+            filename: filenameToUse || undefined,
+            size: fileSize ?? undefined,
+            final_url: undefined,
+          } : undefined;
 
-        await invoke<DownloadType>('add_download', {
-          url,
-          destination,
-          queue_id: queueId,
-          category_id: categoryId || undefined,
-          probed_info: probedInfo,
-          start_later: startLater,
-          cookies: browserCookies || undefined,
-        });
+          await invoke<DownloadType>('add_download', {
+            url,
+            destination,
+            queue_id: queueId,
+            category_id: categoryId || undefined,
+            probed_info: probedInfo,
+            start_later: startLater,
+            cookies: browserCookies || undefined,
+          });
+        }
         
         // Remove our optimistic placeholder - the real download is added via DownloadAdded event
         // which also properly tracks status changes from the backend
@@ -368,7 +393,7 @@ export function NewDownloadDialog() {
         toast.error('Failed to add download', { description: errorMsg });
       }
     }
-  }, [url, destination, queueId, categoryId, filename, customFilename, filenameEdited, fileSize, browserCookies, addDownload, removeDownload, setShowNewDownloadDialog, rememberPathForCategory, updateCategory, selectedCategoryId, setSelectedCategory, setFilter, setSelectedQueue, selectedQueueId]);
+  }, [url, destination, queueId, categoryId, filename, customFilename, filenameEdited, fileSize, browserCookies, mediaMeta, addDownload, removeDownload, setShowNewDownloadDialog, rememberPathForCategory, updateCategory, selectedCategoryId, setSelectedCategory, setFilter, setSelectedQueue, selectedQueueId]);
 
   const formatFileSize = (bytes: number) => {
     if (bytes >= 1024 * 1024 * 1024) {

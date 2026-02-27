@@ -1,66 +1,70 @@
 /**
  * Video Overlay — IDM-style download bar on detected videos.
  *
- * Design: A single compact dark bar at the top-right of the video element,
- * styled like IDM's classic [↓ Download Video ▾ ×] toolbar.
+ * Design: A compact dark toolbar at the top-right of video elements,
+ * styled like IDM's classic [DLMan ↓ Download Video ▾ ×] toolbar.
  *
- * Uses `position: fixed` appended to `<html>`, NOT inside the player's DOM.
- * This prevents video player controls from intercepting clicks or z-index
- * wars inside the player's stacking context. The button tracks the video
- * element's viewport position on scroll/resize via getBoundingClientRect().
+ * ISOLATION: Each overlay lives inside its own Shadow DOM host element,
+ * so host-page CSS (Pornhub, YouTube, etc.) cannot interfere with styling.
+ *
+ * Uses `position: fixed` via a host element on `<html>`, NOT inside the
+ * player's DOM. Tracks position via getBoundingClientRect() on scroll/resize.
  */
 
 import type { DetectedMedia, MediaVariant, MediaDownloadRequest } from './media-types';
 
-const P = 'dlman-vo';
 const OVERLAY_ATTR = 'data-dlman-overlay-id';
 const Z = 2147483647;
 
 const dismissed = new Set<string>();
-let stylesReady = false;
 
 // ============================================================================
-// Styles (injected once)
+// Shadow DOM styles (injected per shadow root — fully isolated)
 // ============================================================================
 
-function ensureStyles(): void {
-  if (stylesReady) return;
-  stylesReady = true;
-
-  const s = document.createElement('style');
-  s.textContent = `
-.${P}{position:fixed;z-index:${Z};display:flex;align-items:stretch;height:28px;border-radius:3px;overflow:visible;opacity:0;transform:translateY(-4px);transition:opacity .2s ease,transform .2s ease;pointer-events:auto;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;box-shadow:0 2px 8px rgba(0,0,0,.5)}
-.${P}.show{opacity:.92;transform:translateY(0)}
-.${P}:hover{opacity:1}
-.${P}.hide{display:none}
-.${P}-main{display:flex;align-items:center;gap:5px;padding:0 8px;background:#1e1e1e;color:#e0e0e0;font-size:11px;font-weight:600;border:1px solid #383838;border-right:none;border-radius:3px 0 0 3px;cursor:pointer;white-space:nowrap;line-height:1;transition:background .12s}
-.${P}-main:hover{background:#2a5cdb}
-.${P}-main.solo{border-radius:3px;border-right:1px solid #383838}
-.${P}-ico{width:13px;height:13px;flex-shrink:0;color:#5b9cf6}
-.${P}-main:hover .${P}-ico{color:#fff}
-.${P}-qbtn{display:flex;align-items:center;padding:0 5px;background:#1e1e1e;color:#999;border:1px solid #383838;border-left:1px solid #2a2a2a;border-right:none;cursor:pointer;transition:background .12s,color .12s}
-.${P}-qbtn:hover{background:#2a5cdb;color:#fff}
-.${P}-x{display:flex;align-items:center;justify-content:center;width:24px;background:#1e1e1e;color:#777;border:1px solid #383838;border-left:1px solid #2a2a2a;border-radius:0 3px 3px 0;cursor:pointer;font-size:13px;line-height:1;transition:background .12s,color .12s}
-.${P}-x:hover{background:#c0392b;color:#fff}
-.${P}-x.solo{border-radius:3px;border-left:1px solid #383838}
-.${P}-dd{position:absolute;top:calc(100% + 3px);right:0;min-width:190px;background:#1e1e1e;border:1px solid #383838;border-radius:4px;box-shadow:0 6px 24px rgba(0,0,0,.6);padding:3px 0;opacity:0;transform:translateY(-3px);transition:opacity .15s,transform .15s;pointer-events:none}
-.${P}-dd.open{opacity:1;transform:translateY(0);pointer-events:auto}
-.${P}-dd-hdr{padding:5px 9px 3px;font-size:9.5px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.05em}
-.${P}-dd-item{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:5px 9px;font-size:11px;color:#ccc;cursor:pointer;transition:background .1s}
-.${P}-dd-item:hover{background:#2a5cdb;color:#fff}
-.${P}-dd-lbl{font-weight:600}
-.${P}-dd-meta{font-size:9.5px;color:#666}
-.${P}-dd-item:hover .${P}-dd-meta{color:rgba(255,255,255,.7)}
+function shadowCSS(): string {
+  return `
+:host{all:initial;position:fixed;z-index:${Z};display:block;pointer-events:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+.bar{display:flex;align-items:stretch;height:30px;border-radius:4px;overflow:visible;opacity:0;transform:translateY(-4px);transition:opacity .2s ease,transform .2s ease;pointer-events:auto;box-shadow:0 2px 10px rgba(0,0,0,.55);border:1px solid #444}
+.bar.show{opacity:.92;transform:translateY(0)}
+.bar:hover{opacity:1}
+.bar.hide{display:none}
+.brand{display:flex;align-items:center;gap:4px;padding:0 7px 0 6px;background:#1a1a1a;border-right:1px solid #333;border-radius:4px 0 0 4px;pointer-events:none;user-select:none}
+.brand-icon{width:16px;height:16px;flex-shrink:0}
+.brand-text{font-size:10px;font-weight:700;color:#5b9cf6;letter-spacing:.3px;text-transform:uppercase}
+.main{display:flex;align-items:center;gap:5px;padding:0 9px;background:#1e1e1e;color:#e0e0e0;font-size:11.5px;font-weight:600;border:none;cursor:pointer;white-space:nowrap;line-height:1;transition:background .12s}
+.main:hover{background:#2a5cdb}
+.main.solo{border-radius:0 4px 4px 0}
+.ico{width:14px;height:14px;flex-shrink:0;color:#5b9cf6}
+.main:hover .ico{color:#fff}
+.qbtn{display:flex;align-items:center;padding:0 5px;background:#1e1e1e;color:#999;border:none;border-left:1px solid #333;cursor:pointer;transition:background .12s,color .12s}
+.qbtn:hover{background:#2a5cdb;color:#fff}
+.x{display:flex;align-items:center;justify-content:center;width:26px;background:#1e1e1e;color:#777;border:none;border-left:1px solid #333;border-radius:0 4px 4px 0;cursor:pointer;font-size:14px;line-height:1;transition:background .12s,color .12s}
+.x:hover{background:#c0392b;color:#fff}
+.x.solo{border-radius:0 4px 4px 0}
+.dd{position:absolute;top:calc(100% + 4px);right:0;min-width:200px;background:#1a1a1a;border:1px solid #444;border-radius:5px;box-shadow:0 8px 28px rgba(0,0,0,.65);padding:4px 0;opacity:0;transform:translateY(-3px);transition:opacity .15s,transform .15s;pointer-events:none}
+.dd.open{opacity:1;transform:translateY(0);pointer-events:auto}
+.dd-hdr{padding:6px 10px 3px;font-size:9.5px;font-weight:700;color:#666;text-transform:uppercase;letter-spacing:.06em}
+.dd-item{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 10px;font-size:11.5px;color:#ccc;cursor:pointer;transition:background .1s}
+.dd-item:hover{background:#2a5cdb;color:#fff}
+.dd-lbl{font-weight:600}
+.dd-meta{font-size:9.5px;color:#666}
+.dd-item:hover .dd-meta{color:rgba(255,255,255,.7)}
 `;
-  document.documentElement.appendChild(s);
 }
 
 // ============================================================================
 // SVG Icons
 // ============================================================================
 
+/** DLMan brand icon — blue download arrow matching extension icon */
+function icoBrand(): string {
+  return `<svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
+}
+
 function icoDownload(): string {
-  return `<svg class="${P}-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
+  return `<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
 }
 
 function icoChevron(): string {
@@ -93,7 +97,9 @@ export type OnDownloadRequest = (request: MediaDownloadRequest) => void;
 interface Overlay {
   media: DetectedMedia;
   video: HTMLVideoElement | null;
-  wrap: HTMLElement;
+  host: HTMLElement;       // <dlman-overlay> custom element host
+  shadow: ShadowRoot;
+  bar: HTMLElement;
   dropdown: HTMLElement | null;
   rafId: number | null;
 }
@@ -106,7 +112,6 @@ export class VideoOverlayManager {
 
   constructor(onDownload: OnDownloadRequest) {
     this.onDownload = onDownload;
-    ensureStyles();
 
     this.scrollHandler = () => this.repositionAll();
     this.resizeHandler = () => this.repositionAll();
@@ -129,37 +134,53 @@ export class VideoOverlayManager {
 
     const hasMulti = variants && variants.length > 1;
 
-    // Build: [↓ Download Video] [▾] [×]
-    const wrap = document.createElement('div');
-    wrap.className = P;
+    // Shadow DOM host — isolates all overlay CSS from host page
+    const host = document.createElement('dlman-overlay');
+    host.style.cssText = `all:initial;position:fixed;z-index:${Z};display:block;pointer-events:none`;
+    const shadow = host.attachShadow({ mode: 'closed' });
+
+    // Inject scoped styles
+    const style = document.createElement('style');
+    style.textContent = shadowCSS();
+    shadow.appendChild(style);
+
+    // Build: [DLMan icon | ↓ Download Video | ▾ | ×]
+    const bar = document.createElement('div');
+    bar.className = 'bar';
+
+    // Brand section
+    const brand = document.createElement('div');
+    brand.className = 'brand';
+    brand.innerHTML = `${icoBrand()}<span class="brand-text">DLMan</span>`;
+    bar.appendChild(brand);
 
     // Main download button
     const main = document.createElement('button');
-    main.className = `${P}-main` + (hasMulti ? '' : ' solo');
+    main.className = 'main' + (hasMulti ? '' : ' solo');
     main.innerHTML = `${icoDownload()}<span>Download Video</span>`;
     main.addEventListener('click', (e) => {
       e.stopPropagation();
       e.preventDefault();
       this.doDownload(media, variants, hasMulti ? undefined : 0);
     });
-    wrap.appendChild(main);
+    bar.appendChild(main);
 
     // Quality chevron (only if multiple variants)
     if (hasMulti) {
       const qbtn = document.createElement('button');
-      qbtn.className = `${P}-qbtn`;
+      qbtn.className = 'qbtn';
       qbtn.innerHTML = icoChevron();
       qbtn.addEventListener('click', (e) => {
         e.stopPropagation();
         e.preventDefault();
-        this.toggleDropdown(media.id, wrap, variants!);
+        this.toggleDropdown(media.id, bar, variants!);
       });
-      wrap.appendChild(qbtn);
+      bar.appendChild(qbtn);
     }
 
     // Close button
     const x = document.createElement('button');
-    x.className = `${P}-x` + (hasMulti ? '' : ' solo');
+    x.className = 'x' + (hasMulti ? '' : ' solo');
     x.textContent = '×';
     x.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -167,19 +188,23 @@ export class VideoOverlayManager {
       dismissed.add(media.id);
       this.removeOverlay(media.id);
     });
-    wrap.appendChild(x);
+    bar.appendChild(x);
+
+    shadow.appendChild(bar);
 
     const overlay: Overlay = {
       media: variants ? { ...media, variants } : media,
       video,
-      wrap,
+      host,
+      shadow,
+      bar,
       dropdown: null,
       rafId: null,
     };
 
-    this.positionFixed(wrap, video);
-    document.documentElement.appendChild(wrap);
-    requestAnimationFrame(() => wrap.classList.add('show'));
+    this.positionFixed(host, video);
+    document.documentElement.appendChild(host);
+    requestAnimationFrame(() => bar.classList.add('show'));
 
     this.overlays.set(media.id, overlay);
     video.setAttribute(OVERLAY_ATTR, media.id);
@@ -207,26 +232,26 @@ export class VideoOverlayManager {
       if (!o.video) continue;
       if (o.rafId) cancelAnimationFrame(o.rafId);
       o.rafId = requestAnimationFrame(() => {
-        this.positionFixed(o.wrap, o.video!);
+        this.positionFixed(o.host, o.video!);
         o.rafId = null;
       });
     }
   }
 
-  private positionFixed(wrap: HTMLElement, video: HTMLVideoElement): void {
+  private positionFixed(host: HTMLElement, video: HTMLVideoElement): void {
     const vr = video.getBoundingClientRect();
     if (vr.bottom < 0 || vr.top > window.innerHeight || vr.right < 0 || vr.left > window.innerWidth) {
-      wrap.classList.add('hide');
+      host.style.display = 'none';
       return;
     }
-    wrap.classList.remove('hide');
+    host.style.display = 'block';
 
     // Top-right of the video, 8px inset
     const top = vr.top + 8;
-    const left = vr.right - 8;
-    wrap.style.top = `${top}px`;
-    wrap.style.left = `${left}px`;
-    wrap.style.transform = `translateX(-100%)` + (wrap.classList.contains('show') ? '' : ' translateY(-4px)');
+    const right = window.innerWidth - vr.right + 8;
+    host.style.top = `${top}px`;
+    host.style.right = `${right}px`;
+    host.style.left = 'auto';
   }
 
   // ---------- Dropdown ----------
@@ -237,23 +262,23 @@ export class VideoOverlayManager {
     if (o.dropdown) { this.closeDropdown(o); return; }
 
     const dd = document.createElement('div');
-    dd.className = `${P}-dd`;
+    dd.className = 'dd';
 
     const hdr = document.createElement('div');
-    hdr.className = `${P}-dd-hdr`;
+    hdr.className = 'dd-hdr';
     hdr.textContent = 'Quality';
     dd.appendChild(hdr);
 
     variants.forEach((v, i) => {
       const item = document.createElement('div');
-      item.className = `${P}-dd-item`;
+      item.className = 'dd-item';
 
       const lbl = document.createElement('span');
-      lbl.className = `${P}-dd-lbl`;
+      lbl.className = 'dd-lbl';
       lbl.textContent = v.label;
 
       const meta = document.createElement('span');
-      meta.className = `${P}-dd-meta`;
+      meta.className = 'dd-meta';
       const parts: string[] = [];
       if (v.codecs) parts.push(v.codecs.split(',')[0]);
       if (v.estimated_size) parts.push(fmtSize(v.estimated_size));
@@ -275,8 +300,11 @@ export class VideoOverlayManager {
     o.dropdown = dd;
     requestAnimationFrame(() => dd.classList.add('open'));
 
+    // Close dropdown on outside click (listen on document, not shadow)
     const outside = (e: MouseEvent) => {
-      if (!anchor.contains(e.target as Node)) {
+      // Check if click is inside our shadow root
+      const path = e.composedPath();
+      if (!path.includes(o.host)) {
         this.closeDropdown(o);
         document.removeEventListener('click', outside, true);
       }
@@ -333,8 +361,7 @@ export class VideoOverlayManager {
   // ---------- Cleanup ----------
 
   private cleanup(o: Overlay): void {
-    o.wrap.remove();
-    o.dropdown?.remove();
+    o.host.remove();
     if (o.rafId) cancelAnimationFrame(o.rafId);
     if (o.video) o.video.removeAttribute(OVERLAY_ATTR);
   }

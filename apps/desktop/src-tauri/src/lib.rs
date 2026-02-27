@@ -116,6 +116,7 @@ pub fn run() {
             commands::update_download,
             commands::get_downloads,
             commands::probe_links,
+            commands::start_media_download,
             // Queue commands
             commands::get_queues,
             commands::create_queue,

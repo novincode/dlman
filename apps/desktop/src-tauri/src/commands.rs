@@ -178,6 +178,40 @@ pub async fn cancel_download(state: State<'_, AppState>, id: String) -> Result<(
         .await
 }
 
+/// Start an HLS/DASH media download (called after user approves in dialog).
+/// This is the second half of the unified pipeline:
+/// 1. Extension sends media → server shows dialog (handle_media_download)
+/// 2. User clicks Download → frontend calls this command
+/// 3. This calls core.download_hls_stream() to begin segment downloading
+#[tauri::command(rename_all = "snake_case")]
+pub async fn start_media_download(
+    state: State<'_, AppState>,
+    master_url: String,
+    protocol: String,
+    variant_index: Option<usize>,
+    filename: Option<String>,
+    page_title: Option<String>,
+    cookies: Option<String>,
+    referrer: Option<String>,
+) -> Result<dlman_types::Download, String> {
+    if protocol != "hls" && protocol != "dash" {
+        return Err(format!("Unsupported media protocol: {}", protocol));
+    }
+    state
+        .with_core_async(|core| async move {
+            core.download_hls_stream(
+                &master_url,
+                variant_index,
+                filename,
+                page_title,
+                cookies,
+                referrer,
+            )
+            .await
+        })
+        .await
+}
+
 #[tauri::command(rename_all = "snake_case")]
 pub async fn delete_download(
     state: State<'_, AppState>,

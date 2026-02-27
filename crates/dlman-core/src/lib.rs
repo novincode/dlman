@@ -27,8 +27,10 @@ pub use scheduler::*;
 pub use storage::*;
 
 use dlman_types::{CoreEvent, Download, DownloadStatus, LinkInfo, Queue, QueueOptions, Settings, SiteCredential};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::{broadcast, RwLock};
 use tracing::info;
 use uuid::Uuid;
@@ -48,6 +50,9 @@ pub struct DlmanCore {
     settings: Arc<RwLock<Settings>>,
     /// Event broadcaster
     event_tx: broadcast::Sender<CoreEvent>,
+    /// Cancel tokens for HLS/DASH streaming downloads (keyed by download UUID).
+    /// When set to true, the segment download loop will stop.
+    hls_cancel_tokens: Arc<RwLock<HashMap<Uuid, Arc<AtomicBool>>>>,
 }
 
 impl DlmanCore {
@@ -84,6 +89,7 @@ impl DlmanCore {
             storage: Arc::new(storage),
             settings: Arc::new(RwLock::new(settings)),
             event_tx,
+            hls_cancel_tokens: Arc::new(RwLock::new(HashMap::new())),
         };
         
         // Start the scheduler background task
@@ -321,9 +327,22 @@ impl DlmanCore {
         self.download_manager.db().load_all_downloads().await
     }
     
-    /// Pause a download
+    /// Pause a download (works for both regular and HLS/DASH downloads)
     pub async fn pause_download(&self, id: Uuid) -> Result<(), DlmanError> {
-        // Note: manager.pause() already emits DownloadStatusChanged event
+        // Check if this is an HLS streaming download — signal its cancel token
+        if let Some(token) = self.hls_cancel_tokens.read().await.get(&id) {
+            token.store(true, Ordering::Release);
+            info!("Signaled cancel for HLS download {}", id);
+            // Update DB status
+            self.download_manager.db().update_download_status(id, DownloadStatus::Paused, None).await?;
+            self.emit(CoreEvent::DownloadStatusChanged {
+                id,
+                status: DownloadStatus::Paused,
+                error: None,
+            });
+            return Ok(());
+        }
+        // Regular download — delegate to manager
         self.download_manager.pause(id).await?;
         Ok(())
     }
@@ -382,9 +401,21 @@ impl DlmanCore {
         Ok(())
     }
     
-    /// Cancel a download
+    /// Cancel a download (works for both regular and HLS/DASH downloads)
     pub async fn cancel_download(&self, id: Uuid) -> Result<(), DlmanError> {
-        // Note: manager.cancel() already emits DownloadStatusChanged event
+        // Check if this is an HLS streaming download — signal its cancel token
+        if let Some(token) = self.hls_cancel_tokens.write().await.remove(&id) {
+            token.store(true, Ordering::Release);
+            info!("Cancelled HLS download {}", id);
+            self.download_manager.db().update_download_status(id, DownloadStatus::Cancelled, None).await?;
+            self.emit(CoreEvent::DownloadStatusChanged {
+                id,
+                status: DownloadStatus::Cancelled,
+                error: None,
+            });
+            return Ok(());
+        }
+        // Regular download — delegate to manager
         self.download_manager.cancel(id).await?;
         Ok(())
     }
@@ -738,19 +769,20 @@ impl DlmanCore {
     /// appends the bytes to a single output file, and reports progress via
     /// `CoreEvent::DownloadProgress`.
     ///
-    /// Returns the `Download` record (status = Completed once finished).
+    /// Respects cancel tokens — pause/cancel from the UI will stop the loop.
+    ///
+    /// Returns the `Download` record (status = Downloading, completes async).
     pub async fn download_hls_stream(
         &self,
         master_url: &str,
         variant_index: Option<usize>,
         filename: Option<String>,
+        page_title: Option<String>,
         cookies: Option<String>,
         referrer: Option<String>,
     ) -> Result<Download, DlmanError> {
         use crate::media::MediaResolver;
         use dlman_types::MediaProtocol;
-        use std::time::Instant;
-        use tokio::io::AsyncWriteExt;
 
         info!("Starting HLS stream download: {}", master_url);
 
@@ -758,7 +790,7 @@ impl DlmanCore {
         let detected = dlman_types::DetectedMedia {
             id: Uuid::new_v4().to_string(),
             page_url: referrer.clone().unwrap_or_default(),
-            page_title: None,
+            page_title: page_title.clone(),
             master_url: master_url.to_string(),
             protocol: MediaProtocol::Hls,
             variants: vec![],
@@ -808,9 +840,20 @@ impl DlmanCore {
 
         info!("HLS playlist has {} segments", segment_urls.len());
 
-        // 4. Determine output filename
+        // 4. Determine output filename — prefer page_title for human-readable names
         let out_filename = filename.unwrap_or_else(|| {
-            // Try to derive from the master URL, fall back to generic name
+            if let Some(ref title) = page_title {
+                // Sanitize page title: remove illegal filename characters
+                let sanitized: String = title
+                    .chars()
+                    .map(|c| if "/\\:*?\"<>|".contains(c) { '_' } else { c })
+                    .collect();
+                let sanitized = sanitized.trim().to_string();
+                if !sanitized.is_empty() && sanitized.len() <= 200 {
+                    return format!("{}.ts", sanitized);
+                }
+            }
+            // Fallback: derive from URL
             let name = url::Url::parse(master_url)
                 .ok()
                 .and_then(|u| {
@@ -818,7 +861,6 @@ impl DlmanCore {
                         .and_then(|s| s.last().map(|s| s.to_string()))
                 })
                 .unwrap_or_else(|| "video".to_string());
-            // Replace m3u8 extension with ts
             if name.ends_with(".m3u8") {
                 name.replace(".m3u8", ".ts")
             } else if name.contains('.') {
@@ -851,7 +893,6 @@ impl DlmanCore {
         download.filename = unique_filename.clone();
         download.status = DownloadStatus::Downloading;
         download.cookies = cookies.clone();
-        // We don't know total size until all segments are fetched, set to None initially
         download.size = None;
         download.downloaded = 0;
 
@@ -871,7 +912,11 @@ impl DlmanCore {
         let download_id = download.id;
         let out_path = destination.join(&unique_filename);
 
-        // 7. Download all segments sequentially and append to output file
+        // 7. Create a cancel token and register it so pause/cancel can stop this task
+        let cancel_token = Arc::new(AtomicBool::new(false));
+        self.hls_cancel_tokens.write().await.insert(download_id, cancel_token.clone());
+
+        // 8. Spawn the segment download task
         let core = self.clone();
         let cookies_clone = cookies.clone();
         let referrer_clone = referrer.clone();
@@ -885,8 +930,12 @@ impl DlmanCore {
                 &out_path,
                 cookies_clone.as_deref(),
                 referrer_clone.as_deref(),
+                &cancel_token,
             )
             .await;
+
+            // Remove the cancel token — task is done
+            core.hls_cancel_tokens.write().await.remove(&download_id);
 
             match result {
                 Ok(total_bytes) => {
@@ -907,18 +956,16 @@ impl DlmanCore {
                         .to_string();
 
                     // Update download record as completed
-                    let mut dl = Download::new(String::new(), PathBuf::new(), Uuid::nil());
-                    if let Ok(Some(existing)) =
+                    if let Ok(Some(mut dl)) =
                         core.download_manager.db().load_download(download_id).await
                     {
-                        dl = existing;
+                        dl.filename = final_filename;
+                        dl.size = Some(total_bytes);
+                        dl.downloaded = total_bytes;
+                        dl.status = DownloadStatus::Completed;
+                        dl.completed_at = Some(chrono::Utc::now());
+                        let _ = core.download_manager.db().upsert_download(&dl).await;
                     }
-                    dl.filename = final_filename;
-                    dl.size = Some(total_bytes);
-                    dl.downloaded = total_bytes;
-                    dl.status = DownloadStatus::Completed;
-                    dl.completed_at = Some(chrono::Utc::now());
-                    let _ = core.download_manager.db().upsert_download(&dl).await;
 
                     core.emit(CoreEvent::DownloadProgress {
                         id: download_id,
@@ -934,21 +981,27 @@ impl DlmanCore {
                     });
                 }
                 Err(e) => {
-                    tracing::error!("HLS download failed: {}", e);
-                    let _ = core
-                        .download_manager
-                        .db()
-                        .update_download_status(
-                            download_id,
-                            DownloadStatus::Failed,
-                            Some(e.to_string()),
-                        )
-                        .await;
-                    core.emit(CoreEvent::DownloadStatusChanged {
-                        id: download_id,
-                        status: DownloadStatus::Failed,
-                        error: Some(e.to_string()),
-                    });
+                    let msg = e.to_string();
+                    // Don't mark as failed if it was a user cancellation
+                    if msg.contains("cancelled") || msg.contains("paused") {
+                        info!("HLS download stopped by user: {}", msg);
+                    } else {
+                        tracing::error!("HLS download failed: {}", msg);
+                        let _ = core
+                            .download_manager
+                            .db()
+                            .update_download_status(
+                                download_id,
+                                DownloadStatus::Failed,
+                                Some(msg.clone()),
+                            )
+                            .await;
+                        core.emit(CoreEvent::DownloadStatusChanged {
+                            id: download_id,
+                            status: DownloadStatus::Failed,
+                            error: Some(msg),
+                        });
+                    }
                 }
             }
         });
@@ -957,6 +1010,7 @@ impl DlmanCore {
     }
 
     /// Internal: download every HLS segment and write them to a single file.
+    /// Checks `cancel_token` between each segment so pause/cancel is responsive.
     async fn download_hls_segments(
         core: &DlmanCore,
         download_id: Uuid,
@@ -965,6 +1019,7 @@ impl DlmanCore {
         out_path: &std::path::Path,
         cookies: Option<&str>,
         referrer: Option<&str>,
+        cancel_token: &AtomicBool,
     ) -> Result<u64, DlmanError> {
         use std::time::Instant;
         use tokio::io::AsyncWriteExt;
@@ -981,6 +1036,14 @@ impl DlmanCore {
         let start = Instant::now();
 
         for (i, seg_url) in segment_urls.iter().enumerate() {
+            // Check cancel/pause token before each segment
+            if cancel_token.load(Ordering::Acquire) {
+                file.flush().await?;
+                return Err(DlmanError::InvalidOperation(
+                    "Download cancelled/paused by user".to_string(),
+                ));
+            }
+
             let mut request = client.get(seg_url);
             if let Some(c) = cookies {
                 request = request.header("Cookie", c);
