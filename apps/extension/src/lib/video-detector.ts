@@ -26,6 +26,9 @@ const DIRECT_AUDIO_EXT = /\.(mp3|m4a|aac|ogg|opus|flac|wav)(\?|#|$)/i;
 const HLS_PATTERN = /\.m3u8(\?|#|$)/i;
 const DASH_PATTERN = /\.mpd(\?|#|$)/i;
 
+/** Ad / tracking domains — never treat these as real media even if they match */
+const AD_DOMAINS = /doubleclick\.net|googlesyndication|googleadservices|facebook\.com\/tr|analytics|adserver|adsystem|sabavision\.com|imasdk\.googleapis|moatads|serving-sys\.com/i;
+
 const MEDIA_MIMES: Record<string, MediaProtocol> = {
   'application/vnd.apple.mpegurl': 'hls',
   'application/x-mpegurl': 'hls',
@@ -192,6 +195,8 @@ export class VideoDetector {
    */
   injectStreamUrl(url: string, protocol?: MediaProtocol): void {
     if (this.dead) return;
+    // Skip ad/tracking domains
+    if (AD_DOMAINS.test(url)) return;
 
     // Use provided protocol, or try to classify from URL
     const proto = protocol || classifyUrl(url);
@@ -395,6 +400,8 @@ export class VideoDetector {
     video?: HTMLVideoElement,
   ): void {
     if (this.dead) return;
+    // Skip ad/tracking domains
+    if (AD_DOMAINS.test(url)) return;
 
     let protocol = classifyUrl(url);
     if (!protocol && mimeType) protocol = classifyMime(mimeType);

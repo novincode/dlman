@@ -390,6 +390,10 @@ export default defineContentScript({
     // Initialize
     setupLinkClickHandler();
 
+    // Notify background we're ready — triggers delivery of any
+    // stream URLs caught by webRequest before we loaded.
+    browser.runtime.sendMessage({ type: 'content-script-ready' }).catch(() => {});
+
     // ========================================================================
     // Video Detection & Overlay
     // ========================================================================

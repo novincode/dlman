@@ -456,6 +456,8 @@ export default defineBackground(() => {
   const SKIP_TYPES = new Set(['image', 'stylesheet', 'font', 'beacon', 'csp_report', 'ping']);
   // Already-sent URLs per tab (avoid flooding content script)
   const sentUrls = new Map<number, Set<string>>();
+  // Buffered stream URLs per tab — flushed when content script sends 'content-script-ready'
+  const pendingStreamUrls = new Map<number, Array<{ url: string; protocol?: string }>>();
 
   function urlBase(url: string): string {
     try { const u = new URL(url); return u.origin + u.pathname; } catch { return url; }
@@ -473,14 +475,30 @@ export default defineBackground(() => {
   function notifyContentScript(tabId: number, url: string, protocol?: string): void {
     if (!markSent(tabId, url)) return;
     console.log('[DLMan] Stream detected:', url.substring(0, 120), protocol || '');
-    browser.tabs.sendMessage(tabId, { type: 'stream-detected', url, protocol }).catch(() => {});
+    browser.tabs.sendMessage(tabId, { type: 'stream-detected', url, protocol }).catch(() => {
+      // Content script not ready yet — un-mark and buffer for later delivery
+      const set = sentUrls.get(tabId);
+      if (set) set.delete(urlBase(url));
+      let pending = pendingStreamUrls.get(tabId);
+      if (!pending) { pending = []; pendingStreamUrls.set(tabId, pending); }
+      if (!pending.some(p => urlBase(p.url) === urlBase(url))) {
+        pending.push({ url, protocol });
+      }
+      console.log('[DLMan] Buffered stream for tab', tabId, '(content script not ready)');
+    });
   }
 
   function setupStreamDetection(): void {
-    // Clean up per-tab data when tabs close
-    browser.tabs.onRemoved.addListener((tabId) => { sentUrls.delete(tabId); });
+    // Clean up per-tab data when tabs close or navigate
+    browser.tabs.onRemoved.addListener((tabId) => {
+      sentUrls.delete(tabId);
+      pendingStreamUrls.delete(tabId);
+    });
     browser.tabs.onUpdated.addListener((tabId, info) => {
-      if (info.status === 'loading') sentUrls.delete(tabId);
+      if (info.status === 'loading') {
+        sentUrls.delete(tabId);
+        pendingStreamUrls.delete(tabId);
+      }
     });
 
     // Strategy 1: URL pattern matching (fires before request is made)
@@ -789,6 +807,24 @@ export default defineBackground(() => {
       // ==================================================================
       // Media detection & download (from content script video detector)
       // ==================================================================
+
+      case 'content-script-ready':
+        // Content script just loaded — flush any buffered stream URLs for this tab
+        if (sender.tab?.id != null) {
+          const tabId = sender.tab.id;
+          const pending = pendingStreamUrls.get(tabId);
+          if (pending && pending.length > 0) {
+            console.log('[DLMan] Flushing', pending.length, 'buffered streams for tab', tabId);
+            for (const item of pending) {
+              notifyContentScript(tabId, item.url, item.protocol);
+            }
+            pendingStreamUrls.delete(tabId);
+          }
+          sendResponse({ ok: true });
+        } else {
+          sendResponse({ ok: true });
+        }
+        return true;
 
       case 'media-detected':
         // Content script detected media on a page — log it
