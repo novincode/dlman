@@ -440,6 +440,33 @@ export default defineContentScript({
     detector.start();
 
     // ========================================================================
+    // MAIN-world media hook listener
+    //
+    // The early content script (content-early.ts) injects media-hook.js into
+    // the MAIN world at document_start. That script hooks fetch(), XHR,
+    // URL.createObjectURL(MediaSource), and SourceBuffer — and communicates
+    // back to us here via window.postMessage().
+    // ========================================================================
+
+    window.addEventListener('message', (event) => {
+      if (event.source !== window) return;
+      if (!event.data || event.data.source !== 'dlman-media-hook') return;
+
+      const { type: msgType, url, protocol } = event.data;
+
+      if (msgType === 'media-url-detected' && url) {
+        // The MAIN-world hook detected a media URL via fetch/XHR interception
+        detector.injectStreamUrl(url, protocol);
+      }
+
+      if (msgType === 'mse-blob-created') {
+        // A MediaSource was created — the page uses MSE for video.
+        // The manifest URL will come from fetch/XHR hooks or webRequest.
+        console.log('[DLMan] MSE blob detected — streams will be caught by network hooks');
+      }
+    });
+
+    // ========================================================================
     // Messages from background: stream detection + context menu video lookup
     // ========================================================================
 

@@ -44,5 +44,8 @@ parking_lot = { workspace = true }
 directories = { workspace = true }
 async-trait = "0.1"
 
+# XML parsing (for DASH MPD)
+quick-xml = "0.36"
+
 [dev-dependencies]
 tokio-test = "0.4"

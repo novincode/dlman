@@ -54,6 +54,9 @@ function shadowCSS(): string {
 .dd-lbl{font-weight:600}
 .dd-meta{font-size:9.5px;color:#777}
 .dd-item:hover .dd-meta{color:rgba(255,255,255,.6)}
+.dd-item-all{border-bottom:none}
+.dd-item-all .dd-lbl{color:#60a5fa}
+.dd-item-all:hover{background:rgba(59,130,246,.45)}
 `;
 }
 
@@ -265,6 +268,32 @@ export class VideoOverlayManager {
     hdr.textContent = 'Select Quality';
     dd.appendChild(hdr);
 
+    // "Download All" option — downloads every variant at once
+    if (variants.length > 1) {
+      const allItem = document.createElement('div');
+      allItem.className = 'dd-item dd-item-all';
+      const allLbl = document.createElement('span');
+      allLbl.className = 'dd-lbl';
+      allLbl.textContent = '⬇ Download All';
+      const allMeta = document.createElement('span');
+      allMeta.className = 'dd-meta';
+      allMeta.textContent = `${variants.length} qualities`;
+      allItem.appendChild(allLbl);
+      allItem.appendChild(allMeta);
+      allItem.addEventListener('click', (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        this.doDownloadAll(o.media, variants);
+        this.closeDropdown(o);
+      });
+      dd.appendChild(allItem);
+
+      // Separator
+      const sep = document.createElement('div');
+      sep.style.cssText = 'height:1px;background:rgba(255,255,255,.08);margin:4px 8px';
+      dd.appendChild(sep);
+    }
+
     variants.forEach((v, i) => {
       const item = document.createElement('div');
       item.className = 'dd-item';
@@ -324,6 +353,16 @@ export class VideoOverlayManager {
 
   private doDownload(media: DetectedMedia, variants?: MediaVariant[], idx?: number): void {
     this.onDownload({ media: variants ? { ...media, variants } : media, variant_index: idx });
+  }
+
+  /** Download every variant — fires a separate request for each quality */
+  private doDownloadAll(media: DetectedMedia, variants: MediaVariant[]): void {
+    for (let i = 0; i < variants.length; i++) {
+      this.onDownload({
+        media: { ...media, variants },
+        variant_index: i,
+      });
+    }
   }
 
   // ---------- Find Video ----------

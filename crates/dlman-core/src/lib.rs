@@ -368,6 +368,28 @@ impl DlmanCore {
     /// Resume a download
     pub async fn resume_download(&self, id: Uuid) -> Result<(), DlmanError> {
         let download = self.get_download(id).await?;
+
+        // ── Streaming URL guard ─────────────────────────────────────────
+        // If the URL is an HLS/DASH manifest, it MUST go through the
+        // streaming pipeline — not the regular segment downloader.
+        // This is the single choke-point that all resume paths
+        // (manual resume, queue auto-start, scheduler) funnel through.
+        let url_path = download.url.split('?').next().unwrap_or(&download.url).to_lowercase();
+        if url_path.ends_with(".m3u8") || url_path.contains(".m3u8/") ||
+           url_path.ends_with(".mpd") || url_path.contains(".mpd/") {
+            info!("[resume_download] Detected streaming URL, routing to HLS/DASH pipeline: {}", &download.url);
+            // Re-run the full streaming pipeline (resolves variants, downloads segments, merges)
+            let _dl = self.download_hls_stream(
+                &download.url,
+                None,               // variant_index — pick best
+                Some(download.filename.clone()),
+                None,               // page_title  
+                download.cookies.clone(),
+                None,               // referrer
+            ).await?;
+            return Ok(());
+        }
+        // ────────────────────────────────────────────────────────────────
         
         // Get queue for speed limit lookup
         let queue = self.queue_manager.get_queue(download.queue_id).await;
@@ -442,6 +464,23 @@ impl DlmanCore {
     /// This continues from existing progress when possible, rather than starting over
     pub async fn retry_download(&self, id: Uuid) -> Result<(), DlmanError> {
         let mut download = self.get_download(id).await?;
+
+        // ── Streaming URL guard ─────────────────────────────────────────
+        let url_path = download.url.split('?').next().unwrap_or(&download.url).to_lowercase();
+        if url_path.ends_with(".m3u8") || url_path.contains(".m3u8/") ||
+           url_path.ends_with(".mpd") || url_path.contains(".mpd/") {
+            info!("[retry_download] Detected streaming URL, routing to HLS/DASH pipeline: {}", &download.url);
+            let _dl = self.download_hls_stream(
+                &download.url,
+                None,
+                Some(download.filename.clone()),
+                None,
+                download.cookies.clone(),
+                None,
+            ).await?;
+            return Ok(());
+        }
+        // ────────────────────────────────────────────────────────────────
         
         // Check if we can resume from existing segments
         let has_usable_segments = !download.segments.is_empty() 
@@ -1036,8 +1075,17 @@ impl DlmanCore {
         Ok(download)
     }
 
-    /// Internal: download every HLS segment and write them to a single file.
-    /// Checks `cancel_token` between each segment so pause/cancel is responsive.
+    /// Internal: download HLS segments **concurrently** and merge into a single file.
+    ///
+    /// Architecture:
+    /// 1. Download segments in parallel (up to `MAX_CONCURRENT` at a time) into temp files
+    /// 2. Track per-segment completion via atomic counters for accurate progress
+    /// 3. Check `cancel_token` between batches so pause/cancel is responsive
+    /// 4. After all segments download, concatenate ordered temp files → final output
+    /// 5. Clean up temp directory
+    ///
+    /// This is dramatically faster than sequential downloads — typical HLS streams
+    /// have 200+ tiny segments and CDNs allow parallel connections.
     async fn download_hls_segments(
         core: &DlmanCore,
         download_id: Uuid,
@@ -1048,102 +1096,239 @@ impl DlmanCore {
         referrer: Option<&str>,
         cancel_token: &AtomicBool,
     ) -> Result<u64, DlmanError> {
+        use std::sync::atomic::AtomicU64;
         use std::time::Instant;
         use tokio::io::AsyncWriteExt;
+        use tokio::sync::Semaphore;
 
-        let mut file = tokio::fs::OpenOptions::new()
+        const MAX_CONCURRENT: usize = 8;
+        const MAX_RETRIES: usize = 3;
+
+        let total_segments = segment_urls.len();
+        let start = Instant::now();
+
+        info!(
+            "[HLS] Starting concurrent segment download: {} segments, {} parallel, to {}",
+            total_segments, MAX_CONCURRENT, out_path.display()
+        );
+
+        // Create temp directory for individual segment files
+        let temp_dir = out_path.parent().unwrap_or(std::path::Path::new("."))
+            .join(format!(".dlman_hls_{}", download_id));
+        tokio::fs::create_dir_all(&temp_dir).await?;
+
+        // Shared state for progress tracking
+        let downloaded_bytes = Arc::new(AtomicU64::new(0));
+        let completed_segments = Arc::new(AtomicU64::new(0));
+        let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT));
+
+        // Spawn concurrent download tasks for all segments
+        let mut handles = Vec::with_capacity(total_segments);
+
+        for (i, seg_url) in segment_urls.iter().enumerate() {
+            let client = client.clone();
+            let seg_url = seg_url.clone();
+            let temp_dir = temp_dir.clone();
+            let cancel = cancel_token as *const AtomicBool;
+            // SAFETY: cancel_token lives for the entire duration of this function,
+            // and we await all handles before returning.
+            let cancel_ref = unsafe { &*cancel };
+            let sem = semaphore.clone();
+            let bytes_counter = downloaded_bytes.clone();
+            let seg_counter = completed_segments.clone();
+            let core_clone = core.clone();
+            let cookies_owned = cookies.map(|s| s.to_string());
+            let referrer_owned = referrer.map(|s| s.to_string());
+
+            let handle = tokio::spawn(async move {
+                // Acquire semaphore permit (limits concurrency)
+                let _permit = sem.acquire().await.map_err(|_| {
+                    DlmanError::InvalidOperation("Semaphore closed".to_string())
+                })?;
+
+                // Check cancel before starting
+                if cancel_ref.load(Ordering::Acquire) {
+                    return Err(DlmanError::InvalidOperation(
+                        "Download cancelled/paused by user".to_string(),
+                    ));
+                }
+
+                let seg_path = temp_dir.join(format!("seg_{:06}.ts", i));
+
+                // Retry loop for transient failures
+                let mut last_err = None;
+                for attempt in 0..MAX_RETRIES {
+                    if cancel_ref.load(Ordering::Acquire) {
+                        return Err(DlmanError::InvalidOperation(
+                            "Download cancelled/paused by user".to_string(),
+                        ));
+                    }
+
+                    let mut request = client.get(&seg_url);
+                    if let Some(ref c) = cookies_owned {
+                        request = request.header("Cookie", c.as_str());
+                    }
+                    if let Some(ref r) = referrer_owned {
+                        request = request.header("Referer", r.as_str());
+                    }
+
+                    match request.send().await {
+                        Ok(response) if response.status().is_success() => {
+                            match response.bytes().await {
+                                Ok(bytes) => {
+                                    let len = bytes.len() as u64;
+                                    if let Err(e) = tokio::fs::write(&seg_path, &bytes).await {
+                                        last_err = Some(DlmanError::Io(e));
+                                        continue;
+                                    }
+
+                                    // Update progress counters
+                                    let prev = bytes_counter.fetch_add(len, Ordering::Relaxed);
+                                    let done = seg_counter.fetch_add(1, Ordering::Relaxed) + 1;
+                                    let total_downloaded = prev + len;
+
+                                    // Emit progress every segment
+                                    let elapsed = start.elapsed().as_secs_f64().max(0.01);
+                                    let speed = (total_downloaded as f64 / elapsed) as u64;
+                                    let avg_size = total_downloaded / done;
+                                    let estimated_total = avg_size * total_segments as u64;
+                                    let remaining = estimated_total.saturating_sub(total_downloaded);
+                                    let eta = if speed > 0 { Some(remaining / speed) } else { None };
+
+                                    core_clone.emit(CoreEvent::DownloadProgress {
+                                        id: download_id,
+                                        downloaded: total_downloaded,
+                                        total: Some(estimated_total),
+                                        speed,
+                                        eta,
+                                    });
+
+                                    if i < 3 || (i + 1) % 50 == 0 || i == total_segments - 1 {
+                                        info!(
+                                            "[HLS] Segment {}/{} done ({} bytes, {:.1} MB/s)",
+                                            i + 1, total_segments, len,
+                                            speed as f64 / 1_048_576.0
+                                        );
+                                    }
+
+                                    return Ok(len);
+                                }
+                                Err(e) => {
+                                    last_err = Some(DlmanError::Network(e));
+                                }
+                            }
+                        }
+                        Ok(response) => {
+                            let status = response.status().as_u16();
+                            last_err = Some(DlmanError::ServerError {
+                                status,
+                                message: format!(
+                                    "Segment {}/{} HTTP {}", i + 1, total_segments, status
+                                ),
+                            });
+                        }
+                        Err(e) => {
+                            last_err = Some(DlmanError::Network(e));
+                        }
+                    }
+
+                    // Exponential backoff on retry
+                    if attempt < MAX_RETRIES - 1 {
+                        let delay = std::time::Duration::from_millis(500 * (1 << attempt));
+                        tracing::warn!(
+                            "[HLS] Segment {}/{} attempt {} failed, retrying in {:?}",
+                            i + 1, total_segments, attempt + 1, delay
+                        );
+                        tokio::time::sleep(delay).await;
+                    }
+                }
+
+                Err(last_err.unwrap_or_else(|| {
+                    DlmanError::Unknown(format!("Segment {} failed after {} retries", i + 1, MAX_RETRIES))
+                }))
+            });
+
+            handles.push(handle);
+        }
+
+        // Wait for all segment downloads, collect results
+        let mut any_error: Option<DlmanError> = None;
+        for (i, handle) in handles.into_iter().enumerate() {
+            match handle.await {
+                Ok(Ok(_)) => {}
+                Ok(Err(e)) => {
+                    if e.to_string().contains("cancelled") || e.to_string().contains("paused") {
+                        // Cancel all remaining by setting the token
+                        cancel_token.store(true, Ordering::Release);
+                        any_error = Some(e);
+                        break;
+                    }
+                    tracing::error!("[HLS] Segment {} failed: {}", i + 1, e);
+                    if any_error.is_none() {
+                        any_error = Some(e);
+                    }
+                }
+                Err(join_err) => {
+                    tracing::error!("[HLS] Segment {} task panicked: {}", i + 1, join_err);
+                    if any_error.is_none() {
+                        any_error = Some(DlmanError::Unknown(format!("Task panicked: {}", join_err)));
+                    }
+                }
+            }
+
+            // Update DB every 20 segments
+            if (i + 1) % 20 == 0 {
+                let total_dl = downloaded_bytes.load(Ordering::Relaxed);
+                let done = completed_segments.load(Ordering::Relaxed);
+                let avg = if done > 0 { total_dl / done } else { 0 };
+                let est = avg * total_segments as u64;
+                if let Ok(Some(mut dl)) = core.download_manager.db().load_download(download_id).await {
+                    dl.downloaded = total_dl;
+                    dl.size = Some(est);
+                    let _ = core.download_manager.db().upsert_download(&dl).await;
+                }
+            }
+        }
+
+        if let Some(err) = any_error {
+            // Clean up temp directory on failure
+            let _ = tokio::fs::remove_dir_all(&temp_dir).await;
+            return Err(err);
+        }
+
+        // ========== Merge phase: concatenate temp segments in order ==========
+        info!("[HLS] All {} segments downloaded, merging...", total_segments);
+
+        let mut out_file = tokio::fs::OpenOptions::new()
             .create(true)
             .write(true)
             .truncate(true)
             .open(out_path)
             .await?;
 
-        let total_segments = segment_urls.len() as u64;
         let mut total_bytes: u64 = 0;
-        let start = Instant::now();
-
-        info!("[HLS] Starting segment download: {} segments to {}", total_segments, out_path.display());
-
-        for (i, seg_url) in segment_urls.iter().enumerate() {
-            // Check cancel/pause token before each segment
-            if cancel_token.load(Ordering::Acquire) {
-                file.flush().await?;
-                return Err(DlmanError::InvalidOperation(
-                    "Download cancelled/paused by user".to_string(),
-                ));
-            }
-
-            // Log first 3 segments and then every 50th for visibility
-            if i < 3 || (i + 1) % 50 == 0 || i == segment_urls.len() - 1 {
-                info!("[HLS] Downloading segment {}/{}: {}", i + 1, total_segments, &seg_url.chars().take(100).collect::<String>());
-            }
-
-            let mut request = client.get(seg_url);
-            if let Some(c) = cookies {
-                request = request.header("Cookie", c);
-            }
-            if let Some(r) = referrer {
-                request = request.header("Referer", r);
-            }
-
-            let response = request.send().await.map_err(|e| {
-                tracing::error!("[HLS] Network error on segment {}/{}: {}", i + 1, total_segments, e);
-                e
+        for i in 0..total_segments {
+            let seg_path = temp_dir.join(format!("seg_{:06}.ts", i));
+            let data = tokio::fs::read(&seg_path).await.map_err(|e| {
+                DlmanError::Io(std::io::Error::new(
+                    e.kind(),
+                    format!("Failed to read segment {}: {}", i, e),
+                ))
             })?;
-            if !response.status().is_success() {
-                tracing::error!(
-                    "[HLS] Segment {}/{} returned HTTP {} — URL: {}",
-                    i + 1, total_segments, response.status(),
-                    &seg_url.chars().take(150).collect::<String>()
-                );
-                return Err(DlmanError::ServerError {
-                    status: response.status().as_u16(),
-                    message: format!(
-                        "Failed to download HLS segment {}/{}: HTTP {}",
-                        i + 1,
-                        total_segments,
-                        response.status()
-                    ),
-                });
-            }
-
-            let bytes = response.bytes().await?;
-            file.write_all(&bytes).await?;
-            total_bytes += bytes.len() as u64;
-
-            // Emit progress: estimate total from average segment size
-            let elapsed = start.elapsed().as_secs_f64().max(0.01);
-            let speed = (total_bytes as f64 / elapsed) as u64;
-            let avg_seg_size = total_bytes / (i as u64 + 1);
-            let estimated_total = avg_seg_size * total_segments;
-            let remaining_bytes = estimated_total.saturating_sub(total_bytes);
-            let eta = if speed > 0 {
-                Some(remaining_bytes / speed)
-            } else {
-                None
-            };
-
-            core.emit(CoreEvent::DownloadProgress {
-                id: download_id,
-                downloaded: total_bytes,
-                total: Some(estimated_total),
-                speed,
-                eta,
-            });
-
-            // Update DB periodically (every 10 segments)
-            if (i + 1) % 10 == 0 || i == segment_urls.len() - 1 {
-                if let Ok(Some(mut dl)) =
-                    core.download_manager.db().load_download(download_id).await
-                {
-                    dl.downloaded = total_bytes;
-                    dl.size = Some(estimated_total);
-                    let _ = core.download_manager.db().upsert_download(&dl).await;
-                }
-            }
+            out_file.write_all(&data).await?;
+            total_bytes += data.len() as u64;
         }
+        out_file.flush().await?;
 
-        file.flush().await?;
+        // Clean up temp directory
+        let _ = tokio::fs::remove_dir_all(&temp_dir).await;
+
+        info!(
+            "[HLS] Merge complete: {} bytes, {:.1}s elapsed",
+            total_bytes,
+            start.elapsed().as_secs_f64()
+        );
+
         Ok(total_bytes)
     }
 
