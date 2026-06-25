@@ -1,4 +1,41 @@
 {
+  "categories": {
+    "addCategory": "Add Category",
+    "changeColor": "Change Color",
+    "deleteCategory": "Delete Category",
+    "editCategory": "Edit Category",
+    "openFolder": "Open Folder"
+  },
+  "common": {
+    "add": "Add",
+    "cancel": "Cancel",
+    "clear": "Clear",
+    "pause": "Pause",
+    "remove": "Remove",
+    "resume": "Resume",
+    "retry": "Retry",
+    "searchPlaceholder": "Search...",
+    "start": "Start",
+    "stop": "Stop"
+  },
+  "devConsole": {
+    "collapse": "Collapse console",
+    "console": "Console",
+    "copyAll": "Copy all messages",
+    "copyMessage": "Copy message",
+    "copySelected": "Copy selected",
+    "debug": "Debug",
+    "disableDevMode": "Disable Dev Mode",
+    "empty": "No logs yet. Events will appear here.",
+    "emptyFiltered": "No {{level}} logs.",
+    "errors": "Errors",
+    "errorsBadge": "{{n}} error(s)",
+    "expand": "Expand console",
+    "info": "Info",
+    "title": "Dev Console",
+    "warningsBadge": "{{n}} warning(s)",
+    "warns": "Warns"
+  },
   "downloads": {
     "empty": {
       "noMatch": {
@@ -6,6 +43,58 @@
         "title": "No downloads match your filter"
       }
     }
+  },
+  "filterBar": {
+    "allQueues": "All Queues"
+  },
+  "filters": {
+    "active": "Active",
+    "all": "All",
+    "completed": "Completed",
+    "failed": "Failed",
+    "paused": "Paused",
+    "queued": "Queued"
+  },
+  "menu": {
+    "about": "About",
+    "clearCompleted": "Clear Completed",
+    "clearFailed": "Clear Failed",
+    "confirmClearCompleted": {
+      "description": "This will remove {{n}} completed download(s) from the list. The downloaded files will not be deleted.",
+      "title": "Clear Completed Downloads"
+    },
+    "confirmClearFailed": {
+      "description": "This will remove {{n}} failed download(s) from the list.",
+      "title": "Clear Failed Downloads"
+    },
+    "confirmResetData": {
+      "confirm": "Reset Everything",
+      "description": "This will clear ALL app data including downloads, categories, queues, and settings. Downloaded files will NOT be deleted. The app will refresh after clearing.",
+      "title": "Reset App Data"
+    },
+    "dev": "Dev",
+    "exportData": "Export Data",
+    "fromClipboard": "From Clipboard",
+    "importData": "Import Data",
+    "importLinks": "Import Links",
+    "newDownload": "New Download",
+    "openDevtools": "Open DevTools",
+    "pauseQueueNamed": "Pause \"{{name}}\"",
+    "queues": "Queues",
+    "reloadApp": "Reload App",
+    "removeSelected": "Remove Selected",
+    "resetAllData": "Reset All Data",
+    "startQueueNamed": "Start \"{{name}}\"",
+    "tools": "Tools"
+  },
+  "queues": {
+    "addQueue": "Add Queue",
+    "changeColor": "Change Color",
+    "deleteQueue": "Delete Queue",
+    "editQueue": "Edit Queue",
+    "pauseAll": "Pause All",
+    "startAll": "Start All",
+    "timeUntilStart": "Time until scheduled start"
   },
   "settings": {
     "font": "Font",
@@ -21,13 +110,67 @@
     "theme": "Theme",
     "themeDark": "Dark",
     "themeLight": "Light",
-    "themeSystem": "System"
+    "themeSystem": "System",
+    "title": "Settings"
+  },
+  "sidebar": {
+    "active": "Active",
+    "allCategories": "All Categories",
+    "allDownloads": "All Downloads",
+    "categories": "Categories",
+    "network": "Network",
+    "queues": "Queues"
+  },
+  "sort": {
+    "ascending": "Ascending",
+    "date": "Date",
+    "descending": "Descending",
+    "name": "Name",
+    "progress": "Progress",
+    "size": "Size",
+    "status": "Status"
+  },
+  "status": {
+    "paused": "Paused"
   },
   "toasts": {
-    "bulkRemoved_one": "Removed {{count}} download",
-    "bulkRemoved_other": "Removed {{count}} downloads",
-    "bulkRemovedWithFiles_one": "Removed {{count}} download, deleted {{files}} file(s)",
-    "bulkRemovedWithFiles_other": "Removed {{count}} downloads, deleted {{files}} file(s)"
+    "allDataCleared": "All data cleared. Refreshing...",
+    "bulkRemoved": "Removed {{n}} download(s)",
+    "bulkRemovedWithFiles": "Removed {{n}} download(s), deleted {{files}} file(s)",
+    "cancelFailed": "Failed to cancel download",
+    "clearedCompleted": "Cleared {{n}} completed download(s)",
+    "clearedFailed": "Cleared {{n}} failed download(s)",
+    "clipboardReadFailed": "Failed to read clipboard",
+    "dataExported": "Data exported successfully",
+    "devtoolsBrowserHint": "Press F12 to open DevTools in browser",
+    "devtoolsUnavailable": "DevTools not available in this build",
+    "downloadCancelled": "Download cancelled",
+    "downloadPaused": "Download paused",
+    "downloadResumed": "Download resumed",
+    "exportDesktopOnly": "Export is only available in the desktop app",
+    "exportFailed": "Failed to export data",
+    "importDesktopOnly": "Import is only available in the desktop app",
+    "imported": "Imported {{n}} download(s)",
+    "importFailed": "Failed to import data",
+    "invalidExportFormat": "Invalid export file format",
+    "movedToQueueN": "Moved {{n}} download(s) to queue",
+    "noUrlsInClipboard": "No valid URLs found in clipboard",
+    "openFolderDesktopOnly": "Open folder is only available in the desktop app",
+    "openFolderFailed": "Failed to open folder",
+    "pausedN": "Paused {{n}} download(s)",
+    "pauseFailed": "Failed to pause download",
+    "queueStarted": "Started queue \"{{name}}\"",
+    "queueStartFailed": "Failed to start queue",
+    "queueStopFailed": "Failed to stop queue",
+    "queueStopped": "Stopped queue \"{{name}}\"",
+    "resumedN": "Resumed {{n}} download(s)",
+    "resumeFailed": "Failed to resume download",
+    "stoppedN": "Stopped {{n}} download(s)"
+  },
+  "toolbar": {
+    "moveToQueue": "Move to Queue",
+    "selectAll": "Select All",
+    "selected": "{{n}} selected"
   },
   "welcome": {
     "addDownload": "Add Download",

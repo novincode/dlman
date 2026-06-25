@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
 import { ChevronDown, ChevronRight, Download, Pause, Play, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { useDownloadStore } from "@/stores/downloads";
@@ -13,6 +14,7 @@ import type { DownloadStatus } from "@/types";
 const isTauri = () => typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
 
 export function ActiveDownloads() {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(true);
   const downloads = useDownloadStore((s) => s.downloads);
   const updateStatus = useDownloadStore((s) => s.updateStatus);
@@ -41,7 +43,7 @@ export function ActiveDownloads() {
           <ChevronRight className="h-3 w-3 flex-shrink-0" />
         )}
         <Download className="h-3 w-3 mr-1 flex-shrink-0" />
-        <span className="truncate">ACTIVE</span>
+        <span className="truncate uppercase">{t('sidebar.active')}</span>
         <span className="ml-auto text-xs opacity-60 flex-shrink-0">{activeDownloads.length}</span>
       </button>
 
@@ -96,6 +98,7 @@ function ActiveDownloadItem({
   isPaused,
   updateStatus,
 }: ActiveDownloadItemProps) {
+  const { t } = useTranslation();
   const handlePauseResume = useCallback(async () => {
     if (isPaused) {
       // Resume
@@ -103,11 +106,11 @@ function ActiveDownloadItem({
       if (isTauri()) {
         try {
           await invoke("resume_download", { id });
-          toast.success("Download resumed");
+          toast.success(t('toasts.downloadResumed'));
         } catch (err) {
           console.error("Failed to resume:", err);
           updateStatus(id, "paused", null);
-          toast.error("Failed to resume download");
+          toast.error(t('toasts.resumeFailed'));
         }
       }
     } else {
@@ -116,29 +119,29 @@ function ActiveDownloadItem({
       if (isTauri()) {
         try {
           await invoke("pause_download", { id });
-          toast.success("Download paused");
+          toast.success(t('toasts.downloadPaused'));
         } catch (err) {
           console.error("Failed to pause:", err);
           updateStatus(id, "downloading", null);
-          toast.error("Failed to pause download");
+          toast.error(t('toasts.pauseFailed'));
         }
       }
     }
-  }, [id, isPaused, updateStatus]);
+  }, [id, isPaused, updateStatus, t]);
 
   const handleCancel = useCallback(async () => {
     updateStatus(id, "cancelled", null);
-    
+
     if (isTauri()) {
       try {
         await invoke("cancel_download", { id });
-        toast.success("Download cancelled");
+        toast.success(t('toasts.downloadCancelled'));
       } catch (err) {
         console.error("Failed to cancel:", err);
-        toast.error("Failed to cancel download");
+        toast.error(t('toasts.cancelFailed'));
       }
     }
-  }, [id, updateStatus]);
+  }, [id, updateStatus, t]);
 
   return (
     <div className="px-2 py-1.5 rounded-md bg-card border group min-w-0 overflow-hidden">
@@ -151,7 +154,7 @@ function ActiveDownloadItem({
             size="icon" 
             className="h-5 w-5"
             onClick={handlePauseResume}
-            title={isPaused ? "Resume" : "Pause"}
+            title={isPaused ? t('common.resume') : t('common.pause')}
           >
             {isPaused ? (
               <Play className="h-3 w-3" />
@@ -164,7 +167,7 @@ function ActiveDownloadItem({
             size="icon" 
             className="h-5 w-5"
             onClick={handleCancel}
-            title="Cancel"
+            title={t('common.cancel')}
           >
             <X className="h-3 w-3" />
           </Button>
@@ -178,7 +181,7 @@ function ActiveDownloadItem({
       <div className="flex items-center justify-between mt-1 text-[10px] text-muted-foreground">
         <span className="flex-shrink-0">{Math.round(progress)}%</span>
         <span className={cn("truncate ml-2", isPaused && "text-yellow-500")}>
-          {isPaused ? "Paused" : formatSpeed(speed)}
+          {isPaused ? t('status.paused') : formatSpeed(speed)}
         </span>
       </div>
     </div>

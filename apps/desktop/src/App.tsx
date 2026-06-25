@@ -81,9 +81,9 @@ function AppContent() {
     clearSelection();
     
     if (fileDeleteCount > 0) {
-      toast.success(t('toasts.bulkRemovedWithFiles', { count: successCount, files: fileDeleteCount }));
+      toast.success(t('toasts.bulkRemovedWithFiles', { n: successCount, files: fileDeleteCount }));
     } else {
-      toast.success(t('toasts.bulkRemoved', { count: successCount }));
+      toast.success(t('toasts.bulkRemoved', { n: successCount }));
     }
   }, [selectedIds, downloads, removeDownload, clearSelection, setShowBulkDeleteDialog, t]);
 

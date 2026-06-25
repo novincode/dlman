@@ -1,4 +1,41 @@
 {
+  "categories": {
+    "addCategory": "افزودن دسته",
+    "changeColor": "تغییر رنگ",
+    "deleteCategory": "حذف دسته",
+    "editCategory": "ویرایش دسته",
+    "openFolder": "باز کردن پوشه"
+  },
+  "common": {
+    "add": "افزودن",
+    "cancel": "انصراف",
+    "clear": "پاک کردن",
+    "pause": "توقف",
+    "remove": "حذف",
+    "resume": "ادامه",
+    "retry": "تلاش مجدد",
+    "searchPlaceholder": "جستجو...",
+    "start": "شروع",
+    "stop": "توقف کامل"
+  },
+  "devConsole": {
+    "collapse": "جمع کردن کنسول",
+    "console": "کنسول",
+    "copyAll": "کپی همهٔ پیام\u200cها",
+    "copyMessage": "کپی پیام",
+    "copySelected": "کپی موارد انتخاب\u200cشده",
+    "debug": "اشکال\u200cزدایی",
+    "disableDevMode": "غیرفعال کردن حالت توسعه",
+    "empty": "هنوز گزارشی نیست. رویدادها اینجا نمایش داده می\u200cشوند.",
+    "emptyFiltered": "گزارش {{level}} وجود ندارد.",
+    "errors": "خطاها",
+    "errorsBadge": "{{n}} خطا",
+    "expand": "باز کردن کنسول",
+    "info": "اطلاعات",
+    "title": "کنسول توسعه",
+    "warningsBadge": "{{n}} هشدار",
+    "warns": "هشدارها"
+  },
   "downloads": {
     "empty": {
       "noMatch": {
@@ -6,6 +43,58 @@
         "title": "هیچ دانلودی با فیلتر شما مطابقت ندارد"
       }
     }
+  },
+  "filterBar": {
+    "allQueues": "همهٔ صف\u200cها"
+  },
+  "filters": {
+    "active": "فعال",
+    "all": "همه",
+    "completed": "تکمیل\u200cشده",
+    "failed": "ناموفق",
+    "paused": "متوقف",
+    "queued": "در صف"
+  },
+  "menu": {
+    "about": "درباره",
+    "clearCompleted": "پاک کردن تکمیل\u200cشده\u200cها",
+    "clearFailed": "پاک کردن ناموفق\u200cها",
+    "confirmClearCompleted": {
+      "description": "این کار {{n}} دانلود تکمیل\u200cشده را از فهرست حذف می\u200cکند. فایل\u200cهای دانلودشده حذف نخواهند شد.",
+      "title": "پاک کردن دانلودهای تکمیل\u200cشده"
+    },
+    "confirmClearFailed": {
+      "description": "این کار {{n}} دانلود ناموفق را از فهرست حذف می\u200cکند.",
+      "title": "پاک کردن دانلودهای ناموفق"
+    },
+    "confirmResetData": {
+      "confirm": "بازنشانی همه چیز",
+      "description": "این کار همهٔ داده\u200cهای برنامه شامل دانلودها، دسته\u200cها، صف\u200cها و تنظیمات را پاک می\u200cکند. فایل\u200cهای دانلودشده حذف نخواهند شد. برنامه پس از پاک\u200cسازی تازه\u200cسازی می\u200cشود.",
+      "title": "بازنشانی داده\u200cهای برنامه"
+    },
+    "dev": "توسعه",
+    "exportData": "خروجی گرفتن داده\u200cها",
+    "fromClipboard": "از کلیپ\u200cبورد",
+    "importData": "وارد کردن داده\u200cها",
+    "importLinks": "وارد کردن لینک\u200cها",
+    "newDownload": "دانلود جدید",
+    "openDevtools": "باز کردن ابزار توسعه",
+    "pauseQueueNamed": "توقف «{{name}}»",
+    "queues": "صف\u200cها",
+    "reloadApp": "بارگذاری مجدد برنامه",
+    "removeSelected": "حذف موارد انتخاب\u200cشده",
+    "resetAllData": "بازنشانی همهٔ داده\u200cها",
+    "startQueueNamed": "شروع «{{name}}»",
+    "tools": "ابزارها"
+  },
+  "queues": {
+    "addQueue": "افزودن صف",
+    "changeColor": "تغییر رنگ",
+    "deleteQueue": "حذف صف",
+    "editQueue": "ویرایش صف",
+    "pauseAll": "توقف همه",
+    "startAll": "شروع همه",
+    "timeUntilStart": "زمان تا شروع زمان\u200cبندی\u200cشده"
   },
   "settings": {
     "font": "فونت",
@@ -21,13 +110,67 @@
     "theme": "پوسته",
     "themeDark": "تیره",
     "themeLight": "روشن",
-    "themeSystem": "سیستم"
+    "themeSystem": "سیستم",
+    "title": "تنظیمات"
+  },
+  "sidebar": {
+    "active": "فعال",
+    "allCategories": "همهٔ دسته\u200cها",
+    "allDownloads": "همهٔ دانلودها",
+    "categories": "دسته\u200cها",
+    "network": "شبکه",
+    "queues": "صف\u200cها"
+  },
+  "sort": {
+    "ascending": "صعودی",
+    "date": "تاریخ",
+    "descending": "نزولی",
+    "name": "نام",
+    "progress": "پیشرفت",
+    "size": "اندازه",
+    "status": "وضعیت"
+  },
+  "status": {
+    "paused": "متوقف"
   },
   "toasts": {
-    "bulkRemoved_one": "{{count}} دانلود حذف شد",
-    "bulkRemoved_other": "{{count}} دانلود حذف شد",
-    "bulkRemovedWithFiles_one": "{{count}} دانلود حذف شد، {{files}} فایل پاک شد",
-    "bulkRemovedWithFiles_other": "{{count}} دانلود حذف شد، {{files}} فایل پاک شد"
+    "allDataCleared": "همهٔ داده\u200cها پاک شد. در حال تازه\u200cسازی...",
+    "bulkRemoved": "{{n}} دانلود حذف شد",
+    "bulkRemovedWithFiles": "{{n}} دانلود حذف شد، {{files}} فایل پاک شد",
+    "cancelFailed": "لغو دانلود ناموفق بود",
+    "clearedCompleted": "{{n}} دانلود تکمیل\u200cشده پاک شد",
+    "clearedFailed": "{{n}} دانلود ناموفق پاک شد",
+    "clipboardReadFailed": "خواندن کلیپ\u200cبورد ناموفق بود",
+    "dataExported": "داده\u200cها با موفقیت خروجی گرفته شد",
+    "devtoolsBrowserHint": "برای باز کردن ابزار توسعه در مرورگر F12 را بزنید",
+    "devtoolsUnavailable": "ابزار توسعه در این نسخه در دسترس نیست",
+    "downloadCancelled": "دانلود لغو شد",
+    "downloadPaused": "دانلود متوقف شد",
+    "downloadResumed": "دانلود ادامه یافت",
+    "exportDesktopOnly": "خروجی گرفتن فقط در نسخهٔ دسکتاپ موجود است",
+    "exportFailed": "خروجی گرفتن داده\u200cها ناموفق بود",
+    "importDesktopOnly": "وارد کردن فقط در نسخهٔ دسکتاپ موجود است",
+    "imported": "{{n}} دانلود وارد شد",
+    "importFailed": "وارد کردن داده\u200cها ناموفق بود",
+    "invalidExportFormat": "قالب فایل خروجی نامعتبر است",
+    "movedToQueueN": "{{n}} دانلود به صف منتقل شد",
+    "noUrlsInClipboard": "هیچ نشانی معتبری در کلیپ\u200cبورد یافت نشد",
+    "openFolderDesktopOnly": "باز کردن پوشه فقط در نسخهٔ دسکتاپ موجود است",
+    "openFolderFailed": "باز کردن پوشه ناموفق بود",
+    "pausedN": "{{n}} دانلود متوقف شد",
+    "pauseFailed": "توقف دانلود ناموفق بود",
+    "queueStarted": "صف «{{name}}» شروع شد",
+    "queueStartFailed": "شروع صف ناموفق بود",
+    "queueStopFailed": "توقف صف ناموفق بود",
+    "queueStopped": "صف «{{name}}» متوقف شد",
+    "resumedN": "{{n}} دانلود ادامه یافت",
+    "resumeFailed": "ادامهٔ دانلود ناموفق بود",
+    "stoppedN": "{{n}} دانلود متوقف شد"
+  },
+  "toolbar": {
+    "moveToQueue": "انتقال به صف",
+    "selectAll": "انتخاب همه",
+    "selected": "{{n}} مورد انتخاب شد"
   },
   "welcome": {
     "addDownload": "افزودن دانلود",

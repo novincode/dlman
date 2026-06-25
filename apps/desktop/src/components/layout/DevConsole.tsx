@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Terminal, Trash2, AlertCircle, AlertTriangle, Bug, MessageSquare, ChevronUp, ChevronDown, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -22,6 +23,7 @@ interface DevConsoleProps {
 }
 
 export function DevConsole({ isCollapsed = false, onToggleCollapse }: DevConsoleProps) {
+  const { t } = useTranslation();
   const { consoleLogs, clearConsoleLogs } = useUIStore();
   const { setDevMode } = useSettingsStore();
   const [filter, setFilter] = useState<LogLevel>("all");
@@ -114,8 +116,8 @@ export function DevConsole({ isCollapsed = false, onToggleCollapse }: DevConsole
   };
 
   const getLogLine = (log: (typeof consoleLogs)[number]) => {
-    const t = log.timestamp.toLocaleTimeString();
-    const base = `[${t}] ${log.level.toUpperCase()} ${log.message}`;
+    const time = log.timestamp.toLocaleTimeString();
+    const base = `[${time}] ${log.level.toUpperCase()} ${log.message}`;
     if (log.data === undefined) return base;
     const dataStr = typeof log.data === "object" ? JSON.stringify(log.data) : String(log.data);
     return `${base} ${dataStr}`;
@@ -142,7 +144,7 @@ export function DevConsole({ isCollapsed = false, onToggleCollapse }: DevConsole
       <div className="flex items-center justify-between px-3 py-1 bg-card border-t gap-2">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Terminal className="h-3 w-3" />
-          <span>Console</span>
+          <span>{t('devConsole.console')}</span>
           {errorCount > 0 && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-500 font-medium">
               {errorCount}
@@ -160,7 +162,7 @@ export function DevConsole({ isCollapsed = false, onToggleCollapse }: DevConsole
             size="sm"
             className="h-5 w-5 p-0"
             onClick={onToggleCollapse}
-            title="Expand console"
+            title={t('devConsole.expand')}
           >
             <ChevronUp className="h-3 w-3" />
           </Button>
@@ -169,7 +171,7 @@ export function DevConsole({ isCollapsed = false, onToggleCollapse }: DevConsole
             size="sm"
             className="h-5 w-5 p-0"
             onClick={handleClose}
-            title="Disable Dev Mode"
+            title={t('devConsole.disableDevMode')}
           >
             <X className="h-3 w-3" />
           </Button>
@@ -184,15 +186,15 @@ export function DevConsole({ isCollapsed = false, onToggleCollapse }: DevConsole
       <div className="flex items-center justify-between px-3 py-1.5 border-b gap-2 shrink-0">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Terminal className="h-4 w-4" />
-          <span>Dev Console</span>
+          <span>{t('devConsole.title')}</span>
           {errorCount > 0 && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-500 font-medium">
-              {errorCount} error{errorCount > 1 ? "s" : ""}
+              {t('devConsole.errorsBadge', { n: errorCount })}
             </span>
           )}
           {warnCount > 0 && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-500 font-medium">
-              {warnCount} warning{warnCount > 1 ? "s" : ""}
+              {t('devConsole.warningsBadge', { n: warnCount })}
             </span>
           )}
         </div>
@@ -205,23 +207,23 @@ export function DevConsole({ isCollapsed = false, onToggleCollapse }: DevConsole
           className="gap-0.5"
         >
           <ToggleGroupItem value="all" size="sm" className="text-xs h-6 px-2">
-            All
+            {t('filters.all')}
           </ToggleGroupItem>
           <ToggleGroupItem value="error" size="sm" className="text-xs h-6 px-2 data-[state=on]:text-red-500">
             <AlertCircle className="h-3 w-3 mr-1" />
-            Errors
+            {t('devConsole.errors')}
           </ToggleGroupItem>
           <ToggleGroupItem value="warn" size="sm" className="text-xs h-6 px-2 data-[state=on]:text-yellow-500">
             <AlertTriangle className="h-3 w-3 mr-1" />
-            Warns
+            {t('devConsole.warns')}
           </ToggleGroupItem>
           <ToggleGroupItem value="debug" size="sm" className="text-xs h-6 px-2 data-[state=on]:text-blue-500">
             <Bug className="h-3 w-3 mr-1" />
-            Debug
+            {t('devConsole.debug')}
           </ToggleGroupItem>
           <ToggleGroupItem value="info" size="sm" className="text-xs h-6 px-2">
             <MessageSquare className="h-3 w-3 mr-1" />
-            Info
+            {t('devConsole.info')}
           </ToggleGroupItem>
         </ToggleGroup>
 
@@ -233,14 +235,14 @@ export function DevConsole({ isCollapsed = false, onToggleCollapse }: DevConsole
             onClick={clearConsoleLogs}
           >
             <Trash2 className="h-3 w-3" />
-            Clear
+            {t('common.clear')}
           </Button>
           <Button
             variant="ghost"
             size="sm"
             className="h-6 w-6 p-0"
             onClick={onToggleCollapse}
-            title="Collapse console"
+            title={t('devConsole.collapse')}
           >
             <ChevronDown className="h-3 w-3" />
           </Button>
@@ -249,7 +251,7 @@ export function DevConsole({ isCollapsed = false, onToggleCollapse }: DevConsole
             size="sm"
             className="h-6 w-6 p-0"
             onClick={handleClose}
-            title="Disable Dev Mode"
+            title={t('devConsole.disableDevMode')}
           >
             <X className="h-3 w-3" />
           </Button>
@@ -278,9 +280,9 @@ export function DevConsole({ isCollapsed = false, onToggleCollapse }: DevConsole
         <div className="p-2 font-mono text-xs space-y-1">
           {filteredLogs.length === 0 ? (
             <div className="text-muted-foreground italic py-4 text-center">
-              {filter === "all" 
-                ? "No logs yet. Events will appear here."
-                : `No ${filter} logs.`}
+              {filter === "all"
+                ? t('devConsole.empty')
+                : t('devConsole.emptyFiltered', { level: filter })}
             </div>
           ) : (
             filteredLogs.map((log) => {
@@ -353,14 +355,14 @@ export function DevConsole({ isCollapsed = false, onToggleCollapse }: DevConsole
                         await copyText(getLogLine(log));
                       }}
                     >
-                      Copy message
+                      {t('devConsole.copyMessage')}
                     </ContextMenuItem>
                     <ContextMenuItem
                       onClick={async () => {
                         await copySelected(log);
                       }}
                     >
-                      Copy selected
+                      {t('devConsole.copySelected')}
                     </ContextMenuItem>
                     <ContextMenuSeparator />
                     <ContextMenuItem
@@ -368,7 +370,7 @@ export function DevConsole({ isCollapsed = false, onToggleCollapse }: DevConsole
                         await copyAll();
                       }}
                     >
-                      Copy all messages
+                      {t('devConsole.copyAll')}
                     </ContextMenuItem>
                   </ContextMenuContent>
                 </ContextMenu>

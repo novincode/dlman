@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -38,6 +39,7 @@ import { useQueueSchedules, formatTimeUntil } from "@/hooks/useQueueSchedules";
 import type { Queue } from "@/types";
 
 export function QueueList() {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(true);
   const [editingQueue, setEditingQueue] = useState<Queue | null>(null);
   const [showQueueDialog, setShowQueueDialog] = useState(false);
@@ -64,22 +66,22 @@ export function QueueList() {
   const handleStartQueue = useCallback(async (queue: Queue) => {
     try {
       await invoke('start_queue', { id: queue.id });
-      toast.success(`Started queue "${queue.name}"`);
+      toast.success(t('toasts.queueStarted', { name: queue.name }));
     } catch (error) {
       console.error('Failed to start queue:', error);
-      toast.error('Failed to start queue');
+      toast.error(t('toasts.queueStartFailed'));
     }
-  }, []);
+  }, [t]);
 
   const handlePauseQueue = useCallback(async (queue: Queue) => {
     try {
       await invoke('stop_queue', { id: queue.id });
-      toast.success(`Stopped queue "${queue.name}"`);
+      toast.success(t('toasts.queueStopped', { name: queue.name }));
     } catch (error) {
       console.error('Failed to stop queue:', error);
-      toast.error('Failed to stop queue');
+      toast.error(t('toasts.queueStopFailed'));
     }
-  }, []);
+  }, [t]);
 
   return (
     <>
@@ -95,7 +97,7 @@ export function QueueList() {
             <ChevronRight className="h-3 w-3" />
           )}
           <ListTodo className="h-3 w-3 mr-1" />
-          QUEUES
+          <span className="uppercase">{t('sidebar.queues')}</span>
           <span className="ml-auto text-xs opacity-60">{queues.length}</span>
         </button>
 
@@ -124,7 +126,7 @@ export function QueueList() {
                     className="w-2.5 h-2.5 rounded-sm shrink-0"
                     style={{ backgroundColor: "#6b7280" }}
                   />
-                  <span className="text-sm truncate flex-1">All Downloads</span>
+                  <span className="text-sm truncate flex-1">{t('sidebar.allDownloads')}</span>
                 </div>
 
                 {/* Individual Queues */}
@@ -152,7 +154,7 @@ export function QueueList() {
                   onClick={handleAddQueue}
                 >
                   <Plus className="h-3 w-3 mr-2" />
-                  Add Queue
+                  {t('queues.addQueue')}
                 </Button>
               </div>
             </motion.div>
@@ -193,6 +195,7 @@ function QueueItem({
   onStart,
   onPause,
 }: QueueItemProps) {
+  const { t } = useTranslation();
   const timeUntil = formatTimeUntil(secondsUntilStart);
 
   const renderMenuItems = (isDropdown: boolean) => {
@@ -203,30 +206,30 @@ function QueueItem({
       <>
         <MenuItem onClick={(e) => { e.stopPropagation(); onStart?.(); }}>
           <Play className="h-4 w-4 mr-2" />
-          Start All
+          {t('queues.startAll')}
         </MenuItem>
         <MenuItem onClick={(e) => { e.stopPropagation(); onPause?.(); }}>
           <Pause className="h-4 w-4 mr-2" />
-          Pause All
+          {t('queues.pauseAll')}
         </MenuItem>
         <MenuSeparator />
         <MenuItem onClick={(e) => { e.stopPropagation(); onEdit?.(); }}>
           <Edit className="h-4 w-4 mr-2" />
-          Edit Queue
+          {t('queues.editQueue')}
         </MenuItem>
         <MenuItem onClick={(e) => { e.stopPropagation(); onEdit?.(); }}>
           <Palette className="h-4 w-4 mr-2" />
-          Change Color
+          {t('queues.changeColor')}
         </MenuItem>
         {!isDefault && (
           <>
             <MenuSeparator />
-            <MenuItem 
+            <MenuItem
               className="text-destructive focus:text-destructive"
               onClick={(e) => { e.stopPropagation(); onDelete?.(); }}
             >
               <Trash2 className="h-4 w-4 mr-2" />
-              Delete Queue
+              {t('queues.deleteQueue')}
             </MenuItem>
           </>
         )}
@@ -261,7 +264,7 @@ function QueueItem({
 
           {/* Scheduled start countdown */}
           {timeUntil && (
-            <span className="flex items-center gap-1 text-[10px] text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded" title="Time until scheduled start">
+            <span className="flex items-center gap-1 text-[10px] text-muted-foreground bg-muted/50 px-1.5 py-0.5 rounded" title={t('queues.timeUntilStart')}>
               <Clock className="h-3 w-3" />
               {timeUntil}
             </span>

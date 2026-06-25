@@ -22,6 +22,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { save, open } from "@tauri-apps/plugin-dialog";
 import { writeTextFile, readTextFile } from "@tauri-apps/plugin-fs";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -83,6 +84,7 @@ const MenuButton = React.forwardRef<HTMLButtonElement, MenuButtonProps>(
 MenuButton.displayName = "MenuButton";
 
 export function MenuBar() {
+  const { t } = useTranslation();
   const {
     setShowNewDownloadDialog,
     setShowBatchImportDialog,
@@ -123,7 +125,7 @@ export function MenuBar() {
       const text = await navigator.clipboard.readText();
       const urls = parseUrls(text);
       if (urls.length === 0) {
-        toast.info("No valid URLs found in clipboard");
+        toast.info(t('toasts.noUrlsInClipboard'));
         return;
       }
       setPendingClipboardUrls(urls);
@@ -135,13 +137,13 @@ export function MenuBar() {
       }
     } catch (error) {
       console.error("Failed to read clipboard:", error);
-      toast.error("Failed to read clipboard");
+      toast.error(t('toasts.clipboardReadFailed'));
     }
   };
 
   const handleExportData = async () => {
     if (!isTauri()) {
-      toast.error("Export is only available in the desktop app");
+      toast.error(t('toasts.exportDesktopOnly'));
       return;
     }
 
@@ -168,16 +170,16 @@ export function MenuBar() {
       };
 
       await writeTextFile(filePath, JSON.stringify(exportData, null, 2));
-      toast.success("Data exported successfully");
+      toast.success(t('toasts.dataExported'));
     } catch (error) {
       console.error("Failed to export data:", error);
-      toast.error("Failed to export data");
+      toast.error(t('toasts.exportFailed'));
     }
   };
 
   const handleImportData = async () => {
     if (!isTauri()) {
-      toast.error("Import is only available in the desktop app");
+      toast.error(t('toasts.importDesktopOnly'));
       return;
     }
 
@@ -193,7 +195,7 @@ export function MenuBar() {
       const importData = JSON.parse(content);
 
       if (!importData.version || !importData.downloads) {
-        toast.error("Invalid export file format");
+        toast.error(t('toasts.invalidExportFormat'));
         return;
       }
 
@@ -209,10 +211,10 @@ export function MenuBar() {
         }
       }
 
-      toast.success(`Imported ${importData.downloads.length} download(s)`);
+      toast.success(t('toasts.imported', { n: importData.downloads.length }));
     } catch (error) {
       console.error("Failed to import data:", error);
-      toast.error("Failed to import data");
+      toast.error(t('toasts.importFailed'));
     }
   };
 
@@ -224,20 +226,20 @@ export function MenuBar() {
   const startQueue = async (id: string, name: string) => {
     try {
       await invoke("start_queue", { id });
-      toast.success(`Started queue: ${name}`);
+      toast.success(t('toasts.queueStarted', { name }));
     } catch (error) {
       console.error("Failed to start queue:", error);
-      toast.error(`Failed to start queue: ${name}`);
+      toast.error(t('toasts.queueStartFailed'));
     }
   };
 
   const pauseQueue = async (id: string, name: string) => {
     try {
       await invoke("stop_queue", { id });
-      toast.success(`Paused queue: ${name}`);
+      toast.success(t('toasts.queueStopped', { name }));
     } catch (error) {
       console.error("Failed to pause queue:", error);
-      toast.error(`Failed to pause queue: ${name}`);
+      toast.error(t('toasts.queueStopFailed'));
     }
   };
 
@@ -266,10 +268,10 @@ export function MenuBar() {
     if (completedDownloads.length === 0) return;
 
     openConfirmDialog({
-      title: "Clear Completed Downloads",
-      description: `This will remove ${completedDownloads.length} completed download(s) from the list. The downloaded files will not be deleted.`,
-      confirmLabel: "Clear",
-      cancelLabel: "Cancel",
+      title: t('menu.confirmClearCompleted.title'),
+      description: t('menu.confirmClearCompleted.description', { n: completedDownloads.length }),
+      confirmLabel: t('common.clear'),
+      cancelLabel: t('common.cancel'),
       variant: "primary",
       onConfirm: async () => {
         for (const d of completedDownloads) {
@@ -283,7 +285,7 @@ export function MenuBar() {
             }
           }
         }
-        toast.success(`Cleared ${completedDownloads.length} completed download(s)`);
+        toast.success(t('toasts.clearedCompleted', { n: completedDownloads.length }));
       },
     });
   };
@@ -293,10 +295,10 @@ export function MenuBar() {
     if (failedDownloads.length === 0) return;
 
     openConfirmDialog({
-      title: "Clear Failed Downloads",
-      description: `This will remove ${failedDownloads.length} failed download(s) from the list.`,
-      confirmLabel: "Clear",
-      cancelLabel: "Cancel",
+      title: t('menu.confirmClearFailed.title'),
+      description: t('menu.confirmClearFailed.description', { n: failedDownloads.length }),
+      confirmLabel: t('common.clear'),
+      cancelLabel: t('common.cancel'),
       variant: "destructive",
       onConfirm: async () => {
         for (const d of failedDownloads) {
@@ -310,7 +312,7 @@ export function MenuBar() {
             }
           }
         }
-        toast.success(`Cleared ${failedDownloads.length} failed download(s)`);
+        toast.success(t('toasts.clearedFailed', { n: failedDownloads.length }));
       },
     });
   };
@@ -318,9 +320,9 @@ export function MenuBar() {
   // Dev Mode handlers
   const handleClearAllData = async () => {
     openConfirmDialog({
-      title: "Reset App Data",
-      description: "This will clear ALL app data including downloads, categories, queues, and settings. Downloaded files will NOT be deleted. The app will refresh after clearing.",
-      confirmLabel: "Reset Everything",
+      title: t('menu.confirmResetData.title'),
+      description: t('menu.confirmResetData.description'),
+      confirmLabel: t('menu.confirmResetData.confirm'),
       variant: "destructive",
       onConfirm: async () => {
         // Clear all localStorage for this app
@@ -336,7 +338,7 @@ export function MenuBar() {
           }
         }
         
-        toast.success("All data cleared. Refreshing...");
+        toast.success(t('toasts.allDataCleared'));
         setTimeout(() => window.location.reload(), 1000);
       },
     });
@@ -345,10 +347,10 @@ export function MenuBar() {
   const handleOpenDevTools = () => {
     if (isTauri()) {
       invoke("open_devtools").catch(() => {
-        toast.error("DevTools not available in this build");
+        toast.error(t('toasts.devtoolsUnavailable'));
       });
     } else {
-      toast.info("Press F12 to open DevTools in browser");
+      toast.info(t('toasts.devtoolsBrowserHint'));
     }
   };
 
@@ -361,21 +363,21 @@ export function MenuBar() {
       <div className="flex items-center gap-1 pr-2 border-r">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <MenuButton icon={Plus} label="Add" variant="success" />
+            <MenuButton icon={Plus} label={t('common.add')} variant="success" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
             <DropdownMenuItem onClick={() => setShowNewDownloadDialog(true)}>
               <Plus className="h-4 w-4 mr-2" />
-              New Download
+              {t('menu.newDownload')}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={handleAddFromClipboard}>
               <ClipboardPaste className="h-4 w-4 mr-2" />
-              From Clipboard
+              {t('menu.fromClipboard')}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => setShowBatchImportDialog(true)}>
               <FolderDown className="h-4 w-4 mr-2" />
-              Import Links
+              {t('menu.importLinks')}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -387,7 +389,7 @@ export function MenuBar() {
           <DropdownMenuTrigger asChild>
             <MenuButton
               icon={Play}
-              label="Start"
+              label={t('common.start')}
               variant="info"
               disabled={startDisabled}
             />
@@ -395,7 +397,7 @@ export function MenuBar() {
           <DropdownMenuContent align="start">
             <DropdownMenuItem onClick={handleStartAll} disabled={startableQueues.length === 0}>
               <Play className="h-4 w-4 mr-2" />
-              Start All
+              {t('queues.startAll')}
             </DropdownMenuItem>
             {startableQueues.length > 0 && (
               <>
@@ -406,7 +408,7 @@ export function MenuBar() {
                       className="h-3 w-3 rounded-full mr-2 bg-muted"
                       style={{ backgroundColor: q.color || undefined }}
                     />
-                    Start "{q.name}"
+                    {t('menu.startQueueNamed', { name: q.name })}
                   </DropdownMenuItem>
                 ))}
               </>
@@ -418,7 +420,7 @@ export function MenuBar() {
           <DropdownMenuTrigger asChild>
             <MenuButton
               icon={Pause}
-              label="Pause"
+              label={t('common.pause')}
               variant="warning"
               disabled={pauseDisabled}
             />
@@ -426,7 +428,7 @@ export function MenuBar() {
           <DropdownMenuContent align="start">
             <DropdownMenuItem onClick={handlePauseAll} disabled={pausableQueues.length === 0}>
               <Pause className="h-4 w-4 mr-2" />
-              Pause All
+              {t('queues.pauseAll')}
             </DropdownMenuItem>
             {pausableQueues.length > 0 && (
               <>
@@ -437,7 +439,7 @@ export function MenuBar() {
                       className="h-3 w-3 rounded-full mr-2 bg-muted"
                       style={{ backgroundColor: q.color || undefined }}
                     />
-                    Pause "{q.name}"
+                    {t('menu.pauseQueueNamed', { name: q.name })}
                   </DropdownMenuItem>
                 ))}
               </>
@@ -452,7 +454,7 @@ export function MenuBar() {
           <DropdownMenuTrigger asChild>
             <MenuButton
               icon={Trash2}
-              label="Remove"
+              label={t('common.remove')}
               variant="destructive"
               disabled={!hasSelection && !hasCompletedDownloads && !hasFailedDownloads}
             />
@@ -460,21 +462,21 @@ export function MenuBar() {
           <DropdownMenuContent align="start">
             <DropdownMenuItem onClick={handleDeleteSelected} disabled={!hasSelection}>
               <Trash2 className="h-4 w-4 mr-2" />
-              Remove Selected
+              {t('menu.removeSelected')}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleClearCompleted} disabled={!hasCompletedDownloads}>
               <CheckCircle className="h-4 w-4 mr-2 text-green-500" />
-              Clear Completed
+              {t('menu.clearCompleted')}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={handleClearFailed} disabled={!hasFailedDownloads}>
               <AlertCircle className="h-4 w-4 mr-2 text-red-500" />
-              Clear Failed
+              {t('menu.clearFailed')}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <MenuButton icon={ListTodo} label="Queues" onClick={() => setShowQueueManagerDialog(true)} />
+        <MenuButton icon={ListTodo} label={t('menu.queues')} onClick={() => setShowQueueManagerDialog(true)} />
       </div>
 
       <div className="flex-1" />
@@ -483,16 +485,16 @@ export function MenuBar() {
       <div className="flex items-center gap-1 pl-2 border-l">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <MenuButton icon={MoreHorizontal} label="Tools" />
+            <MenuButton icon={MoreHorizontal} label={t('menu.tools')} />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={handleExportData}>
               <DownloadIcon className="h-4 w-4 mr-2" />
-              Export Data
+              {t('menu.exportData')}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={handleImportData}>
               <Upload className="h-4 w-4 mr-2" />
-              Import Data
+              {t('menu.importData')}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -501,32 +503,32 @@ export function MenuBar() {
         {devMode && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <MenuButton icon={Bug} label="Dev" variant="warning" />
+              <MenuButton icon={Bug} label={t('menu.dev')} variant="warning" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={handleOpenDevTools}>
                 <Bug className="h-4 w-4 mr-2" />
-                Open DevTools
+                {t('menu.openDevtools')}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleClearAllData} className="text-destructive">
                 <Database className="h-4 w-4 mr-2" />
-                Reset All Data
+                {t('menu.resetAllData')}
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => window.location.reload()}>
                 <RefreshCw className="h-4 w-4 mr-2" />
-                Reload App
+                {t('menu.reloadApp')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         )}
 
         <div className="relative">
-          <MenuButton icon={Info} label="About" onClick={() => setShowAboutDialog(true)} />
+          <MenuButton icon={Info} label={t('menu.about')} onClick={() => setShowAboutDialog(true)} />
           <UpdateBadge />
         </div>
 
-        <MenuButton icon={Settings} label="Settings" onClick={() => setShowSettingsDialog(true)} />
+        <MenuButton icon={Settings} label={t('settings.title')} onClick={() => setShowSettingsDialog(true)} />
       </div>
     </div>
   );

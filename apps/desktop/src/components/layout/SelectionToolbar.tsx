@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import {
   Play,
   Pause,
@@ -33,6 +34,7 @@ interface SelectionToolbarProps {
 }
 
 export function SelectionToolbar({ className }: SelectionToolbarProps) {
+  const { t } = useTranslation();
   const { selectedIds, downloads, clearSelection, selectAll, updateStatus, moveToQueue } = useDownloadStore();
   const filteredDownloads = useFilteredDownloads();
   const queues = useQueuesArray();
@@ -80,9 +82,9 @@ export function SelectionToolbar({ className }: SelectionToolbarProps) {
     }
     
     if (successCount > 0) {
-      toast.success(`Paused ${successCount} download(s)`);
+      toast.success(t('toasts.pausedN', { n: successCount }));
     }
-  }, [selectedIds, downloads, updateStatus]);
+  }, [selectedIds, downloads, updateStatus, t]);
 
   const handleResumeSelected = useCallback(async () => {
     const ids = Array.from(selectedIds);
@@ -110,9 +112,9 @@ export function SelectionToolbar({ className }: SelectionToolbarProps) {
     }
     
     if (successCount > 0) {
-      toast.success(`Resumed ${successCount} download(s)`);
+      toast.success(t('toasts.resumedN', { n: successCount }));
     }
-  }, [selectedIds, downloads, updateStatus]);
+  }, [selectedIds, downloads, updateStatus, t]);
 
   const handleStopSelected = useCallback(async () => {
     const ids = Array.from(selectedIds);
@@ -138,9 +140,9 @@ export function SelectionToolbar({ className }: SelectionToolbarProps) {
     }
     
     if (successCount > 0) {
-      toast.success(`Stopped ${successCount} download(s)`);
+      toast.success(t('toasts.stoppedN', { n: successCount }));
     }
-  }, [selectedIds, downloads, updateStatus]);
+  }, [selectedIds, downloads, updateStatus, t]);
 
   const handleDeleteSelected = useCallback(() => {
     setShowBulkDeleteDialog(true);
@@ -149,8 +151,8 @@ export function SelectionToolbar({ className }: SelectionToolbarProps) {
   const handleMoveToQueue = useCallback((newQueueId: string) => {
     const ids = Array.from(selectedIds);
     moveToQueue(ids, newQueueId);
-    toast.success(`Moved ${ids.length} download(s) to queue`);
-  }, [selectedIds, moveToQueue]);
+    toast.success(t('toasts.movedToQueueN', { n: ids.length }));
+  }, [selectedIds, moveToQueue, t]);
 
   const handleSelectAll = () => {
     // Select only the currently filtered/visible downloads
@@ -176,7 +178,7 @@ export function SelectionToolbar({ className }: SelectionToolbarProps) {
             <div className="flex items-center gap-2 px-2">
               <CheckSquare className="h-4 w-4 text-primary" />
               <span className="text-sm font-medium">
-                {selectedCount} selected
+                {t('toolbar.selected', { n: selectedCount })}
               </span>
             </div>
 
@@ -194,7 +196,7 @@ export function SelectionToolbar({ className }: SelectionToolbarProps) {
                 className="gap-1.5 text-green-600 hover:text-green-700 hover:bg-green-100 dark:hover:bg-green-900/20"
               >
                 <Play className="h-4 w-4" />
-                <span className="hidden sm:inline">Resume</span>
+                <span className="hidden sm:inline">{t('common.resume')}</span>
               </Button>
             )}
 
@@ -207,7 +209,7 @@ export function SelectionToolbar({ className }: SelectionToolbarProps) {
                 className="gap-1.5 text-yellow-600 hover:text-yellow-700 hover:bg-yellow-100 dark:hover:bg-yellow-900/20"
               >
                 <Pause className="h-4 w-4" />
-                <span className="hidden sm:inline">Pause</span>
+                <span className="hidden sm:inline">{t('common.pause')}</span>
               </Button>
             )}
 
@@ -220,7 +222,7 @@ export function SelectionToolbar({ className }: SelectionToolbarProps) {
                 className="gap-1.5"
               >
                 <Square className="h-4 w-4" />
-                <span className="hidden sm:inline">Stop</span>
+                <span className="hidden sm:inline">{t('common.stop')}</span>
               </Button>
             )}
 
@@ -233,7 +235,7 @@ export function SelectionToolbar({ className }: SelectionToolbarProps) {
                 className="gap-1.5"
               >
                 <RefreshCw className="h-4 w-4" />
-                <span className="hidden sm:inline">Retry</span>
+                <span className="hidden sm:inline">{t('common.retry')}</span>
               </Button>
             )}
 
@@ -244,7 +246,7 @@ export function SelectionToolbar({ className }: SelectionToolbarProps) {
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" className="gap-1.5">
                   <ListTodo className="h-4 w-4" />
-                  <span className="hidden sm:inline">Move to Queue</span>
+                  <span className="hidden sm:inline">{t('toolbar.moveToQueue')}</span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent>
@@ -273,7 +275,7 @@ export function SelectionToolbar({ className }: SelectionToolbarProps) {
               className="gap-1.5 text-destructive hover:text-destructive hover:bg-destructive/10"
             >
               <Trash2 className="h-4 w-4" />
-              <span className="hidden sm:inline">Remove</span>
+              <span className="hidden sm:inline">{t('common.remove')}</span>
             </Button>
 
             {/* Spacer */}
@@ -287,7 +289,7 @@ export function SelectionToolbar({ className }: SelectionToolbarProps) {
               className="gap-1.5"
             >
               <CheckSquare className="h-4 w-4" />
-              <span className="hidden sm:inline">Select All</span>
+              <span className="hidden sm:inline">{t('toolbar.selectAll')}</span>
             </Button>
 
             {/* Clear selection */}
@@ -298,7 +300,7 @@ export function SelectionToolbar({ className }: SelectionToolbarProps) {
               className="gap-1.5"
             >
               <X className="h-4 w-4" />
-              <span className="hidden sm:inline">Clear</span>
+              <span className="hidden sm:inline">{t('common.clear')}</span>
             </Button>
           </div>
         </motion.div>

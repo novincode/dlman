@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import {
   ChevronDown,
   ChevronRight,
@@ -39,6 +40,7 @@ import { getCategoryIcon } from "@/lib/categoryIcons";
 const isTauri = () => typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
 
 export function FolderList() {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(true);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [showCategoryDialog, setShowCategoryDialog] = useState(false);
@@ -61,18 +63,18 @@ export function FolderList() {
 
   const handleOpenCategoryFolder = useCallback(async (category: Category) => {
     if (!isTauri()) {
-      toast.info("Open folder is only available in the desktop app");
+      toast.info(t('toasts.openFolderDesktopOnly'));
       return;
     }
-    
+
     try {
       const folderPath = await getCategoryDownloadPath(category.id);
       await invoke("open_folder", { path: folderPath });
     } catch (err) {
       console.error("Failed to open category folder:", err);
-      toast.error("Failed to open folder");
+      toast.error(t('toasts.openFolderFailed'));
     }
-  }, []);
+  }, [t]);
 
   return (
     <>
@@ -88,7 +90,7 @@ export function FolderList() {
             <ChevronRight className="h-3 w-3" />
           )}
           <Folder className="h-3 w-3 mr-1" />
-          CATEGORIES
+          <span className="uppercase">{t('sidebar.categories')}</span>
           <span className="ml-auto text-xs opacity-60">{categories.length}</span>
         </button>
 
@@ -114,7 +116,7 @@ export function FolderList() {
                   )}
                 >
                   <Folder className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm truncate flex-1">All Categories</span>
+                  <span className="text-sm truncate flex-1">{t('sidebar.allCategories')}</span>
                 </div>
 
                 {categories.map((category) => {
@@ -162,24 +164,24 @@ export function FolderList() {
                               <DropdownMenuContent align="end">
                                 <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleOpenCategoryFolder(category); }}>
                                   <FolderOpen className="h-4 w-4 mr-2" />
-                                  Open Folder
+                                  {t('categories.openFolder')}
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEditCategory(category); }}>
                                   <Edit className="h-4 w-4 mr-2" />
-                                  Edit Category
+                                  {t('categories.editCategory')}
                                 </DropdownMenuItem>
                                 <DropdownMenuItem onClick={(e) => { e.stopPropagation(); handleEditCategory(category); }}>
                                   <Palette className="h-4 w-4 mr-2" />
-                                  Change Color
+                                  {t('categories.changeColor')}
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
-                                <DropdownMenuItem 
+                                <DropdownMenuItem
                                   className="text-destructive focus:text-destructive"
                                   onClick={(e) => { e.stopPropagation(); handleDeleteCategory(category.id); }}
                                 >
                                   <Trash2 className="h-4 w-4 mr-2" />
-                                  Delete Category
+                                  {t('categories.deleteCategory')}
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
@@ -188,24 +190,24 @@ export function FolderList() {
                         <ContextMenuContent>
                           <ContextMenuItem onClick={() => handleOpenCategoryFolder(category)}>
                             <FolderOpen className="h-4 w-4 mr-2" />
-                            Open Folder
+                            {t('categories.openFolder')}
                           </ContextMenuItem>
                           <ContextMenuSeparator />
                           <ContextMenuItem onClick={() => handleEditCategory(category)}>
                             <Edit className="h-4 w-4 mr-2" />
-                            Edit Category
+                            {t('categories.editCategory')}
                           </ContextMenuItem>
                           <ContextMenuItem onClick={() => handleEditCategory(category)}>
                             <Palette className="h-4 w-4 mr-2" />
-                            Change Color
+                            {t('categories.changeColor')}
                           </ContextMenuItem>
                           <ContextMenuSeparator />
-                          <ContextMenuItem 
+                          <ContextMenuItem
                             className="text-destructive focus:text-destructive"
                             onClick={() => handleDeleteCategory(category.id)}
                           >
                             <Trash2 className="h-4 w-4 mr-2" />
-                            Delete Category
+                            {t('categories.deleteCategory')}
                           </ContextMenuItem>
                         </ContextMenuContent>
                       </ContextMenu>
@@ -222,7 +224,7 @@ export function FolderList() {
                   onClick={handleAddCategory}
                 >
                   <Plus className="h-3 w-3 mr-2" />
-                  Add Category
+                  {t('categories.addCategory')}
                 </Button>
               </div>
             </motion.div>
