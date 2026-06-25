@@ -1,0 +1,33 @@
+{
+  "common": {
+    "add": "Add",
+    "cancel": "Cancel",
+    "save": "Save",
+    "delete": "Delete",
+    "remove": "Remove",
+    "close": "Close",
+    "confirm": "Confirm",
+    "edit": "Edit",
+    "retry": "Retry",
+    "pause": "Pause",
+    "resume": "Resume",
+    "start": "Start",
+    "stop": "Stop",
+    "open": "Open",
+    "loading": "Loading…",
+    "search": "Search"
+  },
+  "settings": {
+    "title": "Settings",
+    "appearance": "Appearance",
+    "theme": "Theme",
+    "themeSystem": "System",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "language": "Language",
+    "languageHint": "Choose the display language for the app.",
+    "font": "Font",
+    "fontAuto": "Auto (follows language)",
+    "fontHint": "The app font. Defaults to the recommended font for your language."
+  }
+}
