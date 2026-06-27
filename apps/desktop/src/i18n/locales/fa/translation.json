@@ -15,6 +15,25 @@
     "version": "نسخهٔ {{version}}",
     "viewGithub": "مشاهده در گیت\u200cهاب"
   },
+  "appMenu": {
+    "batchImport": "ورود گروهی...",
+    "checkUpdates": "بررسی به\u200cروزرسانی\u200cها...",
+    "documentation": "مستندات",
+    "edit": "ویرایش",
+    "exportDownloads": "برون\u200cبری دانلودها...",
+    "file": "پرونده",
+    "help": "راهنما",
+    "importDownloads": "درون\u200cریزی دانلودها...",
+    "manageQueues": "مدیریت صف\u200cها...",
+    "minimizeToTray": "کوچک\u200cسازی به سینی",
+    "noQueues": "هیچ صفی موجود نیست",
+    "reportIssue": "گزارش مشکل",
+    "settings": "تنظیمات...",
+    "startQueue": "شروع: {{name}}",
+    "toggleSidebar": "نمایش/پنهان نوار کناری",
+    "view": "نمایش",
+    "window": "پنجره"
+  },
   "batchImport": {
     "adding": "در حال افزودن…",
     "addN": "افزودن {{n}}",
@@ -209,6 +228,12 @@
       }
     }
   },
+  "dropZone": {
+    "browserLinks": "پیوندهای مرورگر",
+    "directFiles": "فایل\u200cهای مستقیم",
+    "subtitle": "پیوندها یا فایل\u200cها را اینجا رها کنید تا دانلود آغاز شود",
+    "title": "برای دانلود رها کنید"
+  },
   "filterBar": {
     "allQueues": "همهٔ صف\u200cها"
   },
@@ -283,6 +308,14 @@
     "thisCategory": "این دسته",
     "url": "نشانی",
     "urlPlaceholder": "https://example.com/file.zip"
+  },
+  "notifications": {
+    "downloadComplete": "دانلود کامل شد",
+    "downloadFailed": "دانلود ناموفق بود",
+    "queueComplete": "صف کامل شد",
+    "queueCompleteBody": "همه\u200cی دانلودهای «{{name}}» به پایان رسید",
+    "queueStarted": "صف آغاز شد",
+    "queueStartedBody": "«{{name}}» شروع به دانلود کرد (زمان\u200cبندی\u200cشده)"
   },
   "queueDialog": {
     "activeDays": "روزهای فعال",
@@ -523,6 +556,17 @@
     "pending": "در انتظار",
     "queued": "در صف"
   },
+  "support": {
+    "neverShow": "دیگر نشان نده",
+    "neverTitle": "هرگز دوباره نشان نده",
+    "notNow": "اکنون نه",
+    "notNowDuration": "اکنون نه (۱۵ روز)",
+    "skipTitle": "۱۵ روز نادیده بگیر",
+    "sponsor": "حمایت مالی",
+    "star": "ستاره",
+    "subtitle": "حمایت شما کمک می\u200cکند این برنامه رایگان و عالی بماند",
+    "title": "از DLMan لذت می\u200cبرید؟"
+  },
   "toasts": {
     "addDownloadFailed": "افزودن دانلود ناموفق بود",
     "addDownloadsFailed": "افزودن دانلودها ناموفق بود",
@@ -584,6 +628,8 @@
     "speedLimitDisabled": "محدودیت سرعت غیرفعال شد",
     "speedLimitSet": "محدودیت سرعت روی {{n}} کیلوبایت بر ثانیه تنظیم شد",
     "stoppedN": "{{n}} دانلود متوقف شد",
+    "toggledDevtools": "ابزار توسعه\u200cدهنده جابه\u200cجا شد",
+    "toggleDevtoolsFailed": "جابه\u200cجایی ابزار توسعه\u200cدهنده ناموفق بود",
     "updateDestinationFailed": "به\u200cروزرسانی مقصد ناموفق بود: {{error}}",
     "urlCopied": "نشانی در کلیپ\u200cبورد کپی شد",
     "usingQueueSpeedLimit": "استفاده از محدودیت سرعت صف"
@@ -592,6 +638,14 @@
     "moveToQueue": "انتقال به صف",
     "selectAll": "انتخاب همه",
     "selected": "{{n}} مورد انتخاب شد"
+  },
+  "tray": {
+    "quit": "خروج از DLMan",
+    "showWindow": "نمایش DLMan",
+    "tooltip": "DLMan - مدیر دانلود"
+  },
+  "update": {
+    "available": "نسخه\u200cی {{version}} موجود است"
   },
   "welcome": {
     "addDownload": "افزودن دانلود",

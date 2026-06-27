@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { X, Star, Heart, Frown, Meh, HeartHandshake, HeartPulse } from "lucide-react";
 import { open as openUrl } from "@tauri-apps/plugin-shell";
+import { useTranslation } from "react-i18next";
 import { useSettingsStore } from "@/stores/settings";
 import { cn } from "@/lib/utils";
 
@@ -41,6 +42,7 @@ function getFirstOpenTime(): number {
 }
 
 export function SupportReminder() {
+  const { t } = useTranslation();
   const devMode = useSettingsStore((s) => s.settings.dev_mode);
   const [visible, setVisible] = useState(false);
   const [hoveredButton, setHoveredButton] = useState<string | null>(null);
@@ -144,7 +146,7 @@ export function SupportReminder() {
           className="absolute top-2 right-2 text-muted-foreground hover:text-amber-500 hover:scale-110 transition-all duration-200"
           onMouseEnter={() => setHoveredButton("skip")}
           onMouseLeave={() => setHoveredButton(null)}
-          title="Not now (15 days)"
+          title={t('support.notNowDuration')}
         >
           <X className="h-4 w-4" />
         </button>
@@ -158,10 +160,10 @@ export function SupportReminder() {
 
           <div className="flex-1 min-w-0">
             <p className="text-base font-semibold text-foreground">
-              Enjoying DLMan?
+              {t('support.title')}
             </p>
             <p className="text-sm text-muted-foreground mt-1">
-              Your support helps keep it free and awesome
+              {t('support.subtitle')}
             </p>
 
             {/* Action buttons */}
@@ -177,7 +179,7 @@ export function SupportReminder() {
                 )}
               >
                 <Star className="h-3.5 w-3.5" />
-                Star
+                {t('support.star')}
               </button>
               <button
                 onClick={handleSponsor}
@@ -190,7 +192,7 @@ export function SupportReminder() {
                 )}
               >
                 <Heart className="h-3.5 w-3.5" />
-                Sponsor
+                {t('support.sponsor')}
               </button>
             </div>
 
@@ -201,18 +203,18 @@ export function SupportReminder() {
                 onMouseEnter={() => setHoveredButton("skip")}
                 onMouseLeave={() => setHoveredButton(null)}
                 className="text-[10px] text-muted-foreground hover:text-amber-500 transition-colors font-medium"
-                title="Skip for 15 days"
+                title={t('support.skipTitle')}
               >
-                Not now
+                {t('support.notNow')}
               </button>
               <button
                 onClick={handleNever}
                 onMouseEnter={() => setHoveredButton("never")}
                 onMouseLeave={() => setHoveredButton(null)}
                 className="text-[10px] text-muted-foreground hover:text-red-500 transition-colors font-medium"
-                title="Never show again"
+                title={t('support.neverTitle')}
               >
-                Don't show again
+                {t('support.neverShow')}
               </button>
             </div>
           </div>

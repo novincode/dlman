@@ -14,6 +14,7 @@ import {
   Options as NotificationOptions,
 } from '@tauri-apps/plugin-notification';
 import { useSettingsStore } from '@/stores/settings';
+import i18n from '@/i18n';
 
 // Check if we're in Tauri context
 const isTauri = () =>
@@ -127,7 +128,7 @@ export async function notifyDownloadComplete(
     if (!permissionGranted) return;
   }
 
-  await sendNotificationWithOptions('Download Complete', filename, notifySound);
+  await sendNotificationWithOptions(i18n.t('notifications.downloadComplete'), filename, notifySound);
 }
 
 /**
@@ -149,7 +150,7 @@ export async function notifyDownloadFailed(
   }
 
   const body = error ? `${filename}: ${error}` : filename;
-  await sendNotificationWithOptions('Download Failed', body, notifySound);
+  await sendNotificationWithOptions(i18n.t('notifications.downloadFailed'), body, notifySound);
 }
 
 /**
@@ -167,8 +168,8 @@ export async function notifyQueueComplete(queueName: string): Promise<void> {
   }
 
   await sendNotificationWithOptions(
-    'Queue Complete',
-    `All downloads in "${queueName}" have finished`,
+    i18n.t('notifications.queueComplete'),
+    i18n.t('notifications.queueCompleteBody', { name: queueName }),
     notifySound
   );
 }
@@ -185,8 +186,8 @@ export async function notifyQueueStarted(queueName: string): Promise<void> {
   }
 
   await sendNotificationWithOptions(
-    'Queue Started',
-    `"${queueName}" has started downloading (scheduled)`,
+    i18n.t('notifications.queueStarted'),
+    i18n.t('notifications.queueStartedBody', { name: queueName }),
     true
   );
 }

@@ -15,6 +15,25 @@
     "version": "Version {{version}}",
     "viewGithub": "View on GitHub"
   },
+  "appMenu": {
+    "batchImport": "Batch Import...",
+    "checkUpdates": "Check for Updates...",
+    "documentation": "Documentation",
+    "edit": "Edit",
+    "exportDownloads": "Export Downloads...",
+    "file": "File",
+    "help": "Help",
+    "importDownloads": "Import Downloads...",
+    "manageQueues": "Manage Queues...",
+    "minimizeToTray": "Minimize to Tray",
+    "noQueues": "No queues available",
+    "reportIssue": "Report an Issue",
+    "settings": "Settings...",
+    "startQueue": "Start: {{name}}",
+    "toggleSidebar": "Toggle Sidebar",
+    "view": "View",
+    "window": "Window"
+  },
   "batchImport": {
     "adding": "Adding…",
     "addN": "Add {{n}}",
@@ -209,6 +228,12 @@
       }
     }
   },
+  "dropZone": {
+    "browserLinks": "Browser Links",
+    "directFiles": "Direct Files",
+    "subtitle": "Drop links or files here to start downloading",
+    "title": "Drop to Download"
+  },
   "filterBar": {
     "allQueues": "All Queues"
   },
@@ -283,6 +308,14 @@
     "thisCategory": "this category",
     "url": "URL",
     "urlPlaceholder": "https://example.com/file.zip"
+  },
+  "notifications": {
+    "downloadComplete": "Download Complete",
+    "downloadFailed": "Download Failed",
+    "queueComplete": "Queue Complete",
+    "queueCompleteBody": "All downloads in \"{{name}}\" have finished",
+    "queueStarted": "Queue Started",
+    "queueStartedBody": "\"{{name}}\" has started downloading (scheduled)"
   },
   "queueDialog": {
     "activeDays": "Active Days",
@@ -523,6 +556,17 @@
     "pending": "Pending",
     "queued": "Queued"
   },
+  "support": {
+    "neverShow": "Don't show again",
+    "neverTitle": "Never show again",
+    "notNow": "Not now",
+    "notNowDuration": "Not now (15 days)",
+    "skipTitle": "Skip for 15 days",
+    "sponsor": "Sponsor",
+    "star": "Star",
+    "subtitle": "Your support helps keep it free and awesome",
+    "title": "Enjoying DLMan?"
+  },
   "toasts": {
     "addDownloadFailed": "Failed to add download",
     "addDownloadsFailed": "Failed to add downloads",
@@ -584,6 +628,8 @@
     "speedLimitDisabled": "Speed limit disabled",
     "speedLimitSet": "Speed limit set to {{n}} KB/s",
     "stoppedN": "Stopped {{n}} download(s)",
+    "toggledDevtools": "Toggled DevTools",
+    "toggleDevtoolsFailed": "Failed to toggle DevTools",
     "updateDestinationFailed": "Failed to update destination: {{error}}",
     "urlCopied": "URL copied to clipboard",
     "usingQueueSpeedLimit": "Using queue speed limit"
@@ -592,6 +638,14 @@
     "moveToQueue": "Move to Queue",
     "selectAll": "Select All",
     "selected": "{{n}} selected"
+  },
+  "tray": {
+    "quit": "Quit DLMan",
+    "showWindow": "Show DLMan",
+    "tooltip": "DLMan - Download Manager"
+  },
+  "update": {
+    "available": "v{{version}} available"
   },
   "welcome": {
     "addDownload": "Add Download",

@@ -1,6 +1,7 @@
 import { useEffect, useCallback, useMemo } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import { useUIStore } from "@/stores/ui";
 import { useDownloadStore, selectFilteredDownloads } from "@/stores/downloads";
 import { useQueueStore } from "@/stores/queues";
@@ -24,6 +25,7 @@ interface KeyboardShortcut {
 }
 
 export function useKeyboardShortcuts() {
+  const { t } = useTranslation();
   const {
     setShowNewDownloadDialog,
     setShowBatchImportDialog,
@@ -156,10 +158,10 @@ export function useKeyboardShortcuts() {
           const win = getCurrentWindow();
           // Try the internal toggle
           await (win as any).__TAURI_INTERNALS__?.invoke('plugin:webview|internal_toggle_devtools');
-          toast.success('Toggled DevTools');
+          toast.success(t('toasts.toggledDevtools'));
         } catch (err) {
           console.error('Failed to toggle devtools:', err);
-          toast.error('Failed to toggle DevTools');
+          toast.error(t('toasts.toggleDevtoolsFailed'));
         }
       },
       description: "Toggle DevTools (Dev Mode)",

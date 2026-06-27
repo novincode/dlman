@@ -15,10 +15,14 @@ import { exit } from '@tauri-apps/plugin-process';
 import { useUIStore } from '@/stores/ui';
 import { useQueueStore, selectQueuesArray } from '@/stores/queues';
 import { getAppVersion } from '@/lib/version';
+import i18n from '@/i18n';
 
 // Track if tray has been initialized (in this JS session)
 let trayInitialized = false;
 let trayIcon: TrayIcon | null = null;
+
+// Track if the i18n language listener has been wired (avoid stacking on reload)
+let menuI18nSubscribed = false;
 
 // Unique ID for the tray icon - used to detect existing icons after reload
 const TRAY_ID = 'dlman-tray';
@@ -31,7 +35,7 @@ async function createTrayMenu(): Promise<Menu> {
     items: [
       {
         id: 'new-download',
-        text: 'New Download',
+        text: i18n.t('menu.newDownload'),
         accelerator: 'CmdOrCtrl+N',
         action: () => {
           showMainWindow();
@@ -40,7 +44,7 @@ async function createTrayMenu(): Promise<Menu> {
       },
       {
         id: 'batch-import',
-        text: 'Batch Import',
+        text: i18n.t('contextMenu.batchImport'),
         accelerator: 'CmdOrCtrl+Shift+N',
         action: () => {
           showMainWindow();
@@ -52,7 +56,7 @@ async function createTrayMenu(): Promise<Menu> {
       },
       {
         id: 'show-window',
-        text: 'Show DLMan',
+        text: i18n.t('tray.showWindow'),
         action: showMainWindow,
       },
       {
@@ -60,7 +64,7 @@ async function createTrayMenu(): Promise<Menu> {
       },
       {
         id: 'settings',
-        text: 'Settings',
+        text: i18n.t('settings.title'),
         accelerator: 'CmdOrCtrl+,',
         action: () => {
           showMainWindow();
@@ -72,7 +76,7 @@ async function createTrayMenu(): Promise<Menu> {
       },
       {
         id: 'quit',
-        text: 'Quit DLMan',
+        text: i18n.t('tray.quit'),
         accelerator: 'CmdOrCtrl+Q',
         action: async () => {
           await exit(0);
@@ -120,7 +124,7 @@ export async function initSystemTray(): Promise<void> {
     trayIcon = await TrayIcon.new({
       id: TRAY_ID,
       icon: icon || undefined,
-      tooltip: 'DLMan - Download Manager',
+      tooltip: i18n.t('tray.tooltip'),
       menu: trayMenu,
       menuOnLeftClick: false, // Left click shows window, right click shows menu
       action: (event) => {
@@ -170,7 +174,7 @@ export async function initAppMenu(): Promise<void> {
         await PredefinedMenuItem.new({ item: 'Separator' }),
         await MenuItem.new({
           id: 'settings',
-          text: 'Settings...',
+          text: i18n.t('appMenu.settings'),
           accelerator: 'CmdOrCtrl+,',
           action: () => {
             useUIStore.getState().setShowSettingsDialog(true);
@@ -189,11 +193,11 @@ export async function initAppMenu(): Promise<void> {
 
     // Create File submenu
     const fileSubmenu = await Submenu.new({
-      text: 'File',
+      text: i18n.t('appMenu.file'),
       items: [
         await MenuItem.new({
           id: 'new-download',
-          text: 'New Download',
+          text: i18n.t('menu.newDownload'),
           accelerator: 'CmdOrCtrl+N',
           action: () => {
             useUIStore.getState().setShowNewDownloadDialog(true);
@@ -201,7 +205,7 @@ export async function initAppMenu(): Promise<void> {
         }),
         await MenuItem.new({
           id: 'batch-import',
-          text: 'Batch Import...',
+          text: i18n.t('appMenu.batchImport'),
           accelerator: 'CmdOrCtrl+Shift+N',
           action: () => {
             useUIStore.getState().setShowBatchImportDialog(true);
@@ -210,7 +214,7 @@ export async function initAppMenu(): Promise<void> {
         await PredefinedMenuItem.new({ item: 'Separator' }),
         await MenuItem.new({
           id: 'export-downloads',
-          text: 'Export Downloads...',
+          text: i18n.t('appMenu.exportDownloads'),
           accelerator: 'CmdOrCtrl+E',
           action: () => {
             // TODO: Implement export
@@ -219,7 +223,7 @@ export async function initAppMenu(): Promise<void> {
         }),
         await MenuItem.new({
           id: 'import-downloads',
-          text: 'Import Downloads...',
+          text: i18n.t('appMenu.importDownloads'),
           accelerator: 'CmdOrCtrl+I',
           action: () => {
             // TODO: Implement import
@@ -233,7 +237,7 @@ export async function initAppMenu(): Promise<void> {
 
     // Create Edit submenu
     const editSubmenu = await Submenu.new({
-      text: 'Edit',
+      text: i18n.t('appMenu.edit'),
       items: [
         await PredefinedMenuItem.new({ item: 'Undo' }),
         await PredefinedMenuItem.new({ item: 'Redo' }),
@@ -250,11 +254,11 @@ export async function initAppMenu(): Promise<void> {
 
     // Create View submenu
     const viewSubmenu = await Submenu.new({
-      text: 'View',
+      text: i18n.t('appMenu.view'),
       items: [
         await MenuItem.new({
           id: 'toggle-sidebar',
-          text: 'Toggle Sidebar',
+          text: i18n.t('appMenu.toggleSidebar'),
           accelerator: 'CmdOrCtrl+B',
           action: () => {
             useUIStore.getState().toggleSidebar();
@@ -267,14 +271,14 @@ export async function initAppMenu(): Promise<void> {
 
     // Create Window submenu
     const windowSubmenu = await Submenu.new({
-      text: 'Window',
+      text: i18n.t('appMenu.window'),
       items: [
         await PredefinedMenuItem.new({ item: 'Minimize' }),
         await PredefinedMenuItem.new({ item: 'Maximize' }),
         await PredefinedMenuItem.new({ item: 'Separator' }),
         await MenuItem.new({
           id: 'minimize-to-tray',
-          text: 'Minimize to Tray',
+          text: i18n.t('appMenu.minimizeToTray'),
           action: async () => {
             const window = getCurrentWindow();
             await window.hide();
@@ -286,11 +290,11 @@ export async function initAppMenu(): Promise<void> {
 
     // Create Help submenu
     const helpSubmenu = await Submenu.new({
-      text: 'Help',
+      text: i18n.t('appMenu.help'),
       items: [
         await MenuItem.new({
           id: 'documentation',
-          text: 'Documentation',
+          text: i18n.t('appMenu.documentation'),
           action: () => {
             import('@tauri-apps/plugin-shell').then(({ open }) => {
               open('https://github.com/novincode/dlman#readme');
@@ -299,7 +303,7 @@ export async function initAppMenu(): Promise<void> {
         }),
         await MenuItem.new({
           id: 'report-issue',
-          text: 'Report an Issue',
+          text: i18n.t('appMenu.reportIssue'),
           action: () => {
             import('@tauri-apps/plugin-shell').then(({ open }) => {
               open('https://github.com/novincode/dlman/issues');
@@ -309,7 +313,7 @@ export async function initAppMenu(): Promise<void> {
         await PredefinedMenuItem.new({ item: 'Separator' }),
         await MenuItem.new({
           id: 'check-updates',
-          text: 'Check for Updates...',
+          text: i18n.t('appMenu.checkUpdates'),
           action: () => {
             useUIStore.getState().setShowAboutDialog(true);
           },
@@ -347,7 +351,7 @@ async function createQueuesSubmenu(): Promise<Submenu> {
   const queueItems: (MenuItem | PredefinedMenuItem)[] = [
     await MenuItem.new({
       id: 'manage-queues',
-      text: 'Manage Queues...',
+      text: i18n.t('appMenu.manageQueues'),
       action: () => {
         useUIStore.getState().setShowQueueManagerDialog(true);
       },
@@ -360,7 +364,7 @@ async function createQueuesSubmenu(): Promise<Submenu> {
     queueItems.push(
       await MenuItem.new({
         id: `queue-${queue.id}`,
-        text: `Start: ${queue.name}`,
+        text: i18n.t('appMenu.startQueue', { name: queue.name }),
         action: () => {
           // TODO: Start specific queue
           console.log('Start queue:', queue.name);
@@ -373,14 +377,14 @@ async function createQueuesSubmenu(): Promise<Submenu> {
     queueItems.push(
       await MenuItem.new({
         id: 'no-queues',
-        text: 'No queues available',
+        text: i18n.t('appMenu.noQueues'),
         enabled: false,
       })
     );
   }
 
   return Submenu.new({
-    text: 'Queues',
+    text: i18n.t('menu.queues'),
     items: queueItems,
   });
 }
@@ -444,6 +448,19 @@ export async function cleanupSystemTray(): Promise<void> {
 }
 
 /**
+ * Rebuild the tray menu in place (used after a language change).
+ */
+async function refreshTrayMenu(): Promise<void> {
+  if (!trayIcon) return;
+  try {
+    const trayMenu = await createTrayMenu();
+    await trayIcon.setMenu(trayMenu);
+  } catch (err) {
+    console.error('Failed to refresh tray menu:', err);
+  }
+}
+
+/**
  * Initialize all system integrations (tray, menu, close handler)
  */
 export async function initSystemIntegrations(): Promise<void> {
@@ -452,4 +469,14 @@ export async function initSystemIntegrations(): Promise<void> {
     initAppMenu(),
     setupCloseHandler(),
   ]);
+
+  // Rebuild the native menus whenever the UI language changes so their labels
+  // stay in sync with the rest of the app (they're built once at startup).
+  if (!menuI18nSubscribed) {
+    menuI18nSubscribed = true;
+    i18n.on('languageChanged', () => {
+      initAppMenu().catch(console.error);
+      refreshTrayMenu().catch(console.error);
+    });
+  }
 }
