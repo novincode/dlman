@@ -1,4 +1,20 @@
 {
+  "about": {
+    "buyCoffee": "Buy me a coffee",
+    "checking": "Checking...",
+    "checkUpdates": "Check for Updates",
+    "copyright": "© 2025 DLMan. All rights reserved.",
+    "downloadUpdate": "Download Update",
+    "madeWithPost": "by the DLMan Team",
+    "madeWithPre": "Made with",
+    "newVersion": "New version available: v{{version}}",
+    "subtitle": "Download Manager",
+    "tagline1": "A modern, fast, and reliable download manager",
+    "tagline2": "built with Rust and React.",
+    "upToDate": "You're on the latest version!",
+    "version": "Version {{version}}",
+    "viewGithub": "View on GitHub"
+  },
   "batchImport": {
     "adding": "Adding…",
     "addN": "Add {{n}}",
@@ -27,6 +43,15 @@
     "selectQueue": "Select queue",
     "startImmediately": "Start immediately",
     "title": "Batch Import"
+  },
+  "bulkDelete": {
+    "alsoDeleteFiles": "Also delete {{n}} file(s) from system",
+    "checkingFiles": "Checking files on disk...",
+    "deleteFilesHint": "This will permanently delete the downloaded files. This action cannot be undone.",
+    "descDefault": "Are you sure you want to remove {{n}} download(s) from the list?",
+    "descWithFiles": "Are you sure you want to remove {{n}} download(s) from the list? {{files}} file(s) exist on disk.",
+    "removeAndDeleteN": "Remove & Delete {{n}} file(s)",
+    "title": "Remove {{n}} download(s)"
   },
   "categories": {
     "addCategory": "Add Category",
@@ -71,11 +96,14 @@
     "apply": "Apply",
     "cancel": "Cancel",
     "clear": "Clear",
+    "confirm": "Confirm",
     "delete": "Delete",
+    "edit": "Edit",
     "pause": "Pause",
     "remove": "Remove",
     "resume": "Resume",
     "retry": "Retry",
+    "save": "Save",
     "searchPlaceholder": "Search...",
     "start": "Start",
     "stop": "Stop"
@@ -84,6 +112,31 @@
     "batchImport": "Batch Import",
     "newQueue": "New Queue",
     "pasteLinks": "Paste Links"
+  },
+  "credentialPrompt": {
+    "descPost": "requires a login to download this file.",
+    "descPre": "The server at",
+    "failedWarning": "Your saved credentials for this domain didn't work. Update them below.",
+    "password": "Password",
+    "passwordPlaceholder": "Enter password",
+    "rememberLogin": "Remember this login",
+    "retrying": "Retrying...",
+    "signInRetry": "Sign In & Retry",
+    "updateLogin": "Update saved login",
+    "username": "Username",
+    "usernamePlaceholder": "Enter username"
+  },
+  "deleteDialog": {
+    "alsoDeleteFile": "Also delete file from system",
+    "deleteFileHint": "This will permanently delete the downloaded file. This action cannot be undone.",
+    "descDefault": "Are you sure you want to remove \"{{filename}}\" from the download list?",
+    "descIncomplete": "This download is not complete. Removing it will delete any temporary segments that have been downloaded. Are you sure you want to remove \"{{filename}}\"?",
+    "descMoved": "The downloaded file \"{{filename}}\" has been moved or deleted. Do you want to remove this entry from the download list?",
+    "movedNote": "The file has been moved or deleted from its original location.",
+    "note": "Note:",
+    "removeAndDelete": "Remove & Delete File",
+    "segmentsNote": "Temporary download segments will be automatically cleaned up.",
+    "title": "Remove Download"
   },
   "devConsole": {
     "collapse": "Collapse console",
@@ -102,6 +155,27 @@
     "title": "Dev Console",
     "warningsBadge": "{{n}} warning(s)",
     "warns": "Warns"
+  },
+  "downloadInfo": {
+    "calculating": "Calculating...",
+    "desc": "Detailed information about this download",
+    "destinationPlaceholder": "Enter destination path",
+    "downloaded": "Downloaded",
+    "liveStats": "Live Statistics",
+    "moveFile": "Move File",
+    "moveHint": "The downloaded file will be moved to the new location.",
+    "na": "N/A",
+    "saveLocation": "Save Location",
+    "segmentBarTitle": "Segment {{n}}: {{downloaded}} / {{size}}",
+    "segmentN": "Segment {{n}}",
+    "segmentsCount": "Segments ({{n}})",
+    "selectFolder": "Select Destination Folder",
+    "size": "Size",
+    "speed": "Speed",
+    "speedLimitHint": "Set to 0 for unlimited speed. This overrides the global speed limit for this download.",
+    "started": "Started",
+    "streamingShort": "(streaming)",
+    "timeRemaining": "Time Remaining"
   },
   "downloadItem": {
     "complete": "Complete",
@@ -323,6 +397,7 @@
     "clipboardReadFailed": "Failed to read clipboard",
     "copyUrlFailed": "Failed to copy URL",
     "dataExported": "Data exported successfully",
+    "destinationUpdated": "Destination updated",
     "devtoolsBrowserHint": "Press F12 to open DevTools in browser",
     "devtoolsUnavailable": "DevTools not available in this build",
     "dirPickerFailed": "Failed to open directory picker",
@@ -338,6 +413,7 @@
     "exportDesktopOnly": "Export is only available in the desktop app",
     "exportFailed": "Failed to export data",
     "fileDropped": "File dropped successfully",
+    "fileMoved": "File moved successfully",
     "fileNotAvailable": "File not available",
     "importDesktopOnly": "Import is only available in the desktop app",
     "imported": "Imported {{n}} download(s)",
@@ -365,6 +441,7 @@
     "speedLimitDisabled": "Speed limit disabled",
     "speedLimitSet": "Speed limit set to {{n}} KB/s",
     "stoppedN": "Stopped {{n}} download(s)",
+    "updateDestinationFailed": "Failed to update destination: {{error}}",
     "urlCopied": "URL copied to clipboard",
     "usingQueueSpeedLimit": "Using queue speed limit"
   },

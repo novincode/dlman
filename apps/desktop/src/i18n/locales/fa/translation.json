@@ -1,4 +1,20 @@
 {
+  "about": {
+    "buyCoffee": "یک قهوه مهمانم کن",
+    "checking": "در حال بررسی...",
+    "checkUpdates": "بررسی به\u200cروزرسانی",
+    "copyright": "© ۲۰۲۵ DLMan. تمامی حقوق محفوظ است.",
+    "downloadUpdate": "دانلود به\u200cروزرسانی",
+    "madeWithPost": "توسط تیم DLMan",
+    "madeWithPre": "ساخته\u200cشده با",
+    "newVersion": "نسخهٔ جدید موجود است: v{{version}}",
+    "subtitle": "مدیر دانلود",
+    "tagline1": "یک مدیر دانلود مدرن، سریع و قابل\u200cاعتماد",
+    "tagline2": "ساخته\u200cشده با Rust و React.",
+    "upToDate": "شما از آخرین نسخه استفاده می\u200cکنید!",
+    "version": "نسخهٔ {{version}}",
+    "viewGithub": "مشاهده در گیت\u200cهاب"
+  },
   "batchImport": {
     "adding": "در حال افزودن…",
     "addN": "افزودن {{n}}",
@@ -27,6 +43,15 @@
     "selectQueue": "انتخاب صف",
     "startImmediately": "شروع فوری",
     "title": "وارد کردن دسته\u200cای"
+  },
+  "bulkDelete": {
+    "alsoDeleteFiles": "همچنین {{n}} فایل از سیستم حذف شود",
+    "checkingFiles": "در حال بررسی فایل\u200cها روی دیسک...",
+    "deleteFilesHint": "این کار فایل\u200cهای دانلودشده را برای همیشه حذف می\u200cکند. این عمل قابل بازگشت نیست.",
+    "descDefault": "آیا مطمئنید که می\u200cخواهید {{n}} دانلود را از فهرست حذف کنید؟",
+    "descWithFiles": "آیا مطمئنید که می\u200cخواهید {{n}} دانلود را از فهرست حذف کنید؟ {{files}} فایل روی دیسک وجود دارد.",
+    "removeAndDeleteN": "حذف و پاک کردن {{n}} فایل",
+    "title": "حذف {{n}} دانلود"
   },
   "categories": {
     "addCategory": "افزودن دسته",
@@ -71,11 +96,14 @@
     "apply": "اعمال",
     "cancel": "انصراف",
     "clear": "پاک کردن",
+    "confirm": "تأیید",
     "delete": "حذف",
+    "edit": "ویرایش",
     "pause": "توقف",
     "remove": "حذف",
     "resume": "ادامه",
     "retry": "تلاش مجدد",
+    "save": "ذخیره",
     "searchPlaceholder": "جستجو...",
     "start": "شروع",
     "stop": "توقف کامل"
@@ -84,6 +112,31 @@
     "batchImport": "وارد کردن دسته\u200cای",
     "newQueue": "صف جدید",
     "pasteLinks": "چسباندن لینک\u200cها"
+  },
+  "credentialPrompt": {
+    "descPost": "برای دانلود این فایل نیاز به ورود دارد.",
+    "descPre": "سرور در",
+    "failedWarning": "اعتبارنامه\u200cهای ذخیره\u200cشدهٔ شما برای این دامنه کار نکرد. آن\u200cها را در زیر به\u200cروزرسانی کنید.",
+    "password": "رمز عبور",
+    "passwordPlaceholder": "رمز عبور را وارد کنید",
+    "rememberLogin": "این ورود را به خاطر بسپار",
+    "retrying": "در حال تلاش مجدد...",
+    "signInRetry": "ورود و تلاش مجدد",
+    "updateLogin": "به\u200cروزرسانی ورود ذخیره\u200cشده",
+    "username": "نام کاربری",
+    "usernamePlaceholder": "نام کاربری را وارد کنید"
+  },
+  "deleteDialog": {
+    "alsoDeleteFile": "همچنین فایل از سیستم حذف شود",
+    "deleteFileHint": "این کار فایل دانلودشده را برای همیشه حذف می\u200cکند. این عمل قابل بازگشت نیست.",
+    "descDefault": "آیا مطمئنید که می\u200cخواهید «{{filename}}» را از فهرست دانلود حذف کنید؟",
+    "descIncomplete": "این دانلود کامل نیست. حذف آن، بخش\u200cهای موقتی دانلودشده را پاک می\u200cکند. آیا مطمئنید که می\u200cخواهید «{{filename}}» را حذف کنید؟",
+    "descMoved": "فایل دانلودشدهٔ «{{filename}}» منتقل یا حذف شده است. آیا می\u200cخواهید این مورد را از فهرست دانلود حذف کنید؟",
+    "movedNote": "فایل از مکان اصلی خود منتقل یا حذف شده است.",
+    "note": "توجه:",
+    "removeAndDelete": "حذف و پاک کردن فایل",
+    "segmentsNote": "بخش\u200cهای موقت دانلود به\u200cصورت خودکار پاک\u200cسازی می\u200cشوند.",
+    "title": "حذف دانلود"
   },
   "devConsole": {
     "collapse": "جمع کردن کنسول",
@@ -102,6 +155,27 @@
     "title": "کنسول توسعه",
     "warningsBadge": "{{n}} هشدار",
     "warns": "هشدارها"
+  },
+  "downloadInfo": {
+    "calculating": "در حال محاسبه...",
+    "desc": "اطلاعات تفصیلی دربارهٔ این دانلود",
+    "destinationPlaceholder": "مسیر مقصد را وارد کنید",
+    "downloaded": "دانلودشده",
+    "liveStats": "آمار زنده",
+    "moveFile": "انتقال فایل",
+    "moveHint": "فایل دانلودشده به مکان جدید منتقل خواهد شد.",
+    "na": "نامشخص",
+    "saveLocation": "محل ذخیره",
+    "segmentBarTitle": "بخش {{n}}: {{downloaded}} / {{size}}",
+    "segmentN": "بخش {{n}}",
+    "segmentsCount": "بخش\u200cها ({{n}})",
+    "selectFolder": "انتخاب پوشهٔ مقصد",
+    "size": "اندازه",
+    "speed": "سرعت",
+    "speedLimitHint": "برای سرعت نامحدود روی ۰ تنظیم کنید. این مقدار، محدودیت سرعت سراسری را برای این دانلود لغو می\u200cکند.",
+    "started": "شروع\u200cشده",
+    "streamingShort": "(پخش زنده)",
+    "timeRemaining": "زمان باقی\u200cمانده"
   },
   "downloadItem": {
     "complete": "کامل",
@@ -323,6 +397,7 @@
     "clipboardReadFailed": "خواندن کلیپ\u200cبورد ناموفق بود",
     "copyUrlFailed": "کپی نشانی ناموفق بود",
     "dataExported": "داده\u200cها با موفقیت خروجی گرفته شد",
+    "destinationUpdated": "مقصد به\u200cروزرسانی شد",
     "devtoolsBrowserHint": "برای باز کردن ابزار توسعه در مرورگر F12 را بزنید",
     "devtoolsUnavailable": "ابزار توسعه در این نسخه در دسترس نیست",
     "dirPickerFailed": "باز کردن انتخابگر پوشه ناموفق بود",
@@ -338,6 +413,7 @@
     "exportDesktopOnly": "خروجی گرفتن فقط در نسخهٔ دسکتاپ موجود است",
     "exportFailed": "خروجی گرفتن داده\u200cها ناموفق بود",
     "fileDropped": "فایل با موفقیت رها شد",
+    "fileMoved": "فایل با موفقیت منتقل شد",
     "fileNotAvailable": "فایل در دسترس نیست",
     "importDesktopOnly": "وارد کردن فقط در نسخهٔ دسکتاپ موجود است",
     "imported": "{{n}} دانلود وارد شد",
@@ -365,6 +441,7 @@
     "speedLimitDisabled": "محدودیت سرعت غیرفعال شد",
     "speedLimitSet": "محدودیت سرعت روی {{n}} کیلوبایت بر ثانیه تنظیم شد",
     "stoppedN": "{{n}} دانلود متوقف شد",
+    "updateDestinationFailed": "به\u200cروزرسانی مقصد ناموفق بود: {{error}}",
     "urlCopied": "نشانی در کلیپ\u200cبورد کپی شد",
     "usingQueueSpeedLimit": "استفاده از محدودیت سرعت صف"
   },

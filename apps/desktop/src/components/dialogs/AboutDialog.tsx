@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Download, Github, Heart, Coffee, RefreshCw, ExternalLink, Sparkles } from 'lucide-react';
 import { open as openUrl } from '@tauri-apps/plugin-shell';
+import { useTranslation } from 'react-i18next';
 
 const GITHUB_URL = 'https://github.com/novincode/dlman';
 const SPONSORS_URL = 'https://github.com/sponsors/novincode';
@@ -17,6 +18,7 @@ import { useUpdateStore } from '@/stores/update';
 import { getAppVersion, checkForUpdates, getReleasesPageUrl, type UpdateInfo } from '@/lib/version';
 
 export function AboutDialog() {
+  const { t } = useTranslation();
   const { showAboutDialog, setShowAboutDialog } = useUIStore();
   const markAboutSeen = useUpdateStore((s) => s.markAboutSeen);
   const [version, setVersion] = useState<string>('...');
@@ -57,13 +59,13 @@ export function AboutDialog() {
           </div>
           <DialogTitle className="text-2xl text-center">DLMan</DialogTitle>
           <DialogDescription className="text-center">
-            Download Manager
+            {t('about.subtitle')}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
           <div className="text-center">
-            <p className="text-muted-foreground text-sm">Version {version}</p>
+            <p className="text-muted-foreground text-sm">{t('about.version', { version })}</p>
           </div>
 
           {/* Update Check Section */}
@@ -76,7 +78,7 @@ export function AboutDialog() {
               disabled={isCheckingUpdate}
             >
               <RefreshCw className={`h-4 w-4 ${isCheckingUpdate ? 'animate-spin' : ''}`} />
-              {isCheckingUpdate ? 'Checking...' : 'Check for Updates'}
+              {isCheckingUpdate ? t('about.checking') : t('about.checkUpdates')}
             </Button>
             
             {updateInfo && (
@@ -85,7 +87,7 @@ export function AboutDialog() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-center gap-2 text-sm text-green-600 dark:text-green-400">
                       <Sparkles className="h-4 w-4" />
-                      <span>New version available: v{updateInfo.latestVersion}</span>
+                      <span>{t('about.newVersion', { version: updateInfo.latestVersion })}</span>
                     </div>
                     <Button
                       variant="default"
@@ -94,12 +96,12 @@ export function AboutDialog() {
                       onClick={handleOpenReleasePage}
                     >
                       <ExternalLink className="h-4 w-4" />
-                      Download Update
+                      {t('about.downloadUpdate')}
                     </Button>
                   </div>
                 ) : (
                   <p className="text-sm text-muted-foreground">
-                    You're on the latest version!
+                    {t('about.upToDate')}
                   </p>
                 )}
               </div>
@@ -107,8 +109,8 @@ export function AboutDialog() {
           </div>
 
           <div className="text-center text-sm text-muted-foreground">
-            <p>A modern, fast, and reliable download manager</p>
-            <p>built with Rust and React.</p>
+            <p>{t('about.tagline1')}</p>
+            <p>{t('about.tagline2')}</p>
           </div>
 
           <div className="flex flex-col gap-2 items-center pt-4">
@@ -119,7 +121,7 @@ export function AboutDialog() {
               onClick={() => openUrl(GITHUB_URL)}
             >
               <Github className="h-4 w-4" />
-              View on GitHub
+              {t('about.viewGithub')}
             </Button>
             <Button
               variant="outline"
@@ -128,15 +130,15 @@ export function AboutDialog() {
               onClick={() => openUrl(SPONSORS_URL)}
             >
               <Coffee className="h-4 w-4" />
-              Buy me a coffee
+              {t('about.buyCoffee')}
             </Button>
           </div>
 
           <div className="text-center text-xs text-muted-foreground pt-4">
             <p className="flex items-center justify-center gap-1">
-              Made with <Heart className="h-3 w-3 text-red-500" /> by the DLMan Team
+              {t('about.madeWithPre')} <Heart className="h-3 w-3 text-red-500" /> {t('about.madeWithPost')}
             </p>
-            <p className="mt-1">© 2025 DLMan. All rights reserved.</p>
+            <p className="mt-1">{t('about.copyright')}</p>
           </div>
         </div>
       </DialogContent>

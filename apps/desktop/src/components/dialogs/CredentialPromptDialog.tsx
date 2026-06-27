@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { KeyRound, Eye, EyeOff, AlertTriangle } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import {
   Dialog,
   DialogContent,
@@ -23,6 +24,7 @@ import { invoke } from '@tauri-apps/api/core';
  * "Remember" switch is on by default.
  */
 export function CredentialPromptDialog() {
+  const { t } = useTranslation();
   const { pendingRequest, setPendingRequest, credentials, addCredential, updateCredential } = useCredentialsStore();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -109,10 +111,10 @@ export function CredentialPromptDialog() {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <KeyRound className="h-5 w-5" />
-            Authentication Required
+            {t('newDownload.authRequired')}
           </DialogTitle>
           <DialogDescription>
-            The server at <span className="font-medium text-foreground">{pendingRequest?.domain}</span> requires a login to download this file.
+            {t('credentialPrompt.descPre')} <span className="font-medium text-foreground">{pendingRequest?.domain}</span> {t('credentialPrompt.descPost')}
           </DialogDescription>
         </DialogHeader>
 
@@ -122,16 +124,16 @@ export function CredentialPromptDialog() {
             <div className="flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-2">
               <AlertTriangle className="h-4 w-4 text-amber-500 flex-shrink-0" />
               <p className="text-xs text-amber-600 dark:text-amber-400">
-                Your saved credentials for this domain didn't work. Update them below.
+                {t('credentialPrompt.failedWarning')}
               </p>
             </div>
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="promptUsername">Username</Label>
+            <Label htmlFor="promptUsername">{t('credentialPrompt.username')}</Label>
             <Input
               id="promptUsername"
-              placeholder="Enter username"
+              placeholder={t('credentialPrompt.usernamePlaceholder')}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               autoFocus
@@ -139,12 +141,12 @@ export function CredentialPromptDialog() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="promptPassword">Password</Label>
+            <Label htmlFor="promptPassword">{t('credentialPrompt.password')}</Label>
             <div className="relative">
               <Input
                 id="promptPassword"
                 type={showPassword ? 'text' : 'password'}
-                placeholder="Enter password"
+                placeholder={t('credentialPrompt.passwordPlaceholder')}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="pr-9"
@@ -171,17 +173,17 @@ export function CredentialPromptDialog() {
               onCheckedChange={(checked: boolean) => setRemember(checked)}
             />
             <Label htmlFor="rememberCred" className="cursor-pointer text-sm">
-              {existingCredId ? 'Update saved login' : 'Remember this login'}
+              {existingCredId ? t('credentialPrompt.updateLogin') : t('credentialPrompt.rememberLogin')}
             </Label>
           </div>
         </div>
 
         <DialogFooter>
           <Button variant="outline" onClick={handleClose} disabled={submitting}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button onClick={handleSubmit} disabled={!username || !password || submitting}>
-            {submitting ? 'Retrying...' : 'Sign In & Retry'}
+            {submitting ? t('credentialPrompt.retrying') : t('credentialPrompt.signInRetry')}
           </Button>
         </DialogFooter>
       </DialogContent>
