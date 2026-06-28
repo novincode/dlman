@@ -227,7 +227,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          APPIMAGE=$(find apps/desktop/src-tauri/target -type f -name '*.AppImage' | head -1)
+          # This is a Cargo workspace, so the bundle output is under the
+          # workspace-root target dir (target/release/bundle/appimage/...),
+          # not apps/desktop/src-tauri/target.
+          APPIMAGE=$(find target -type f -name '*.AppImage' | head -1)
           if [ -z "${APPIMAGE}" ]; then
             echo "::error::No AppImage produced by the Tauri build"; exit 1
           fi
