@@ -55,6 +55,10 @@ const isTauri = () => typeof window !== 'undefined' && (window as any).__TAURI_I
 export function NewDownloadDialog() {
   const { t } = useTranslation();
   const { showNewDownloadDialog, setShowNewDownloadDialog } = useUIStore();
+  // Bumped whenever URLs are routed here (drop/paste/extension). We re-consume
+  // on every change so a link dropped while the dialog is already open still
+  // populates the field instead of being ignored.
+  const urlIntakeNonce = useUIStore((s) => s.urlIntakeNonce);
   const queues = useQueuesArray();
   const selectedQueueId = useQueueStore((s) => s.selectedQueueId);
   const setSelectedQueue = useQueueStore((s) => s.setSelectedQueue);
@@ -102,23 +106,24 @@ export function NewDownloadDialog() {
     referrer?: string;
   } | undefined>(undefined);
 
-  // Guard against React StrictMode double-firing effects.
-  // getPendingMediaMeta/Cookies/ClipboardUrls are consume-once functions that
-  // return undefined on the second call. Without this guard, StrictMode's
-  // second effect invocation clears all the pending values.
-  const pendingConsumedRef = useRef(false);
+  // Tracks which intake we've already processed. Keyed on the intake nonce so
+  // the effect runs once per open AND once per new drop/paste while open, but
+  // not on unrelated re-renders (which would clobber consume-once pending reads
+  // under React StrictMode).
+  const processedIntakeRef = useRef<string>('');
 
-  // Reset state and check for pending URLs when dialog opens
+  // Reset state and check for pending URLs when the dialog opens or a new URL
+  // is routed in while it's already open.
   useEffect(() => {
     if (!showNewDownloadDialog) {
-      // Dialog closing — reset the consumption guard for next open
-      pendingConsumedRef.current = false;
+      // Dialog closing — arm the next open to re-process.
+      processedIntakeRef.current = '';
       return;
     }
 
-    // StrictMode guard: skip consume-once reads on the second invocation
-    if (pendingConsumedRef.current) return;
-    pendingConsumedRef.current = true;
+    const intakeKey = String(urlIntakeNonce);
+    if (processedIntakeRef.current === intakeKey) return;
+    processedIntakeRef.current = intakeKey;
 
     // Check for pending clipboard/drop URLs
     const clipboardUrls = getPendingClipboardUrls();
@@ -157,7 +162,7 @@ export function NewDownloadDialog() {
     
     // Set default path
     initializeDefaultPath();
-  }, [showNewDownloadDialog, selectedQueueId]);
+  }, [showNewDownloadDialog, selectedQueueId, urlIntakeNonce]);
 
   const initializeDefaultPath = async () => {
     const basePath = await getDefaultBasePath();
@@ -449,23 +454,25 @@ export function NewDownloadDialog() {
 
   return (
     <Dialog open={showNewDownloadDialog} onOpenChange={setShowNewDownloadDialog}>
-      <DialogContent className="sm:max-w-[500px] max-h-[85vh] overflow-hidden flex flex-col">
-        <DialogHeader className="shrink-0">
-          <DialogTitle className="flex items-center gap-2">
+      <DialogContent className="sm:max-w-[540px] max-h-[88vh] overflow-hidden flex flex-col gap-0 p-0">
+        <DialogHeader className="shrink-0 flex-row items-center gap-3 space-y-0 border-b px-6 py-4">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-inset ring-primary/20">
             <Download className="h-5 w-5" />
-            {t('menu.newDownload')}
-          </DialogTitle>
-          <DialogDescription>
-            {t('newDownload.desc')}
-          </DialogDescription>
+          </div>
+          <div className="min-w-0 flex-1 text-left">
+            <DialogTitle className="text-base">{t('menu.newDownload')}</DialogTitle>
+            <DialogDescription className="mt-0.5 text-xs">
+              {t('newDownload.desc')}
+            </DialogDescription>
+          </div>
         </DialogHeader>
 
-        <div className="flex-1 min-h-0 overflow-y-auto px-1 -mx-1">
-          <div className="space-y-4 py-4 px-0.5">
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="space-y-5 px-6 py-5">
           {/* URL Input */}
           <div className="space-y-2">
-            <Label htmlFor="url" className="flex items-center gap-2">
-              <Link className="h-4 w-4" />
+            <Label htmlFor="url" className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+              <Link className="h-3.5 w-3.5" />
               {t('newDownload.url')}
             </Label>
             <div className="flex gap-2">
@@ -475,7 +482,7 @@ export function NewDownloadDialog() {
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
                   placeholder={t('newDownload.urlPlaceholder')}
-                  className="pr-10"
+                  className="h-11 pr-10"
                 />
                 <AnimatePresence>
                   {isProbing && (
@@ -523,6 +530,7 @@ export function NewDownloadDialog() {
               <Button
                 variant="outline"
                 size="icon"
+                className="h-11 w-11 shrink-0"
                 onClick={handlePasteFromClipboard}
                 title={t('newDownload.pasteClipboard')}
               >
@@ -576,22 +584,26 @@ export function NewDownloadDialog() {
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
-                className="rounded-md border border-border bg-muted/50 p-3 space-y-3"
+                className="rounded-xl border bg-muted/40 p-3 space-y-3"
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                    <span className="text-sm font-medium truncate">{effectiveFilename}</span>
-                    {filenameEdited && (
-                      <span className="text-xs text-primary bg-primary/10 px-1.5 py-0.5 rounded">{t('newDownload.customBadge')}</span>
-                    )}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-background text-muted-foreground ring-1 ring-inset ring-border">
+                      <FileText className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-sm font-medium truncate">{effectiveFilename}</span>
+                        {filenameEdited && (
+                          <span className="shrink-0 text-[10px] text-primary bg-primary/10 px-1.5 py-0.5 rounded">{t('newDownload.customBadge')}</span>
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {fileSize ? formatFileSize(fileSize) : (isProbing ? t('newDownload.adding') : '—')}
+                      </span>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    {fileSize && (
-                      <span className="text-sm text-muted-foreground">
-                        {formatFileSize(fileSize)}
-                      </span>
-                    )}
                     <Button
                       variant="ghost"
                       size="sm"
@@ -657,8 +669,8 @@ export function NewDownloadDialog() {
 
           {/* Destination */}
           <div className="space-y-2">
-            <Label htmlFor="destination" className="flex items-center gap-2">
-              <Folder className="h-4 w-4" />
+            <Label htmlFor="destination" className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+              <Folder className="h-3.5 w-3.5" />
               {t('newDownload.saveTo')}
             </Label>
             <div className="flex gap-2">
@@ -701,11 +713,11 @@ export function NewDownloadDialog() {
 
           {/* Category Selection */}
           <div className="space-y-2">
-            <Label htmlFor="category" className="flex items-center gap-2">
-              <Tag className="h-4 w-4" />
+            <Label htmlFor="category" className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+              <Tag className="h-3.5 w-3.5" />
               {t('newDownload.category')}
               {categoryId && (
-                <span className="text-xs text-muted-foreground">{t('newDownload.autoDetected')}</span>
+                <span className="text-[10px] font-normal text-primary">{t('newDownload.autoDetected')}</span>
               )}
             </Label>
             <Select value={categoryId || 'none'} onValueChange={handleCategoryChange}>
@@ -735,7 +747,7 @@ export function NewDownloadDialog() {
 
           {/* Queue Selection */}
           <div className="space-y-2">
-            <Label htmlFor="queue">{t('newDownload.queue')}</Label>
+            <Label htmlFor="queue" className="text-xs font-medium text-muted-foreground">{t('newDownload.queue')}</Label>
             <Select value={queueId} onValueChange={setQueueId}>
               <SelectTrigger>
                 <SelectValue placeholder={t('newDownload.selectQueue')} />
@@ -758,15 +770,18 @@ export function NewDownloadDialog() {
           </div>
         </div>
 
-        <DialogFooter className="shrink-0 gap-2 sm:gap-0">
+        {/* Footer. Start / Download Later only require a URL + destination — they
+            are intentionally NOT gated on the probe, so a download can be started
+            immediately even while the file size is still being detected. */}
+        <DialogFooter className="shrink-0 flex-row items-center justify-end gap-2 border-t px-6 py-4">
           <Button
-            variant="outline"
+            variant="ghost"
             onClick={() => setShowNewDownloadDialog(false)}
           >
             {t('common.cancel')}
           </Button>
           <Button
-            variant="secondary"
+            variant="outline"
             onClick={() => handleAddDownload(true)}
             disabled={!url || !destination || isAdding}
             title={t('newDownload.downloadLaterTitle')}

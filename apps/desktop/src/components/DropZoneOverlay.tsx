@@ -1,21 +1,12 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Download, Link } from 'lucide-react';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { useTranslation } from 'react-i18next';
 import { useUIStore } from '@/stores/ui';
-import { parseUrls } from '@/lib/utils';
-
-// Check if we're in Tauri context
-const isTauri = () => typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__ !== undefined;
+import { extractUrlsFromDataTransfer } from '@/lib/url-intake';
 
 interface DropZoneOverlayProps {
   onDrop: (urls: string[]) => void;
-}
-
-interface TauriFileDrop {
-  paths: string[];
-  position: { x: number; y: number };
 }
 
 export function DropZoneOverlay({ onDrop }: DropZoneOverlayProps) {
@@ -40,30 +31,36 @@ export function DropZoneOverlay({ onDrop }: DropZoneOverlayProps) {
     return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [resetOverlay]);
 
-  // Handle web drag events on the window to show the overlay
+  // Window-level HTML5 drag/drop. With `dragDropEnabled: false` in the Tauri
+  // window config the webview receives native HTML5 DnD events (no `tauri://*`
+  // file-drop interception), so this is the single source of truth for drops.
   useEffect(() => {
+    const hasDraggableUrls = (e: DragEvent) => {
+      const types = e.dataTransfer?.types;
+      if (!types) return false;
+      return (
+        types.includes('Files') ||
+        types.includes('text/uri-list') ||
+        types.includes('text/plain') ||
+        types.includes('text/html')
+      );
+    };
+
     const handleDragEnter = (e: DragEvent) => {
       if (isInternalDrag) return;
-      
-      // Check if it's a file or a link
-      const isFile = e.dataTransfer?.types.includes('Files');
-      const isLink = e.dataTransfer?.types.includes('text/uri-list');
-      const isPlain = e.dataTransfer?.types.includes('text/plain');
-      
-      if (isFile || isLink || isPlain) {
-        e.preventDefault();
-        e.stopPropagation();
-        dragCounter.current++;
-        if (dragCounter.current === 1) {
-          setIsExternalDrag(true);
-        }
+      if (!hasDraggableUrls(e)) return;
+      e.preventDefault();
+      dragCounter.current++;
+      if (dragCounter.current === 1) {
+        setIsExternalDrag(true);
       }
     };
 
     const handleDragOver = (e: DragEvent) => {
       if (isInternalDrag) return;
+      if (!hasDraggableUrls(e)) return;
+      // Required so the subsequent `drop` event fires at all.
       e.preventDefault();
-      e.stopPropagation();
       if (dragCounter.current === 0) {
         dragCounter.current = 1;
         setIsExternalDrag(true);
@@ -73,7 +70,6 @@ export function DropZoneOverlay({ onDrop }: DropZoneOverlayProps) {
     const handleDragLeave = (e: DragEvent) => {
       if (isInternalDrag) return;
       e.preventDefault();
-      e.stopPropagation();
       dragCounter.current--;
       if (dragCounter.current <= 0) {
         resetOverlay();
@@ -82,54 +78,31 @@ export function DropZoneOverlay({ onDrop }: DropZoneOverlayProps) {
 
     const handleDrop = (e: DragEvent) => {
       if (isInternalDrag) return;
+      // preventDefault cancels the native drop action (e.g. inserting the URL
+      // into a focused <input> when a dialog is open), so the link is handled
+      // by our pipeline instead of being swallowed by the field.
       e.preventDefault();
-      e.stopPropagation();
       resetOverlay();
 
-      const urls: string[] = [];
+      const urls = extractUrlsFromDataTransfer(e.dataTransfer);
 
-      // 1) text/uri-list (often provided by browsers for link drags)
-      const uriList = e.dataTransfer?.getData('text/uri-list');
-      if (uriList) {
-        const lines = uriList
-          .split('\n')
-          .map((l) => l.trim())
-          .filter((line) => line && !line.startsWith('#'));
-        urls.push(...lines.filter((u) => u.startsWith('http://') || u.startsWith('https://')));
+      // Diagnostic: if a drop carried data but yielded no links, log exactly what
+      // the webview delivered. Cross-app drags into the WebKit/WebView can
+      // withhold text/html, leaving only plain text without URLs — this makes
+      // that visible in DevTools instead of a mysterious "No URLs found".
+      if (urls.length === 0 && e.dataTransfer) {
+        const dt = e.dataTransfer;
+        console.warn('[DLMan] drop produced no URLs', {
+          types: Array.from(dt.types || []),
+          'text/plain': dt.getData('text/plain')?.slice(0, 400),
+          'text/uri-list': dt.getData('text/uri-list')?.slice(0, 400),
+          'text/html': dt.getData('text/html')?.slice(0, 800),
+        });
       }
 
-      // 2) text/plain (can contain multiple URLs when user drags selected text)
-      const text = e.dataTransfer?.getData('text/plain');
-      if (text) {
-        urls.push(...parseUrls(text));
-      }
-
-      // 3) text/html (common when dragging selected anchors from a page)
-      // Only parse if we don't already have URLs from uri-list or text/plain
-      const html = e.dataTransfer?.getData('text/html');
-      if (html && urls.length === 0) {
-        try {
-          const doc = new DOMParser().parseFromString(html, 'text/html');
-          const hrefs = Array.from(doc.querySelectorAll('a'))
-            .map((a) => a.getAttribute('href'))
-            .filter((href): href is string => !!href)
-            .filter((href) => href.startsWith('http://') || href.startsWith('https://'))
-            // Filter out XML namespace URLs and other non-downloadable URLs
-            .filter((href) => !href.includes('w3.org/') && !href.includes('xmlns'));
-          urls.push(...hrefs);
-        } catch {
-          // ignore
-        }
-      }
-
-      // De-dupe while preserving order and filter out any remaining non-download URLs
-      const filteredUrls = Array.from(new Set(urls)).filter(
-        (url) => !url.includes('w3.org/') && !url.includes('xmlns') && !url.includes('schema.org')
-      );
-
-      if (filteredUrls.length > 0) {
-        onDrop(filteredUrls);
-      }
+      // Always call onDrop — it gives feedback even when nothing matched, so a
+      // drop never silently does nothing.
+      onDrop(urls);
     };
 
     window.addEventListener('dragenter', handleDragEnter);
@@ -143,56 +116,7 @@ export function DropZoneOverlay({ onDrop }: DropZoneOverlayProps) {
       window.removeEventListener('dragleave', handleDragLeave);
       window.removeEventListener('drop', handleDrop);
     };
-  }, [isInternalDrag, resetOverlay]);
-
-  // Listen to Tauri drag/drop events for external files
-  useEffect(() => {
-    if (!isTauri()) return;
-
-    let unlistenHover: UnlistenFn | undefined;
-    let unlistenDrop: UnlistenFn | undefined;
-    let unlistenCancel: UnlistenFn | undefined;
-
-    const setupTauriListeners = async () => {
-      try {
-        unlistenHover = await listen('tauri://drag-over', () => {
-          if (!isInternalDrag) {
-            setIsExternalDrag(true);
-          }
-        });
-
-        unlistenCancel = await listen('tauri://drag-leave', resetOverlay);
-
-        unlistenDrop = await listen<TauriFileDrop>('tauri://drop', (event) => {
-          if (!isInternalDrag) {
-            const paths = event.payload.paths || [];
-            const urls: string[] = [];
-            
-            paths.forEach((path: string) => {
-              if (path.match(/^https?:\/\//)) {
-                urls.push(path);
-              }
-            });
-            
-            if (urls.length > 0) {
-              onDrop(urls);
-            }
-          }
-          resetOverlay();
-        });
-      } catch (err) {
-        console.error('Failed to set up Tauri drag-drop listeners:', err);
-      }
-    };
-
-    setupTauriListeners();
-
-    return () => {
-      unlistenHover?.();
-      unlistenDrop?.();
-      unlistenCancel?.();
-    };
-  }, [onDrop, resetOverlay, isInternalDrag]);
+  }, [isInternalDrag, resetOverlay, onDrop]);
 
   const shouldShow = isExternalDrag && !isInternalDrag;
 

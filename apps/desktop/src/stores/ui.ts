@@ -31,6 +31,10 @@ interface UIState {
   isDragging: boolean;
   dragOverTarget: string | null;
 
+  // URL intake (drop / paste / extension) — bumped every time URLs are routed
+  // to a dialog so the dialog re-consumes them even if it's already open.
+  urlIntakeNonce: number;
+
   // Dev console
   consoleHeight: number;
   consoleLogs: ConsoleLog[];
@@ -55,6 +59,11 @@ interface UIState {
 
   setIsDragging: (isDragging: boolean) => void;
   setDragOverTarget: (target: string | null) => void;
+
+  // Open the correct import dialog for `count` URLs (1 → New Download, >1 →
+  // Batch Import), closing the other, and bump the intake nonce so the target
+  // dialog re-reads the pending URLs even when it was already open.
+  routeUrlIntake: (count: number) => void;
 
   setConsoleHeight: (height: number) => void;
   setConsoleLogLimits: (limits: Partial<ConsoleLogLimits>) => void;
@@ -96,6 +105,7 @@ export const useUIStore = create<UIState>((set) => ({
   showBulkDeleteDialog: false,
   isDragging: false,
   dragOverTarget: null,
+  urlIntakeNonce: 0,
   consoleHeight: 200,
   consoleLogs: [],
   consoleLogLimits: { info: 200, warn: 100, error: 100, debug: 100 },
@@ -122,6 +132,13 @@ export const useUIStore = create<UIState>((set) => ({
 
   setIsDragging: (isDragging) => set({ isDragging }),
   setDragOverTarget: (dragOverTarget) => set({ dragOverTarget }),
+
+  routeUrlIntake: (count) =>
+    set((state) => ({
+      urlIntakeNonce: state.urlIntakeNonce + 1,
+      showNewDownloadDialog: count === 1,
+      showBatchImportDialog: count > 1,
+    })),
 
   setConsoleHeight: (consoleHeight) => set({ consoleHeight }),
   setConsoleLogLimits: (limits) =>
