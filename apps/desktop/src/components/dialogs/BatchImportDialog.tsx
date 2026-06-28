@@ -100,6 +100,8 @@ function isHtmlItem(item: Item): boolean {
 export function BatchImportDialog() {
   const { t } = useTranslation();
   const { showBatchImportDialog, setShowBatchImportDialog } = useUIStore();
+  // Re-run intake when new links are routed in while the dialog is already open.
+  const urlIntakeNonce = useUIStore((s) => s.urlIntakeNonce);
   const addDownload = useDownloadStore((s) => s.addDownload);
   const setFilter = useDownloadStore((s) => s.setFilter);
 
@@ -244,18 +246,19 @@ export function BatchImportDialog() {
     });
   }, []); // Stable - runProbe is also stable
 
-  // Open behavior: ONLY runs when dialog opens (showBatchImportDialog changes to true)
-  const hasInitializedRef = useRef(false);
+  // Open behavior: runs when the dialog opens AND when a fresh set of links is
+  // routed in while it's already open (keyed on the intake nonce).
+  const processedIntakeRef = useRef<string>('');
   useEffect(() => {
     if (!showBatchImportDialog) {
-      // Dialog closed - reset for next open
-      hasInitializedRef.current = false;
+      // Dialog closed - arm the next open to re-initialize.
+      processedIntakeRef.current = '';
       return;
     }
 
-    // Only initialize once per open
-    if (hasInitializedRef.current) return;
-    hasInitializedRef.current = true;
+    const intakeKey = String(urlIntakeNonce);
+    if (processedIntakeRef.current === intakeKey) return;
+    processedIntakeRef.current = intakeKey;
 
     const clipboardUrls = getPendingClipboardUrls();
     const dropUrls = getPendingDropUrls();
@@ -282,7 +285,7 @@ export function BatchImportDialog() {
     setFocusedIndex(null);
     anchorIndexRef.current = null;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showBatchImportDialog]); // Only depend on showBatchImportDialog - other functions are stable
+  }, [showBatchImportDialog, urlIntakeNonce]); // other functions are stable
 
   // Hide HTML: UI-only filter. No probing.
   useEffect(() => {

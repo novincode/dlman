@@ -22,12 +22,12 @@ import { useSettingsStore, loadSettingsFromBackend } from "@/stores/settings";
 import { useUIStore } from "@/stores/ui";
 import { useDownloadStore } from "@/stores/downloads";
 import { loadCredentialsFromBackend } from "@/stores/credentials";
-import { setupEventListeners, setPendingClipboardUrls, setPendingDropUrls } from "@/lib/events";
+import { setupEventListeners } from "@/lib/events";
+import { ingestDroppedUrls, ingestPastedUrls, extractUrlsFromDataTransfer } from "@/lib/url-intake";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useUpdateCheck } from "@/hooks/useUpdateCheck";
 import { useApplyLocale } from "@/i18n/useApplyLocale";
 import { useTranslation } from "react-i18next";
-import { parseUrls } from "@/lib/utils";
 import { initSystemIntegrations } from "@/lib/system-tray";
 import { initNotifications } from "@/lib/notifications";
 
@@ -38,7 +38,7 @@ function AppContent() {
   const theme = useSettingsStore((s) => s.settings.theme);
   const defaultDownloadPath = useSettingsStore((s) => s.settings.default_download_path);
   const setDefaultDownloadPath = useSettingsStore((s) => s.setDefaultDownloadPath);
-  const { setShowNewDownloadDialog, setShowBatchImportDialog, showBulkDeleteDialog, setShowBulkDeleteDialog } = useUIStore();
+  const { showBulkDeleteDialog, setShowBulkDeleteDialog } = useUIStore();
   const { selectedIds, downloads, removeDownload, clearSelection } = useDownloadStore();
   const [actualTheme, setActualTheme] = useState<"light" | "dark">("light");
   const { t } = useTranslation();
@@ -184,9 +184,8 @@ function AppContent() {
     if (isTauri()) {
       import('@tauri-apps/api/event').then(({ listen }) => {
         listen<string>('set-download-url', (event) => {
-          // Store URL and open dialog
-          setPendingClipboardUrls([event.payload]);
-          setShowNewDownloadDialog(true);
+          // Route through the shared intake so it opens (or re-fills) the dialog.
+          ingestPastedUrls([event.payload]);
         }).then((unlistenFn) => {
           unlisten = unlistenFn;
         }).catch(console.error);
@@ -197,7 +196,7 @@ function AppContent() {
       cleanup();
       if (unlisten) unlisten();
     };
-  }, [setShowNewDownloadDialog]);
+  }, []);
 
   // Handle paste for links
   useEffect(() => {
@@ -208,46 +207,28 @@ function AppContent() {
         return;
       }
       
-      const text = e.clipboardData?.getData("text");
-      if (!text) return;
-      
-      const urls = parseUrls(text);
+      // Extract from the full clipboard payload (uri-list + plain text + HTML
+      // anchor hrefs) — not just plain text. This is the reliable way to import
+      // a multi-link selection (e.g. a GitHub release list, where the links live
+      // in anchor hrefs): the clipboard keeps absolutized HTML even when a drag
+      // would only carry plain text.
+      const urls = extractUrlsFromDataTransfer(e.clipboardData);
       if (urls.length === 0) return;
-      
-      // Prevent default paste behavior
+
+      // Prevent default paste behavior, then route through the shared intake.
       e.preventDefault();
-      
-      // Store URLs for dialogs to use
-      setPendingClipboardUrls(urls);
-      
-      if (urls.length === 1) {
-        // Single URL - open new download dialog
-        setShowNewDownloadDialog(true);
-      } else {
-        // Multiple URLs - open batch import dialog
-        setShowBatchImportDialog(true);
-      }
+      ingestPastedUrls(urls);
     };
 
     window.addEventListener("paste", handlePaste);
     return () => window.removeEventListener("paste", handlePaste);
-  }, [setShowNewDownloadDialog, setShowBatchImportDialog]);
+  }, []);
 
-  // Handle dropped URLs from DropZoneOverlay
+  // Handle dropped URLs from DropZoneOverlay (routing + empty-drop feedback live
+  // in the shared intake pipeline).
   const handleDrop = useCallback((urls: string[]) => {
-    if (urls.length === 0) return;
-
-    // Store URLs in the drop store (separate from clipboard)
-    setPendingDropUrls(urls);
-
-    if (urls.length === 1) {
-      // Single URL - open new download dialog
-      setShowNewDownloadDialog(true);
-    } else if (urls.length > 1) {
-      // Multiple URLs - open batch import dialog
-      setShowBatchImportDialog(true);
-    }
-  }, [setShowNewDownloadDialog, setShowBatchImportDialog]);
+    ingestDroppedUrls(urls);
+  }, []);
 
   return (
     <div>

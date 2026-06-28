@@ -301,28 +301,10 @@ export function setupEventListeners(): () => void {
     }
   }));
 
-  // Listen for Tauri file drop events (tauri://drop)
-  registerListener(listen<{ paths: string[]; position: { x: number; y: number } }>(
-    "tauri://drop",
-    (event) => {
-      if (isCleanedUp) return;
-      const { paths } = event.payload;
-      
-      // Filter for URLs (files starting with http)
-      // Note: Tauri drops files as paths, but we can also handle dropped text/URLs
-      // For now, just check if any path looks like a URL
-      const urls = paths.filter(p => p.startsWith('http://') || p.startsWith('https://'));
-      
-      if (urls.length > 0) {
-        setPendingDropUrls(urls);
-        if (urls.length === 1) {
-          useUIStore.getState().setShowNewDownloadDialog(true);
-        } else {
-          useUIStore.getState().setShowBatchImportDialog(true);
-        }
-      }
-    }
-  ));
+  // Note: there is intentionally no `tauri://drop` listener. The window is
+  // configured with `dragDropEnabled: false`, so the webview handles drops via
+  // native HTML5 DnD (see DropZoneOverlay + lib/url-intake). A Tauri file-drop
+  // listener here would never fire and only invite confusion.
 
   // Listen for show-new-download-dialog event (from deep links / extension)
   // Payload can be a plain URL string (legacy) or structured object with url, referrer, filename, cookies
@@ -359,8 +341,8 @@ export function setupEventListeners(): () => void {
         }
       }
       
-      // Show the new download dialog
-      useUIStore.getState().setShowNewDownloadDialog(true);
+      // Open (or re-fill, if already open) the new download dialog.
+      useUIStore.getState().routeUrlIntake(1);
     }
   ));
 
@@ -373,7 +355,7 @@ export function setupEventListeners(): () => void {
       
       if (urls && urls.length > 0) {
         setPendingDropUrls(urls);
-        useUIStore.getState().setShowBatchImportDialog(true);
+        useUIStore.getState().routeUrlIntake(urls.length);
       }
     }
   ));
