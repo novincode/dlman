@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.11.0] - 2026-06-28
+
+### ✨ New Features
+
+**Drag-to-Select in the Downloads List**
+- Draw a selection box by dragging across empty space in the list to select multiple downloads at once — works in every view (All Downloads, a queue, or a category)
+- Hold **Shift** while dragging to add the boxed items to your existing selection instead of replacing it
+- The list auto-scrolls when you drag near the top or bottom edge, so you can select more than fits on screen
+- New keyboard shortcuts in the list: **Ctrl/Cmd + A** selects everything in the current view, **Esc** clears the selection
+
+**Smarter Link Importing**
+- Drag-and-drop, paste, and the browser extension now share one consistent import path
+- Pasting a multi-link selection (for example, a GitHub release asset list) now picks up every link, even when the links are hidden behind file names
+- Dropping or pasting a link while the New Download or Batch Import dialog is already open now fills it in, instead of being silently ignored
+- A drop that contains no links now shows a clear "No URLs found" message instead of doing nothing
+
+**Refreshed New Download Dialog**
+- Cleaner layout with a clearer header, a larger URL field, and a tidy detected-file card
+- You can start a download right away without waiting for the file details to load — the size is detected in the background
+
+### 🐛 Bug Fixes
+- Fixed links being ignored when dropped onto the app while a download dialog was already open (the field stayed empty)
+- Fixed inconsistent behavior where dragging selected links sometimes failed to open the import dialog
+
 ## [1.10.0] - 2026-06-28
 
 ### ✨ New Features
