@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Trash2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,6 +32,7 @@ export function BulkDeleteConfirmDialog({
   downloads,
   onConfirm,
 }: BulkDeleteConfirmDialogProps) {
+  const { t } = useTranslation();
   const [deleteFilesFromSystem, setDeleteFilesFromSystem] = useState(false);
   const [filesOnDisk, setFilesOnDisk] = useState<Set<string>>(new Set());
   const [isCheckingFiles, setIsCheckingFiles] = useState(false);
@@ -115,11 +117,10 @@ export function BulkDeleteConfirmDialog({
   }, [onOpenChange]);
 
   const getDescription = () => {
-    const count = downloads.length;
     if (hasFilesOnDisk) {
-      return `Are you sure you want to remove ${count} download(s) from the list? ${filesOnDisk.size} file(s) exist on disk.`;
+      return t('bulkDelete.descWithFiles', { n: downloads.length, files: filesOnDisk.size });
     }
-    return `Are you sure you want to remove ${count} download(s) from the list?`;
+    return t('bulkDelete.descDefault', { n: downloads.length });
   };
 
   return (
@@ -128,7 +129,7 @@ export function BulkDeleteConfirmDialog({
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2">
             <Trash2 className="h-5 w-5 text-destructive" />
-            Remove {downloads.length} Download{downloads.length > 1 ? 's' : ''}
+            {t('bulkDelete.title', { n: downloads.length })}
           </AlertDialogTitle>
           <AlertDialogDescription>
             {getDescription()}
@@ -150,10 +151,10 @@ export function BulkDeleteConfirmDialog({
                   htmlFor="delete-files-checkbox"
                   className="text-sm font-medium text-destructive cursor-pointer"
                 >
-                  Also delete {filesOnDisk.size} file{filesOnDisk.size > 1 ? 's' : ''} from system
+                  {t('bulkDelete.alsoDeleteFiles', { n: filesOnDisk.size })}
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  This will permanently delete the downloaded files. This action cannot be undone.
+                  {t('bulkDelete.deleteFilesHint')}
                 </p>
               </div>
             </div>
@@ -164,13 +165,13 @@ export function BulkDeleteConfirmDialog({
         {isCheckingFiles && completedDownloads.length > 0 && (
           <div className="rounded-lg border p-4 my-2">
             <p className="text-sm text-muted-foreground">
-              Checking files on disk...
+              {t('bulkDelete.checkingFiles')}
             </p>
           </div>
         )}
 
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={handleCancel}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel onClick={handleCancel}>{t('common.cancel')}</AlertDialogCancel>
           <AlertDialogAction
             onClick={handleConfirm}
             className={
@@ -180,7 +181,7 @@ export function BulkDeleteConfirmDialog({
             }
             disabled={isCheckingFiles}
           >
-            {deleteFilesFromSystem ? `Remove & Delete ${filesOnDisk.size} File${filesOnDisk.size > 1 ? 's' : ''}` : "Remove"}
+            {deleteFilesFromSystem ? t('bulkDelete.removeAndDeleteN', { n: filesOnDisk.size }) : t('common.remove')}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

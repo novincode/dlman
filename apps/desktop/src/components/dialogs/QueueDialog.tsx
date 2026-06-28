@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { useTranslation } from 'react-i18next';
 import { 
   Palette, 
   Smile,
@@ -86,7 +87,27 @@ interface QueueDialogProps {
 }
 
 export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps) {
+  const { t } = useTranslation();
   const { addQueue, updateQueue, removeQueue } = useQueueStore();
+
+  // Literal t() keys so i18next-parser can extract these config-array labels.
+  const DAY_LABELS: Record<string, string> = {
+    mon: t('queueDialog.days.mon'),
+    tue: t('queueDialog.days.tue'),
+    wed: t('queueDialog.days.wed'),
+    thu: t('queueDialog.days.thu'),
+    fri: t('queueDialog.days.fri'),
+    sat: t('queueDialog.days.sat'),
+    sun: t('queueDialog.days.sun'),
+  };
+  const POST_ACTION_LABELS: Record<string, string> = {
+    none: t('queueDialog.postAction.none'),
+    notify: t('queueDialog.postAction.notify'),
+    sleep: t('queueDialog.postAction.sleep'),
+    shutdown: t('queueDialog.postAction.shutdown'),
+    hibernate: t('queueDialog.postAction.hibernate'),
+    run_command: t('queueDialog.postAction.runCommand'),
+  };
 
   const [name, setName] = useState('');
   const [color, setColor] = useState(QUEUE_COLORS[0]);
@@ -255,23 +276,23 @@ export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps)
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px] max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{isEditing ? 'Edit Queue' : 'Create New Queue'}</DialogTitle>
+          <DialogTitle>{isEditing ? t('queues.editQueue') : t('queueDialog.createTitle')}</DialogTitle>
           <DialogDescription>
-            {isEditing 
-              ? 'Modify queue settings and appearance.' 
-              : 'Create a new download queue to organize your downloads.'}
+            {isEditing
+              ? t('queueDialog.editDesc')
+              : t('queueDialog.createDesc')}
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 py-4">
           {/* Name */}
           <div className="grid gap-2">
-            <Label htmlFor="queue-name">Name</Label>
+            <Label htmlFor="queue-name">{t('queueDialog.name')}</Label>
             <Input
               id="queue-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g., Movies, Music, Work..."
+              placeholder={t('queueDialog.namePlaceholder')}
             />
           </div>
 
@@ -279,16 +300,16 @@ export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps)
           <div className="grid grid-cols-2 gap-4">
             {/* Color picker */}
             <div className="grid gap-2">
-              <Label>Color</Label>
+              <Label>{t('queueDialog.color')}</Label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" className="w-full justify-start">
-                    <div 
-                      className="w-4 h-4 rounded mr-2" 
+                    <div
+                      className="w-4 h-4 rounded mr-2"
                       style={{ backgroundColor: color }}
                     />
                     <Palette className="h-4 w-4 mr-2" />
-                    Color
+                    {t('queueDialog.color')}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-3">
@@ -310,7 +331,7 @@ export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps)
 
             {/* Icon picker */}
             <div className="grid gap-2">
-              <Label>Icon</Label>
+              <Label>{t('queueDialog.icon')}</Label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" className="w-full justify-start">
@@ -319,7 +340,7 @@ export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps)
                     ) : (
                       <Smile className="h-4 w-4 mr-2" />
                     )}
-                    {icon ? 'Change' : 'Add Icon'}
+                    {icon ? t('queueDialog.changeIcon') : t('queueDialog.addIcon')}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-3">
@@ -351,7 +372,7 @@ export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps)
 
           {/* Max Concurrent Downloads */}
           <div className="grid gap-2">
-            <Label>Max Concurrent Downloads: {maxConcurrent}</Label>
+            <Label>{t('queueDialog.maxConcurrent', { n: maxConcurrent })}</Label>
             <Slider
               value={[maxConcurrent]}
               onValueChange={(values: number[]) => setMaxConcurrent(values[0])}
@@ -364,15 +385,15 @@ export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps)
           {/* Speed Limit */}
           <div className="grid gap-2">
             <div className="flex items-center justify-between">
-              <Label>Speed Limit (KB/s)</Label>
+              <Label>{t('queueDialog.speedLimitLabel')}</Label>
               {speedLimit !== null && (
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
+                <Button
+                  variant="ghost"
+                  size="sm"
                   className="h-6 text-xs"
                   onClick={() => setSpeedLimit(null)}
                 >
-                  Unlimited
+                  {t('queueDialog.unlimited')}
                 </Button>
               )}
             </div>
@@ -380,7 +401,7 @@ export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps)
               type="number"
               value={speedLimit ?? ''}
               onChange={(e) => setSpeedLimit(e.target.value ? parseInt(e.target.value) : null)}
-              placeholder="Unlimited"
+              placeholder={t('queueDialog.unlimited')}
               min={0}
             />
           </div>
@@ -392,7 +413,7 @@ export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps)
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Calendar className="h-4 w-4 text-muted-foreground" />
-                <Label className="text-sm font-medium">Download Schedule</Label>
+                <Label className="text-sm font-medium">{t('queueDialog.schedule')}</Label>
               </div>
               <Switch
                 checked={scheduleEnabled}
@@ -407,30 +428,30 @@ export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps)
                   <div className="space-y-1.5">
                     <Label className="text-xs text-muted-foreground flex items-center gap-1">
                       <Play className="h-3 w-3" />
-                      Start Time
+                      {t('queueDialog.startTime')}
                     </Label>
                     <TimePicker
                       value={startTime}
                       onChange={setStartTime}
-                      placeholder="Auto start at..."
+                      placeholder={t('queueDialog.startTimePlaceholder')}
                     />
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs text-muted-foreground flex items-center gap-1">
                       <Pause className="h-3 w-3" />
-                      Stop Time
+                      {t('queueDialog.stopTime')}
                     </Label>
                     <TimePicker
                       value={stopTime}
                       onChange={setStopTime}
-                      placeholder="Auto stop at..."
+                      placeholder={t('queueDialog.stopTimePlaceholder')}
                     />
                   </div>
                 </div>
                 
                 {/* Days of Week */}
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Active Days</Label>
+                  <Label className="text-xs text-muted-foreground">{t('queueDialog.activeDays')}</Label>
                   <div className="flex gap-1">
                     {DAYS_OF_WEEK.map((day) => (
                       <button
@@ -449,7 +470,7 @@ export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps)
                             : 'bg-muted text-muted-foreground hover:bg-muted/80'
                         }`}
                       >
-                        {day.label}
+                        {DAY_LABELS[day.key]}
                       </button>
                     ))}
                   </div>
@@ -464,12 +485,12 @@ export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps)
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <Power className="h-4 w-4 text-muted-foreground" />
-              <Label className="text-sm font-medium">When Queue Completes</Label>
+              <Label className="text-sm font-medium">{t('queueDialog.whenCompletes')}</Label>
             </div>
-            
+
             <Select value={postActionType} onValueChange={setPostActionType}>
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select action..." />
+                <SelectValue placeholder={t('queueDialog.selectAction')} />
               </SelectTrigger>
               <SelectContent>
                 {POST_ACTIONS.map((action) => {
@@ -479,7 +500,7 @@ export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps)
                       <div className="flex items-center gap-2">
                         <Icon className="h-4 w-4" />
                         <div>
-                          <span>{action.label}</span>
+                          <span>{POST_ACTION_LABELS[action.value]}</span>
                         </div>
                       </div>
                     </SelectItem>
@@ -493,11 +514,11 @@ export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps)
                 <Input
                   value={postActionCommand}
                   onChange={(e) => setPostActionCommand(e.target.value)}
-                  placeholder="e.g., /usr/bin/say 'Downloads complete'"
+                  placeholder={t('queueDialog.commandPlaceholder')}
                   className="font-mono text-sm"
                 />
                 <p className="text-[10px] text-muted-foreground mt-1">
-                  Command will run in a shell when all downloads in this queue complete.
+                  {t('queueDialog.commandHint')}
                 </p>
               </div>
             )}
@@ -508,16 +529,16 @@ export function QueueDialog({ open, onOpenChange, editQueue }: QueueDialogProps)
           {isEditing && (
             <Button variant="destructive" onClick={handleDelete}>
               <Trash2 className="h-4 w-4 mr-2" />
-              Delete
+              {t('common.delete')}
             </Button>
           )}
           <div className="flex gap-2 ml-auto">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button onClick={handleSave} disabled={!name.trim() || isSaving}>
               <Save className="h-4 w-4 mr-2" />
-              {isSaving ? 'Saving...' : isEditing ? 'Save Changes' : 'Create Queue'}
+              {isSaving ? t('queueDialog.saving') : isEditing ? t('queueDialog.saveChanges') : t('queueDialog.createButton')}
             </Button>
           </div>
         </DialogFooter>

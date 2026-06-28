@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { Trash2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -31,6 +32,7 @@ export function DeleteConfirmDialog({
   download,
   onConfirm,
 }: DeleteConfirmDialogProps) {
+  const { t } = useTranslation();
   const [deleteFileFromSystem, setDeleteFileFromSystem] = useState(false);
   const [fileExists, setFileExists] = useState<boolean | null>(null);
   const [isCheckingFile, setIsCheckingFile] = useState(false);
@@ -99,12 +101,12 @@ export function DeleteConfirmDialog({
   // Description text based on download status
   const getDescription = () => {
     if (!isCompleted) {
-      return `This download is not complete. Removing it will delete any temporary segments that have been downloaded. Are you sure you want to remove "${download.filename}"?`;
+      return t('deleteDialog.descIncomplete', { filename: download.filename });
     }
     if (fileExists === false) {
-      return `The downloaded file "${download.filename}" has been moved or deleted. Do you want to remove this entry from the download list?`;
+      return t('deleteDialog.descMoved', { filename: download.filename });
     }
-    return `Are you sure you want to remove "${download.filename}" from the download list?`;
+    return t('deleteDialog.descDefault', { filename: download.filename });
   };
 
   return (
@@ -113,7 +115,7 @@ export function DeleteConfirmDialog({
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2">
             <Trash2 className="h-5 w-5 text-destructive" />
-            Remove Download
+            {t('deleteDialog.title')}
           </AlertDialogTitle>
           <AlertDialogDescription>
             {getDescription()}
@@ -135,10 +137,10 @@ export function DeleteConfirmDialog({
                   htmlFor="delete-file-checkbox"
                   className="text-sm font-medium text-destructive cursor-pointer"
                 >
-                  Also delete file from system
+                  {t('deleteDialog.alsoDeleteFile')}
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  This will permanently delete the downloaded file. This action cannot be undone.
+                  {t('deleteDialog.deleteFileHint')}
                 </p>
               </div>
             </div>
@@ -149,7 +151,7 @@ export function DeleteConfirmDialog({
         {!isCompleted && (
           <div className="rounded-lg border border-yellow-500/50 bg-yellow-500/5 p-4 my-2">
             <p className="text-sm text-yellow-600 dark:text-yellow-500">
-              <strong>Note:</strong> Temporary download segments will be automatically cleaned up.
+              <strong>{t('deleteDialog.note')}</strong> {t('deleteDialog.segmentsNote')}
             </p>
           </div>
         )}
@@ -158,13 +160,13 @@ export function DeleteConfirmDialog({
         {isCompleted && fileExists === false && !isCheckingFile && (
           <div className="rounded-lg border border-orange-500/50 bg-orange-500/5 p-4 my-2">
             <p className="text-sm text-orange-600 dark:text-orange-500">
-              <strong>Note:</strong> The file has been moved or deleted from its original location.
+              <strong>{t('deleteDialog.note')}</strong> {t('deleteDialog.movedNote')}
             </p>
           </div>
         )}
 
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={handleCancel}>Cancel</AlertDialogCancel>
+          <AlertDialogCancel onClick={handleCancel}>{t('common.cancel')}</AlertDialogCancel>
           <AlertDialogAction
             onClick={handleConfirm}
             className={
@@ -173,7 +175,7 @@ export function DeleteConfirmDialog({
                 : ""
             }
           >
-            {deleteFileFromSystem ? "Remove & Delete File" : "Remove"}
+            {deleteFileFromSystem ? t('deleteDialog.removeAndDelete') : t('common.remove')}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

@@ -23,6 +23,7 @@ jobs:
     outputs:
       release_id: ${{ steps.create-release.outputs.id }}
       upload_url: ${{ steps.create-release.outputs.upload_url }}
+      version: ${{ steps.get_version.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,9 +32,22 @@ jobs:
         id: get_version
         run: |
           if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+            VERSION="${{ github.event.inputs.version }}"
           else
-            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+            VERSION="${GITHUB_REF#refs/tags/}"
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+
+          # A pre-release tag carries a semver suffix, e.g. v1.10.0-beta.1.
+          # Those are published as GitHub prereleases and kept OUT of the stable
+          # "latest" channel, so existing users and the AppImage zsync "latest"
+          # pointer never auto-pull an untested build.
+          if [[ "${VERSION}" == *-* ]]; then
+            echo "prerelease=true" >> $GITHUB_OUTPUT
+            echo "make_latest=false" >> $GITHUB_OUTPUT
+          else
+            echo "prerelease=false" >> $GITHUB_OUTPUT
+            echo "make_latest=true" >> $GITHUB_OUTPUT
           fi
 
       - name: Extract changelog for version
@@ -41,7 +55,10 @@ jobs:
         run: |
           VERSION="${{ steps.get_version.outputs.version }}"
           VERSION_NUM="${VERSION#v}"
-          
+          # Strip any pre-release suffix so a beta tag (1.10.0-beta.1) reuses the
+          # target release's changelog section (## [1.10.0]).
+          VERSION_NUM="${VERSION_NUM%%-*}"
+
           echo "Looking for version: ${VERSION_NUM}"
           
           # Extract changelog section for this version
@@ -104,8 +121,8 @@ jobs:
           name: DLMan ${{ steps.get_version.outputs.version }}
           body_path: /tmp/release_body.txt
           draft: false
-          prerelease: false
-          make_latest: true
+          prerelease: ${{ steps.get_version.outputs.prerelease }}
+          make_latest: ${{ steps.get_version.outputs.make_latest }}
 
   build-tauri:
     needs: create-release
@@ -180,7 +197,9 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev \
             patchelf \
-            libgtk-3-dev
+            libgtk-3-dev \
+            zsync \
+            binutils
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
@@ -193,6 +212,61 @@ jobs:
           releaseId: ${{ needs.create-release.outputs.release_id }}
           projectPath: apps/desktop
           tauriScript: pnpm tauri
+
+      # Embed AppImage update information so AppImageUpdate / AppImageLauncher / AM
+      # can perform zsync delta updates (downloading only the changed chunks).
+      # Tauri's bundler does not emit this, so we patch the reserved `.upd_info`
+      # ELF section in place and generate the companion `.zsync` file, then
+      # re-upload the patched AppImage (replacing the one tauri-action uploaded)
+      # alongside the `.zsync`. See: https://github.com/AppImage/AppImageSpec
+      - name: Embed AppImage update information (Linux)
+        if: matrix.platform == 'ubuntu-22.04'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.create-release.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          # This is a Cargo workspace, so the bundle output is under the
+          # workspace-root target dir (target/release/bundle/appimage/...),
+          # not apps/desktop/src-tauri/target.
+          APPIMAGE=$(find target -type f -name '*.AppImage' | head -1)
+          if [ -z "${APPIMAGE}" ]; then
+            echo "::error::No AppImage produced by the Tauri build"; exit 1
+          fi
+          NAME=$(basename "${APPIMAGE}")
+          echo "Found AppImage: ${NAME}"
+
+          # gh-releases-zsync|<user>|<repo>|<release>|<asset-glob>
+          # `latest` makes AppImageUpdate always pull the newest release; the glob
+          # must match the .zsync asset name (version-independent, amd64 build).
+          UPDATE_INFO="gh-releases-zsync|novincode|dlman|latest|DLMan_*_amd64.AppImage.zsync"
+
+          # The AppImage type-2 runtime reserves a zeroed `.upd_info` ELF section
+          # exactly so update information can be embedded after the fact.
+          read -r OFF SZ < <(objdump -h "${APPIMAGE}" | awk '$2==".upd_info"{print $6, $3; exit}')
+          if [ -z "${OFF:-}" ]; then
+            echo "::error::.upd_info section not found in AppImage runtime"; exit 1
+          fi
+          OFF_DEC=$((16#$OFF)); SZ_DEC=$((16#$SZ))
+          echo ".upd_info at offset 0x${OFF} (${OFF_DEC}), size 0x${SZ} (${SZ_DEC} bytes)"
+          if [ "${#UPDATE_INFO}" -ge "${SZ_DEC}" ]; then
+            echo "::error::Update info string (${#UPDATE_INFO}B) exceeds section size"; exit 1
+          fi
+
+          # Clear the section, then write the update-info string into it (in place).
+          dd if=/dev/zero of="${APPIMAGE}" bs=1 seek="${OFF_DEC}" count="${SZ_DEC}" conv=notrunc status=none
+          printf '%s' "${UPDATE_INFO}" | dd of="${APPIMAGE}" bs=1 seek="${OFF_DEC}" conv=notrunc status=none
+
+          echo "Embedded: $(dd if="${APPIMAGE}" bs=1 skip="${OFF_DEC}" count="${#UPDATE_INFO}" status=none)"
+
+          # Build the zsync control file from the patched AppImage. The relative
+          # `-u` name is resolved by AppImageUpdate against the release assets.
+          zsyncmake -u "${NAME}" -o "${NAME}.zsync" "${APPIMAGE}"
+
+          # Replace the release assets with the update-info-enabled versions.
+          gh release upload "${TAG}" "${APPIMAGE}" "${NAME}.zsync" \
+            --repo novincode/dlman --clobber
 
   build-extension:
     needs: create-release

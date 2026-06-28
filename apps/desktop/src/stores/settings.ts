@@ -45,6 +45,9 @@ const defaultSettings: Settings = {
   toast_show_info: true,
   // Update settings
   auto_check_updates: true,
+  // Localization
+  language: "en",
+  font: null,
 };
 
 export const useSettingsStore = create<SettingsState>()(

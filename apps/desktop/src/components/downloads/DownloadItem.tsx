@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import {
   FileIcon,
   CheckCircle2,
@@ -69,6 +70,7 @@ interface DownloadItemProps {
 }
 
 export function DownloadItem({ download, isFocused = false }: DownloadItemProps) {
+  const { t } = useTranslation();
   const { selectedIds, toggleSelected, removeDownload, updateStatus, updateDownload, moveToQueue, setFocusedId } = useDownloadStore();
   const isSelected = selectedIds.has(download.id);
   const isSelectionMode = selectedIds.size > 0; // Selection mode is active when any items are selected
@@ -86,7 +88,7 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
   const { handleDragStart: handleFileDragStart, isSupported: isDragSupported } = useFileDrag({
     onDragEnd: (dropped) => {
       if (dropped) {
-        toast.success('File dropped successfully');
+        toast.success(t('toasts.fileDropped'));
       }
     },
   });
@@ -136,15 +138,15 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
     if (isTauri()) {
       try {
         await invoke("pause_download", { id: download.id });
-        toast.success("Download paused");
+        toast.success(t('toasts.downloadPaused'));
       } catch (err) {
         console.error("Failed to pause download:", err);
         // Revert on failure
         updateStatus(download.id, "downloading", null);
-        toast.error("Failed to pause download");
+        toast.error(t('toasts.pauseFailed'));
       }
     }
-  }, [download.id, updateStatus]);
+  }, [download.id, updateStatus, t]);
 
   const handleResume = useCallback(async (e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -154,29 +156,29 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
     if (isTauri()) {
       try {
         await invoke("resume_download", { id: download.id });
-        toast.success("Download resumed");
+        toast.success(t('toasts.downloadResumed'));
       } catch (err) {
         console.error("Failed to resume download:", err);
         // Revert on failure
         updateStatus(download.id, "paused", null);
-        toast.error("Failed to resume download");
+        toast.error(t('toasts.resumeFailed'));
       }
     }
-  }, [download.id, updateStatus]);
+  }, [download.id, updateStatus, t]);
 
   const handleCancel = useCallback(async (e?: React.MouseEvent) => {
     e?.stopPropagation();
     if (isTauri()) {
       try {
         await invoke("cancel_download", { id: download.id });
-        toast.success("Download cancelled");
+        toast.success(t('toasts.downloadCancelled'));
       } catch (err) {
         console.error("Failed to cancel download:", err);
-        toast.error("Failed to cancel download");
+        toast.error(t('toasts.cancelFailed'));
       }
     }
     updateStatus(download.id, "cancelled", null);
-  }, [download.id, updateStatus]);
+  }, [download.id, updateStatus, t]);
 
   const handleRemove = useCallback(async (e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -188,11 +190,11 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
     e?.stopPropagation();
     try {
       await navigator.clipboard.writeText(download.url);
-      toast.success("URL copied to clipboard");
+      toast.success(t('toasts.urlCopied'));
     } catch (err) {
-      toast.error("Failed to copy URL");
+      toast.error(t('toasts.copyUrlFailed'));
     }
-  }, [download.url]);
+  }, [download.url, t]);
 
   const handleOpenFolder = useCallback(async (e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -202,12 +204,12 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
         await invoke("open_folder", { path: download.destination });
       } catch (err) {
         console.error("Failed to open folder:", err);
-        toast.error("Failed to open folder");
+        toast.error(t('toasts.openFolderFailed'));
       }
     } else {
-      toast.info("Open folder is only available in the desktop app");
+      toast.info(t('toasts.openFolderDesktopOnly'));
     }
-  }, [download.destination]);
+  }, [download.destination, t]);
 
   const handleOpenFile = useCallback(async (e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -218,12 +220,12 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
         await invoke("show_in_folder", { path: filePath });
       } catch (err) {
         console.error("Failed to open file:", err);
-        toast.error("Failed to open file");
+        toast.error(t('toasts.openFileFailed'));
       }
     } else {
-      toast.info("File not available");
+      toast.info(t('toasts.fileNotAvailable'));
     }
-  }, [download.destination, download.filename, download.status]);
+  }, [download.destination, download.filename, download.status, t]);
 
   const handleShowInfo = useCallback((e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -237,22 +239,22 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
       try {
         // Retry the existing download instead of creating a new one
         await invoke("retry_download", { id: download.id });
-        toast.success("Download restarted");
+        toast.success(t('toasts.downloadRestarted'));
       } catch (err) {
         console.error("Failed to retry download:", err);
-        toast.error("Failed to restart download");
+        toast.error(t('toasts.restartFailed'));
       }
     } else {
       // Fallback: just update status to pending
       updateStatus(download.id, "pending", null);
-      toast.info("Download queued for retry");
+      toast.info(t('toasts.queuedForRetry'));
     }
-  }, [download.url, download.destination, download.queue_id, download.id, updateStatus]);
+  }, [download.url, download.destination, download.queue_id, download.id, updateStatus, t]);
 
   const handleMoveToQueue = useCallback((newQueueId: string) => {
     moveToQueue([download.id], newQueueId);
-    toast.success("Moved to queue");
-  }, [download.id, moveToQueue]);
+    toast.success(t('toasts.movedToQueue'));
+  }, [download.id, moveToQueue, t]);
 
   const handleSpeedLimitChange = useCallback(async (newLimit: number | null) => {
     // Convert KB/s to bytes/s, 0 means unlimited
@@ -268,13 +270,13 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
           id: download.id, 
           updates: { speed_limit: limitBytes }
         });
-        toast.success(limitBytes === 0 ? "Speed limit disabled" :
-                     limitBytes ? `Speed limit set to ${newLimit} KB/s` : "Using queue speed limit");
+        toast.success(limitBytes === 0 ? t('toasts.speedLimitDisabled') :
+                     limitBytes ? t('toasts.speedLimitSet', { n: newLimit }) : t('toasts.usingQueueSpeedLimit'));
       } catch (err) {
         console.error("Failed to update speed limit:", err);
       }
     }
-  }, [download.id, updateDownload]);
+  }, [download.id, updateDownload, t]);
 
   const handleToggleExpand = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -291,7 +293,7 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
             size="icon"
             className="h-8 w-8 shrink-0 text-yellow-500 hover:text-yellow-600 hover:bg-yellow-100 dark:hover:bg-yellow-900/20"
             onClick={handlePause}
-            title="Pause"
+            title={t('common.pause')}
           >
             <Pause className="h-4 w-4" />
           </Button>
@@ -303,7 +305,7 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
             size="icon"
             className="h-8 w-8 shrink-0 text-green-500 hover:text-green-600 hover:bg-green-100 dark:hover:bg-green-900/20"
             onClick={handleResume}
-            title="Resume"
+            title={t('common.resume')}
           >
             <Play className="h-4 w-4" />
           </Button>
@@ -315,7 +317,7 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
             size="icon"
             className="h-8 w-8 shrink-0 text-primary hover:bg-primary/10"
             onClick={handleRedownload}
-            title="Retry"
+            title={t('common.retry')}
           >
             <RefreshCw className="h-4 w-4" />
           </Button>
@@ -327,7 +329,7 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
             size="icon"
             className="h-8 w-8 shrink-0 text-primary hover:bg-primary/10"
             onClick={handleRedownload}
-            title="Re-download"
+            title={t('downloadItem.redownload')}
           >
             <RefreshCw className="h-4 w-4" />
           </Button>
@@ -339,7 +341,7 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
             size="icon"
             className="h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground"
             onClick={handleOpenFolder}
-            title="Open Folder"
+            title={t('categories.openFolder')}
           >
             <FolderOpen className="h-4 w-4" />
           </Button>
@@ -352,7 +354,7 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
             size="icon"
             className="h-8 w-8 shrink-0 text-green-500 hover:text-green-600 hover:bg-green-100 dark:hover:bg-green-900/20"
             onClick={handleResume}
-            title="Start"
+            title={t('common.start')}
           >
             <Play className="h-4 w-4" />
           </Button>
@@ -377,11 +379,11 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
           <>
             <MenuItem onClick={handleOpenFile}>
               <ExternalLink className="h-4 w-4 mr-2" />
-              Open File
+              {t('downloadItem.openFile')}
             </MenuItem>
             <MenuItem onClick={handleOpenFolder}>
               <FolderOpen className="h-4 w-4 mr-2" />
-              Open Folder
+              {t('categories.openFolder')}
             </MenuItem>
             <MenuSeparator />
           </>
@@ -390,42 +392,42 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
         {download.status === "downloading" && (
           <MenuItem onClick={handlePause}>
             <Pause className="h-4 w-4 mr-2" />
-            Pause
+            {t('common.pause')}
           </MenuItem>
         )}
 
         {download.status === "paused" && (
           <MenuItem onClick={handleResume}>
             <Play className="h-4 w-4 mr-2" />
-            Resume
+            {t('common.resume')}
           </MenuItem>
         )}
 
         {download.status === "failed" && (
           <MenuItem onClick={handleRedownload}>
             <RefreshCw className="h-4 w-4 mr-2" />
-            Retry Download
+            {t('downloadItem.retryDownload')}
           </MenuItem>
         )}
 
         {download.status === "cancelled" && (
           <MenuItem onClick={handleRedownload}>
             <RefreshCw className="h-4 w-4 mr-2" />
-            Re-download
+            {t('downloadItem.redownload')}
           </MenuItem>
         )}
 
         {(download.status === "downloading" || download.status === "paused") && (
           <MenuItem onClick={handleCancel}>
             <Square className="h-4 w-4 mr-2" />
-            Stop Download
+            {t('downloadItem.stopDownload')}
           </MenuItem>
         )}
 
         {(download.status === "queued" || download.status === "pending") && (
           <MenuItem onClick={handleResume}>
             <Play className="h-4 w-4 mr-2" />
-            Start Now
+            {t('downloadItem.startNow')}
           </MenuItem>
         )}
 
@@ -434,20 +436,20 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
         {/* Info */}
         <MenuItem onClick={handleShowInfo}>
           <Info className="h-4 w-4 mr-2" />
-          Show Info
+          {t('downloadItem.showInfo')}
         </MenuItem>
 
         {/* Copy URL */}
         <MenuItem onClick={handleCopyUrl}>
           <Copy className="h-4 w-4 mr-2" />
-          Copy URL
+          {t('downloadItem.copyUrl')}
         </MenuItem>
 
         {/* Move to Queue */}
         <MenuSub>
           <MenuSubTrigger>
             <ListTodo className="h-4 w-4 mr-2" />
-            Move to Queue
+            {t('toolbar.moveToQueue')}
           </MenuSubTrigger>
           <MenuSubContent>
             {queues.map((q) => (
@@ -471,13 +473,13 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
         {/* Select option - enters selection mode */}
         <MenuItem onClick={() => toggleSelected(download.id)}>
           <CheckSquare className="h-4 w-4 mr-2" />
-          {isSelected ? "Deselect" : "Select"}
+          {isSelected ? t('downloadItem.deselect') : t('downloadItem.select')}
         </MenuItem>
 
         {/* Remove option */}
         <MenuItem onClick={handleRemove} className="text-destructive focus:text-destructive">
           <Trash2 className="h-4 w-4 mr-2" />
-          Remove
+          {t('common.remove')}
         </MenuItem>
       </>
     );
@@ -571,7 +573,7 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
                     {/* MOVED badge for completed downloads where file doesn't exist */}
                     {download.status === "completed" && fileExists === false && (
                       <span className="text-[10px] font-medium px-1.5 py-0.5 rounded uppercase bg-orange-500/10 text-orange-500">
-                        MOVED
+                        {t('downloadItem.moved')}
                       </span>
                     )}
                     {/* Speed limit indicator */}
@@ -639,7 +641,7 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
 
                   {/* ETA */}
                   {download.status === "downloading" && download.eta && (
-                    <span>{formatDuration(download.eta)} remaining</span>
+                    <span>{t('downloadItem.remaining', { time: formatDuration(download.eta) })}</span>
                   )}
 
                   {/* Error */}
@@ -689,7 +691,7 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
                     {/* Segments visualization */}
                     {download.segments && download.segments.length > 0 && (
                       <div className="space-y-2">
-                        <Label className="text-xs font-medium">Download Segments</Label>
+                        <Label className="text-xs font-medium">{t('downloadItem.segments')}</Label>
                         <div className="space-y-2">
                           {/* IDM-style single progress bar with segments */}
                           <div className="relative h-3 bg-muted rounded-full overflow-hidden">
@@ -723,7 +725,7 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
                                     left: `${leftPosition}%`,
                                     width: `${segmentWidth}%`,
                                   }}
-                                  title={`Segment ${idx + 1}: ${isUnknownSize ? formatBytes(segment.downloaded) : Math.round(segmentProgress) + '%'}`}
+                                  title={t('downloadItem.segmentTitle', { n: idx + 1, detail: isUnknownSize ? formatBytes(segment.downloaded) : Math.round(segmentProgress) + '%' })}
                                 >
                                   <div
                                     className={cn(
@@ -763,12 +765,12 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
                               return (
                                 <div key={idx} className="space-y-1">
                                   <div className="flex justify-between">
-                                    <span>Seg {idx + 1}:</span>
+                                    <span>{t('downloadItem.segShort', { n: idx + 1 })}</span>
                                     <span>
-                                      {segment.complete 
-                                        ? "Complete" 
+                                      {segment.complete
+                                        ? t('downloadItem.complete')
                                         : isUnknownSize
-                                          ? `${formatBytes(segment.downloaded)} (streaming)`
+                                          ? t('downloadItem.streaming', { size: formatBytes(segment.downloaded) })
                                           : `${formatBytes(segment.downloaded)}/${formatBytes(segmentSize)}`
                                       }
                                     </span>
@@ -787,20 +789,20 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
                       <div className="flex items-center justify-between">
                         <Label className="text-xs font-medium flex items-center gap-1">
                           <Gauge className="h-3 w-3" />
-                          Speed Limit
+                          {t('downloadItem.speedLimit')}
                         </Label>
                       </div>
                       
                       <div className="flex items-center gap-2">
                         <Input
                           type="number"
-                          placeholder="Unlimited"
+                          placeholder={t('downloadItem.unlimited')}
                           value={speedLimitInput}
                           onChange={(e) => setSpeedLimitInput(e.target.value)}
                           className="h-8 text-sm"
                           min={0}
                         />
-                        <span className="text-xs text-muted-foreground">KB/s</span>
+                        <span className="text-xs text-muted-foreground">{t('settings.speedLimitUnit')}</span>
                         <Button
                           size="sm"
                           variant="secondary"
@@ -816,7 +818,7 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
                             }
                           }}
                         >
-                          Apply
+                          {t('common.apply')}
                         </Button>
                         <Button
                           size="sm"
@@ -825,7 +827,7 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
                           onClick={() => handleSpeedLimitChange(0)}
                         >
                           <Zap className="h-3 w-3 mr-1" />
-                          Unlimited
+                          {t('downloadItem.unlimited')}
                         </Button>
                       </div>
                     </div>
@@ -833,11 +835,11 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
                     {/* Additional info */}
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div>
-                        <span className="text-muted-foreground">Queue:</span>{" "}
-                        <span className="font-medium">{queue?.name ?? "Unknown"}</span>
+                        <span className="text-muted-foreground">{t('downloadItem.queueLabel')}</span>{" "}
+                        <span className="font-medium">{queue?.name ?? t('downloadItem.unknown')}</span>
                       </div>
                       <div>
-                        <span className="text-muted-foreground">Created:</span>{" "}
+                        <span className="text-muted-foreground">{t('downloadItem.createdLabel')}</span>{" "}
                         <span className="font-medium">
                           {new Date(download.created_at).toLocaleString()}
                         </span>
@@ -878,16 +880,16 @@ export function DownloadItem({ download, isFocused = false }: DownloadItemProps)
             try {
               await invoke("delete_download", { id: download.id, delete_file: deleteFile });
               if (deleteFile) {
-                toast.success("Download removed and file deleted");
+                toast.success(t('toasts.downloadRemovedWithFile'));
               } else {
-                toast.success("Download removed");
+                toast.success(t('toasts.downloadRemoved'));
               }
             } catch (err) {
               console.error("Failed to delete download:", err);
-              toast.error("Failed to remove download");
+              toast.error(t('toasts.removeFailed'));
             }
           } else {
-            toast.success("Download removed");
+            toast.success(t('toasts.downloadRemoved'));
           }
         }}
       />
@@ -917,6 +919,7 @@ function StatusIcon({ status }: { status: DownloadStatus }) {
 }
 
 function StatusBadge({ status }: { status: DownloadStatus }) {
+  const { t } = useTranslation();
   const variants: Record<DownloadStatus, string> = {
     pending: "bg-muted text-muted-foreground",
     downloading: "bg-primary/10 text-primary",
@@ -929,14 +932,14 @@ function StatusBadge({ status }: { status: DownloadStatus }) {
   };
 
   const labels: Record<DownloadStatus, string> = {
-    pending: "Pending",
-    downloading: "Downloading",
-    paused: "Paused",
-    completed: "Completed",
-    failed: "Failed",
-    queued: "Queued",
-    cancelled: "Cancelled",
-    deleted: "Deleted",
+    pending: t('status.pending'),
+    downloading: t('status.downloading'),
+    paused: t('status.paused'),
+    completed: t('status.completed'),
+    failed: t('status.failed'),
+    queued: t('status.queued'),
+    cancelled: t('status.cancelled'),
+    deleted: t('status.deleted'),
   };
 
   return (

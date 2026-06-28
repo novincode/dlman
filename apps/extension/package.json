@@ -1,7 +1,7 @@
 {
   "name": "@dlman/extension",
   "displayName": "DLMan - Download Manager",
-  "version": "1.9.2",
+  "version": "1.10.0",
   "private": true,
   "type": "module",
   "description": "Browser extension for DLMan - Modern download manager integration",
@@ -36,7 +36,7 @@
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "framer-motion": "^11.11.17",
-    "lucide-react": "^0.454.0",
+    "lucide-react": "^0.563.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "sonner": "^1.7.0",

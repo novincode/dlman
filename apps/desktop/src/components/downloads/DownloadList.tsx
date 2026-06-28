@@ -2,6 +2,7 @@ import { useRef, useCallback, useEffect, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import { DraggableDownloadItem } from "@/components/dnd/DraggableDownloadItem";
 import { DownloadItem } from "@/components/downloads/DownloadItem";
 import { useDownloadStore } from "@/stores/downloads";
@@ -16,6 +17,7 @@ interface DownloadListProps {
 }
 
 export function DownloadList({ downloads }: DownloadListProps) {
+  const { t } = useTranslation();
   const parentRef = useRef<HTMLDivElement>(null);
   const focusedId = useDownloadStore((s) => s.focusedId);
   const setFocusedId = useDownloadStore((s) => s.setFocusedId);
@@ -126,20 +128,20 @@ export function DownloadList({ downloads }: DownloadListProps) {
         // If user chose to also delete the file, use delete_file: true
         await invoke("delete_download", { id: downloadToDelete.id, delete_file: deleteFile });
         if (deleteFile) {
-          toast.success("Download removed and file deleted");
+          toast.success(t('toasts.downloadRemovedWithFile'));
         } else {
-          toast.success("Download removed");
+          toast.success(t('toasts.downloadRemoved'));
         }
       } catch (err) {
         console.error("Failed to delete download:", err);
-        toast.error("Failed to remove download");
+        toast.error(t('toasts.removeFailed'));
       }
     } else {
-      toast.success("Download removed");
+      toast.success(t('toasts.downloadRemoved'));
     }
-    
+
     setDownloadToDelete(null);
-  }, [downloadToDelete, removeDownload]);
+  }, [downloadToDelete, removeDownload, t]);
 
   return (
     <>

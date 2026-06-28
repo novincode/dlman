@@ -83,7 +83,9 @@ impl DownloadDatabase {
                 remember_last_path INTEGER NOT NULL DEFAULT 1,
                 max_retries INTEGER NOT NULL DEFAULT 5,
                 retry_delay_seconds INTEGER NOT NULL DEFAULT 30,
-                proxy_settings TEXT
+                proxy_settings TEXT,
+                language TEXT NOT NULL DEFAULT 'en',
+                font TEXT
             );
             
             CREATE TABLE IF NOT EXISTS site_credentials (
@@ -124,6 +126,18 @@ impl DownloadDatabase {
         .execute(pool)
         .await
         .ok(); // Ignore error if column already exists
+
+        // Migration: Add UI language column (defaults to English)
+        sqlx::query("ALTER TABLE settings ADD COLUMN language TEXT NOT NULL DEFAULT 'en'")
+            .execute(pool)
+            .await
+            .ok();
+
+        // Migration: Add UI font override column (NULL = follow language)
+        sqlx::query("ALTER TABLE settings ADD COLUMN font TEXT")
+            .execute(pool)
+            .await
+            .ok();
         
         // Migration: Create site_credentials table if it doesn't exist
         sqlx::query(
@@ -505,6 +519,8 @@ impl DownloadDatabase {
                     proxy: row.get::<Option<String>, _>("proxy_settings")
                         .and_then(|s| serde_json::from_str(&s).ok())
                         .unwrap_or_default(),
+                    language: row.try_get::<String, _>("language").unwrap_or_else(|_| "en".to_string()),
+                    font: row.try_get::<Option<String>, _>("font").unwrap_or(None),
                 })
             }
             None => {
@@ -533,8 +549,8 @@ impl DownloadDatabase {
                 id, default_download_path, max_concurrent_downloads, default_segments,
                 global_speed_limit, theme, dev_mode, minimize_to_tray, start_on_boot,
                 browser_integration_port, remember_last_path, max_retries, retry_delay_seconds,
-                proxy_settings
-            ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                proxy_settings, language, font
+            ) VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 default_download_path = excluded.default_download_path,
                 max_concurrent_downloads = excluded.max_concurrent_downloads,
@@ -548,7 +564,9 @@ impl DownloadDatabase {
                 remember_last_path = excluded.remember_last_path,
                 max_retries = excluded.max_retries,
                 retry_delay_seconds = excluded.retry_delay_seconds,
-                proxy_settings = excluded.proxy_settings
+                proxy_settings = excluded.proxy_settings,
+                language = excluded.language,
+                font = excluded.font
             "#,
         )
         .bind(settings.default_download_path.to_string_lossy().to_string())
@@ -564,6 +582,8 @@ impl DownloadDatabase {
         .bind(settings.max_retries as i64)
         .bind(settings.retry_delay_seconds as i64)
         .bind(proxy_json)
+        .bind(&settings.language)
+        .bind(&settings.font)
         .execute(&self.pool)
         .await?;
         

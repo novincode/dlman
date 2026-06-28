@@ -5,6 +5,7 @@
 
 import { X, Download, Sparkles } from 'lucide-react';
 import { open as openUrl } from '@tauri-apps/plugin-shell';
+import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { useUpdateStore } from '@/stores/update';
 import { cn } from '@/lib/utils';
@@ -14,6 +15,7 @@ interface UpdateNotificationProps {
 }
 
 export function UpdateNotification({ className }: UpdateNotificationProps) {
+  const { t } = useTranslation();
   const { updateInfo, dismissUpdate, shouldShowNotification } = useUpdateStore();
   
   const showNotification = shouldShowNotification();
@@ -43,7 +45,7 @@ export function UpdateNotification({ className }: UpdateNotificationProps) {
     >
       <Sparkles className="h-4 w-4 text-emerald-500 animate-pulse" />
       <span className="text-xs font-medium text-foreground">
-        v{updateInfo.latestVersion} available
+        {t('update.available', { version: updateInfo.latestVersion })}
       </span>
       <Button
         variant="ghost"
@@ -52,7 +54,7 @@ export function UpdateNotification({ className }: UpdateNotificationProps) {
         onClick={handleDownload}
       >
         <Download className="h-3 w-3 mr-1" />
-        Update
+        {t('common.update')}
       </Button>
       <Button
         variant="ghost"

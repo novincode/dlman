@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { Download, FolderDown, Link, Zap } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { useUIStore } from "@/stores/ui";
 
@@ -9,6 +10,7 @@ interface EmptyStateProps {
 
 export function EmptyState({ hasAnyDownloads }: EmptyStateProps) {
   const { setShowNewDownloadDialog, setShowBatchImportDialog } = useUIStore();
+  const { t } = useTranslation();
 
   if (hasAnyDownloads) {
     // Has downloads but none match current filter
@@ -21,9 +23,9 @@ export function EmptyState({ hasAnyDownloads }: EmptyStateProps) {
           className="text-center"
         >
           <Download className="h-12 w-12 mx-auto mb-4 opacity-50" />
-          <p className="text-lg font-medium">No downloads match your filter</p>
+          <p className="text-lg font-medium">{t('downloads.empty.noMatch.title')}</p>
           <p className="text-sm mt-1">
-            Try changing the filter or search query
+            {t('downloads.empty.noMatch.hint')}
           </p>
         </motion.div>
       </div>
@@ -71,16 +73,16 @@ export function EmptyState({ hasAnyDownloads }: EmptyStateProps) {
         </motion.div>
 
         {/* Title */}
-        <h2 className="text-2xl font-semibold mb-2">Welcome to DLMan</h2>
+        <h2 className="text-2xl font-semibold mb-2">{t('welcome.title')}</h2>
         <p className="text-muted-foreground mb-8">
-          Fast, modern download manager with multi-segment acceleration
+          {t('welcome.subtitle')}
         </p>
 
         {/* Actions - Centered buttons */}
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           <Button onClick={() => setShowNewDownloadDialog(true)} size="lg" className="gap-2 w-full sm:w-auto">
             <Download className="h-4 w-4" />
-            Add Download
+            {t('welcome.addDownload')}
           </Button>
           <Button
             variant="outline"
@@ -89,7 +91,7 @@ export function EmptyState({ hasAnyDownloads }: EmptyStateProps) {
             className="gap-2 w-full sm:w-auto"
           >
             <FolderDown className="h-4 w-4" />
-            Import Links
+            {t('welcome.importLinks')}
           </Button>
         </div>
 
@@ -100,7 +102,7 @@ export function EmptyState({ hasAnyDownloads }: EmptyStateProps) {
           transition={{ delay: 0.5 }}
           className="text-xs text-muted-foreground mt-8"
         >
-          Tip: Paste links with Ctrl+V or drag & drop URLs anywhere
+          {t('welcome.tip')}
         </motion.p>
       </motion.div>
     </div>

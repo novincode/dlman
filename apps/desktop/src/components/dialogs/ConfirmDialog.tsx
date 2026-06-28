@@ -1,4 +1,5 @@
 import { useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -12,6 +13,7 @@ import {
 import { useUIStore } from '@/stores/ui';
 
 export function ConfirmDialog() {
+  const { t } = useTranslation();
   const { confirmDialogOpen, confirmDialogConfig, closeConfirmDialog } = useUIStore();
 
   const handleConfirm = useCallback(async () => {
@@ -53,7 +55,7 @@ export function ConfirmDialog() {
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel onClick={handleCancel}>
-            {confirmDialogConfig.cancelLabel || 'Cancel'}
+            {confirmDialogConfig.cancelLabel || t('common.cancel')}
           </AlertDialogCancel>
           <AlertDialogAction
             onClick={handleConfirm}
@@ -65,7 +67,7 @@ export function ConfirmDialog() {
                 : undefined
             }
           >
-            {confirmDialogConfig.confirmLabel || 'Confirm'}
+            {confirmDialogConfig.confirmLabel || t('common.confirm')}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

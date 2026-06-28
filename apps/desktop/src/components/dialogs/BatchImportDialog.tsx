@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { toast } from 'sonner';
+import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
   Download,
@@ -97,6 +98,7 @@ function isHtmlItem(item: Item): boolean {
 }
 
 export function BatchImportDialog() {
+  const { t } = useTranslation();
   const { showBatchImportDialog, setShowBatchImportDialog } = useUIStore();
   const addDownload = useDownloadStore((s) => s.addDownload);
   const setFilter = useDownloadStore((s) => s.setFilter);
@@ -208,14 +210,15 @@ export function BatchImportDialog() {
             ...prevItem,
             info: null,
             loading: false,
-            error: err instanceof Error ? err.message : 'Failed to probe',
+            error: err instanceof Error ? err.message : t('batchImport.probeFailed'),
             checked: false,
           };
           return next;
         });
       }
     }
-  }, []); // No dependencies - stable function
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Stable function; t() only used for a rare error-fallback string
 
   const startNewProbe = useCallback((urls: string[], autoStepToReview: boolean) => {
     const next = urls.map<Item>((url) => ({
@@ -300,7 +303,7 @@ export function BatchImportDialog() {
 
   const handleBrowseDestination = useCallback(async () => {
     if (!isTauri()) {
-      toast.error('Browse is only available in the desktop app');
+      toast.error(t('toasts.browseDesktopOnly'));
       return;
     }
 
@@ -317,9 +320,9 @@ export function BatchImportDialog() {
       }
     } catch (err) {
       console.error('Failed to open directory picker:', err);
-      toast.error('Failed to open directory picker');
+      toast.error(t('toasts.dirPickerFailed'));
     }
-  }, [destination]);
+  }, [destination, t]);
 
   const handleCategoryChange = useCallback(async (value: string) => {
     if (value === '__create__') {
@@ -352,12 +355,12 @@ export function BatchImportDialog() {
   const handleGoToReview = useCallback(() => {
     const urls = parsedUrls;
     if (urls.length === 0) {
-      toast.error('No URLs found');
+      toast.error(t('toasts.noUrlsFound'));
       return;
     }
 
     startNewProbe(urls, true);
-  }, [parsedUrls, startNewProbe]);
+  }, [parsedUrls, startNewProbe, t]);
 
   const setCheckedRange = useCallback((from: number, to: number, checked: boolean) => {
     const start = Math.min(from, to);
@@ -494,12 +497,12 @@ export function BatchImportDialog() {
     const selected = items.filter((it) => it.checked && !it.error).filter((it) => !(hideHtmlPages && isHtmlItem(it)));
 
     if (selected.length === 0) {
-      toast.error('Nothing selected');
+      toast.error(t('toasts.nothingSelected'));
       return;
     }
 
     if (!destination) {
-      toast.error('Please choose a destination');
+      toast.error(t('toasts.chooseDestination'));
       return;
     }
 
@@ -531,9 +534,9 @@ export function BatchImportDialog() {
         }
 
         if (startImmediately) {
-          toast.success(`Added ${downloads.length} downloads and started`);
+          toast.success(t('toasts.addedAndStarted', { n: downloads.length }));
         } else {
-          toast.success(`Added ${downloads.length} downloads to queue`);
+          toast.success(t('toasts.addedToQueue', { n: downloads.length }));
         }
         
         // Navigate to the downloads view
@@ -561,8 +564,8 @@ export function BatchImportDialog() {
           };
           addDownload(localDownload);
         }
-        toast.success(`Added ${selected.length} downloads`);
-        
+        toast.success(t('toasts.addedDownloads', { n: selected.length }));
+
         // Navigate to the downloads view
         navigateToDownloads();
       }
@@ -570,11 +573,11 @@ export function BatchImportDialog() {
       handleClose();
     } catch (err) {
       console.error('Failed to add batch downloads:', err);
-      toast.error('Failed to add downloads');
+      toast.error(t('toasts.addDownloadsFailed'));
     } finally {
       setIsAdding(false);
     }
-  }, [items, hideHtmlPages, destination, queueId, categoryId, addDownload, startImmediately, handleClose, navigateToDownloads]);
+  }, [items, hideHtmlPages, destination, queueId, categoryId, addDownload, startImmediately, handleClose, navigateToDownloads, t]);
 
   return (
     <>
@@ -583,38 +586,38 @@ export function BatchImportDialog() {
           <DialogHeader className="shrink-0">
             <DialogTitle className="flex items-center gap-2">
               <ListPlus className="h-5 w-5" />
-              Batch Import
+              {t('batchImport.title')}
             </DialogTitle>
             <DialogDescription>
               {step === 'input'
-                ? 'Paste URLs (any text works). Then review and choose what to add.'
-                : 'Review, select, and add downloads.'}
+                ? t('batchImport.descInput')
+                : t('batchImport.descReview')}
             </DialogDescription>
           </DialogHeader>
 
           {step === 'input' ? (
             <div className="flex-1 min-h-0 flex flex-col gap-3 py-2">
               <div className="flex-1 min-h-0">
-                <Label htmlFor="batch-links">Links</Label>
+                <Label htmlFor="batch-links">{t('batchImport.links')}</Label>
                 <textarea
                   id="batch-links"
                   value={rawLinks}
                   onChange={(e) => setRawLinks(e.target.value)}
-                  placeholder="Paste URLs here…"
+                  placeholder={t('batchImport.linksPlaceholder')}
                   className="mt-2 h-full min-h-[240px] w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                 />
               </div>
 
               <div className="text-sm text-muted-foreground">
-                Found {parsedUrls.length} URL{parsedUrls.length === 1 ? '' : 's'}
+                {t('batchImport.foundUrls', { n: parsedUrls.length })}
               </div>
 
               <DialogFooter className="shrink-0">
                 <Button variant="outline" onClick={handleClose}>
-                  Cancel
+                  {t('common.cancel')}
                 </Button>
                 <Button onClick={handleGoToReview} disabled={parsedUrls.length === 0}>
-                  Review
+                  {t('batchImport.review')}
                 </Button>
               </DialogFooter>
             </div>
@@ -622,13 +625,13 @@ export function BatchImportDialog() {
             <div className="flex-1 min-h-0 flex flex-col gap-4 py-2">
               <div className="shrink-0 grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="batch-destination">Save to</Label>
+                  <Label htmlFor="batch-destination">{t('batchImport.saveTo')}</Label>
                   <div className="flex gap-2">
                     <Input
                       id="batch-destination"
                       value={destination}
                       onChange={(e) => handleDestinationChange(e.target.value)}
-                      placeholder="/path/to/downloads"
+                      placeholder={t('batchImport.destinationPlaceholder')}
                       className="flex-1"
                     />
                     <Button
@@ -636,7 +639,7 @@ export function BatchImportDialog() {
                       variant="outline"
                       size="icon"
                       onClick={handleBrowseDestination}
-                      title="Browse"
+                      title={t('batchImport.browse')}
                     >
                       <Folder className="h-4 w-4" />
                     </Button>
@@ -645,16 +648,16 @@ export function BatchImportDialog() {
 
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label>Category</Label>
+                    <Label>{t('batchImport.category')}</Label>
                     <Select value={categoryId ?? 'none'} onValueChange={handleCategoryChange}>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select category" />
+                        <SelectValue placeholder={t('batchImport.selectCategory')} />
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">
-                          <span className="text-muted-foreground">No category</span>
+                          <span className="text-muted-foreground">{t('batchImport.noCategory')}</span>
                         </SelectItem>
-                        <SelectItem value="__create__">Create new…</SelectItem>
+                        <SelectItem value="__create__">{t('batchImport.createNew')}</SelectItem>
                         {categories.map((c) => (
                           <SelectItem key={c.id} value={c.id}>
                             <div className="flex items-center gap-2">
@@ -668,13 +671,13 @@ export function BatchImportDialog() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Queue</Label>
+                    <Label>{t('batchImport.queue')}</Label>
                     <Select value={queueId} onValueChange={handleQueueChange}>
                       <SelectTrigger>
-                        <SelectValue placeholder="Select queue" />
+                        <SelectValue placeholder={t('batchImport.selectQueue')} />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="__create__">Create new…</SelectItem>
+                        <SelectItem value="__create__">{t('batchImport.createNew')}</SelectItem>
                         {queues.map((q) => (
                           <SelectItem key={q.id} value={q.id}>
                             <div className="flex items-center gap-2">
@@ -693,14 +696,14 @@ export function BatchImportDialog() {
                 <div className="flex flex-wrap items-center gap-3">
                   <Button variant="outline" size="sm" onClick={() => setStep('input')}>
                     <ArrowLeft className="mr-2 h-4 w-4" />
-                    Edit Links
+                    {t('batchImport.editLinks')}
                   </Button>
 
                   <Button variant="outline" size="sm" onClick={() => handleToggleAllVisible(true)}>
-                    Select all
+                    {t('batchImport.selectAll')}
                   </Button>
                   <Button variant="outline" size="sm" onClick={() => handleToggleAllVisible(false)}>
-                    Select none
+                    {t('batchImport.selectNone')}
                   </Button>
 
                   <Button
@@ -715,7 +718,7 @@ export function BatchImportDialog() {
                     }}
                   >
                     <RefreshCw className="mr-2 h-4 w-4" />
-                    Re-probe
+                    {t('batchImport.reprobe')}
                   </Button>
                 </div>
 
@@ -723,7 +726,7 @@ export function BatchImportDialog() {
                   <div className="flex items-center gap-2">
                     <Switch id="hide-html" checked={hideHtmlPages} onCheckedChange={setHideHtmlPages} />
                     <Label htmlFor="hide-html" className="text-sm text-muted-foreground cursor-pointer">
-                      Hide HTML
+                      {t('batchImport.hideHtml')}
                     </Label>
                   </div>
 
@@ -737,12 +740,12 @@ export function BatchImportDialog() {
                       htmlFor="start-immediately"
                       className="text-sm text-muted-foreground cursor-pointer"
                     >
-                      Start immediately
+                      {t('batchImport.startImmediately')}
                     </Label>
                   </div>
 
                   <div className="text-sm text-muted-foreground">
-                    {checkedCount} selected{totalBytes > 0 ? ` • ${formatBytes(totalBytes)}` : ''}
+                    {t('toolbar.selected', { n: checkedCount })}{totalBytes > 0 ? ` • ${formatBytes(totalBytes)}` : ''}
                   </div>
                 </div>
               </div>
@@ -756,7 +759,7 @@ export function BatchImportDialog() {
                   <div className="divide-y divide-border">
                     {visibleItems.length === 0 ? (
                       <div className="p-4 text-sm text-muted-foreground">
-                        No items.
+                        {t('batchImport.noItems')}
                       </div>
                     ) : (
                       visibleItems.map((it) => {
@@ -804,7 +807,7 @@ export function BatchImportDialog() {
                                     ) : null}
 
                                     {!it.loading && !it.error && html ? (
-                                      <div className="mt-1 text-xs text-muted-foreground">HTML page</div>
+                                      <div className="mt-1 text-xs text-muted-foreground">{t('batchImport.htmlPage')}</div>
                                     ) : null}
                                   </div>
                                 </div>
@@ -825,7 +828,7 @@ export function BatchImportDialog() {
                                     e.stopPropagation();
                                     handleRemove(it.url);
                                   }}
-                                  title="Remove"
+                                  title={t('common.remove')}
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>
@@ -841,18 +844,18 @@ export function BatchImportDialog() {
 
               <DialogFooter className="shrink-0">
                 <Button variant="outline" onClick={handleClose} disabled={isAdding}>
-                  Cancel
+                  {t('common.cancel')}
                 </Button>
                 <Button onClick={handleAddSelected} disabled={checkedCount === 0 || isAdding}>
                   {isAdding ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Adding…
+                      {t('batchImport.adding')}
                     </>
                   ) : (
                     <>
                       <Download className="mr-2 h-4 w-4" />
-                      Add {checkedCount}
+                      {t('batchImport.addN', { n: checkedCount })}
                     </>
                   )}
                 </Button>

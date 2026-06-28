@@ -41,6 +41,10 @@ dlman/
 │   │   │   │   ├── download_task.rs
 │   │   │   │   ├── segment_worker.rs
 │   │   │   │   └── rate_limiter.rs
+│   │   │   ├── media/           # Media stream handling
+│   │   │   │   ├── mod.rs       # ProtocolHandler trait, MediaResolver
+│   │   │   │   ├── hls.rs       # HLS (m3u8) parser & segment resolver
+│   │   │   │   └── dash.rs      # DASH (mpd) handler (stub)
 │   │   │   ├── queue.rs         # Queue management
 │   │   │   ├── scheduler.rs     # Queue scheduler (v1.5.0+)
 │   │   │   ├── storage.rs       # JSON storage for queues
@@ -50,7 +54,7 @@ dlman/
 │   │
 │   └── dlman-types/             # Shared types
 │       ├── src/
-│       │   └── lib.rs
+│       │   └── lib.rs           # + MediaProtocol, MediaVariant, DetectedMedia
 │       └── Cargo.toml
 │
 ├── docs/

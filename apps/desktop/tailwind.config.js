@@ -11,6 +11,10 @@ export default {
       },
     },
     extend: {
+      fontFamily: {
+        // Runtime-driven by the active language / user font override.
+        sans: ["var(--font-sans)"],
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",

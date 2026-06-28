@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { open as openDialog } from '@tauri-apps/plugin-dialog';
+import { useTranslation } from 'react-i18next';
 import { 
   Palette, 
   Save,
@@ -78,7 +79,22 @@ interface CategoryDialogProps {
 }
 
 export function CategoryDialog({ open, onOpenChange, editCategory, onCategoryCreated }: CategoryDialogProps) {
+  const { t } = useTranslation();
   const { addCategory, updateCategory, removeCategory } = useCategoryStore();
+
+  // Literal t() keys so i18next-parser can extract the icon labels.
+  const ICON_LABELS: Record<string, string> = {
+    folder: t('categoryDialog.iconFolder'),
+    music: t('categoryDialog.iconMusic'),
+    film: t('categoryDialog.iconVideo'),
+    'file-text': t('categoryDialog.iconDocument'),
+    image: t('categoryDialog.iconImage'),
+    archive: t('categoryDialog.iconArchive'),
+    box: t('categoryDialog.iconProgram'),
+    code: t('categoryDialog.iconCode'),
+    database: t('categoryDialog.iconData'),
+    'gamepad-2': t('categoryDialog.iconGame'),
+  };
 
   const [name, setName] = useState('');
   const [color, setColor] = useState(CATEGORY_COLORS[0]);
@@ -160,23 +176,23 @@ export function CategoryDialog({ open, onOpenChange, editCategory, onCategoryCre
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>{isEditing ? 'Edit Category' : 'Create New Category'}</DialogTitle>
+          <DialogTitle>{isEditing ? t('categoryDialog.editTitle') : t('categoryDialog.createTitle')}</DialogTitle>
           <DialogDescription>
-            {isEditing 
-              ? 'Modify category settings and file types.' 
-              : 'Create a new category to organize downloads by file type.'}
+            {isEditing
+              ? t('categoryDialog.editDesc')
+              : t('categoryDialog.createDesc')}
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 py-4">
           {/* Name */}
           <div className="grid gap-2">
-            <Label htmlFor="category-name">Name</Label>
+            <Label htmlFor="category-name">{t('categoryDialog.name')}</Label>
             <Input
               id="category-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g., Music, Videos, Documents..."
+              placeholder={t('categoryDialog.namePlaceholder')}
             />
           </div>
 
@@ -184,16 +200,16 @@ export function CategoryDialog({ open, onOpenChange, editCategory, onCategoryCre
           <div className="grid grid-cols-2 gap-4">
             {/* Color picker */}
             <div className="grid gap-2">
-              <Label>Color</Label>
+              <Label>{t('categoryDialog.color')}</Label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" className="w-full justify-start">
-                    <div 
-                      className="w-4 h-4 rounded mr-2" 
+                    <div
+                      className="w-4 h-4 rounded mr-2"
                       style={{ backgroundColor: color }}
                     />
                     <Palette className="h-4 w-4 mr-2" />
-                    Color
+                    {t('categoryDialog.color')}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-3">
@@ -215,12 +231,12 @@ export function CategoryDialog({ open, onOpenChange, editCategory, onCategoryCre
 
             {/* Icon picker */}
             <div className="grid gap-2">
-              <Label>Icon</Label>
+              <Label>{t('categoryDialog.icon')}</Label>
               <Popover>
                 <PopoverTrigger asChild>
                   <Button variant="outline" className="w-full justify-start">
                     <CurrentIcon className="h-4 w-4 mr-2" style={{ color }} />
-                    Icon
+                    {t('categoryDialog.icon')}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-3">
@@ -234,10 +250,10 @@ export function CategoryDialog({ open, onOpenChange, editCategory, onCategoryCre
                             iconId === option.id ? 'ring-2 ring-primary ring-offset-2 bg-accent' : ''
                           }`}
                           onClick={() => setIconId(option.id)}
-                          title={option.label}
+                          title={ICON_LABELS[option.id]}
                         >
                           <IconComp className="h-4 w-4" style={{ color }} />
-                          <span className="text-[9px] text-muted-foreground">{option.label}</span>
+                          <span className="text-[9px] text-muted-foreground">{ICON_LABELS[option.id]}</span>
                         </button>
                       );
                     })}
@@ -251,28 +267,28 @@ export function CategoryDialog({ open, onOpenChange, editCategory, onCategoryCre
           <div className="grid gap-2">
             <Label htmlFor="extensions" className="flex items-center gap-2">
               <FileType className="h-4 w-4" />
-              File Extensions
+              {t('categoryDialog.fileExtensions')}
             </Label>
             <Input
               id="extensions"
               value={extensions}
               onChange={(e) => setExtensions(e.target.value)}
-              placeholder="e.g., mp3, wav, flac, aac"
+              placeholder={t('categoryDialog.extensionsPlaceholder')}
             />
             <p className="text-xs text-muted-foreground">
-              Comma-separated list of file extensions (without dots)
+              {t('categoryDialog.extensionsHint')}
             </p>
           </div>
 
           {/* Custom Download Path */}
           <div className="grid gap-2">
-            <Label htmlFor="custom-path">Custom Download Path (Optional)</Label>
+            <Label htmlFor="custom-path">{t('categoryDialog.customPath')}</Label>
             <div className="flex gap-2">
               <Input
                 id="custom-path"
                 value={customPath}
                 onChange={(e) => setCustomPath(e.target.value)}
-                placeholder="Leave empty for default path + category name"
+                placeholder={t('categoryDialog.customPathPlaceholder')}
                 className="flex-1"
               />
               <Button
@@ -281,10 +297,11 @@ export function CategoryDialog({ open, onOpenChange, editCategory, onCategoryCre
                 size="icon"
                 onClick={async () => {
                   try {
+                    const folderName = name || t('categoryDialog.categoryFallback');
                     const selected = await openDialog({
                       directory: true,
                       multiple: false,
-                      title: `Select Download Folder for ${name || 'Category'}`,
+                      title: t('categoryDialog.selectFolderTitle', { name: folderName }),
                     });
                     if (selected && typeof selected === 'string') {
                       setCustomPath(selected);
@@ -298,7 +315,7 @@ export function CategoryDialog({ open, onOpenChange, editCategory, onCategoryCre
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Leave empty to use the default download path + category name
+              {t('categoryDialog.customPathHint')}
             </p>
           </div>
         </div>
@@ -307,16 +324,16 @@ export function CategoryDialog({ open, onOpenChange, editCategory, onCategoryCre
           {isEditing && (
             <Button variant="destructive" onClick={handleDelete}>
               <Trash2 className="h-4 w-4 mr-2" />
-              Delete
+              {t('common.delete')}
             </Button>
           )}
           <div className="flex gap-2 ml-auto">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
+              {t('common.cancel')}
             </Button>
             <Button onClick={handleSave} disabled={!name.trim() || isSaving}>
               <Save className="h-4 w-4 mr-2" />
-              {isSaving ? 'Saving...' : isEditing ? 'Save Changes' : 'Create Category'}
+              {isSaving ? t('categoryDialog.saving') : isEditing ? t('categoryDialog.saveChanges') : t('categoryDialog.createButton')}
             </Button>
           </div>
         </DialogFooter>

@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Download, Link } from 'lucide-react';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { useTranslation } from 'react-i18next';
 import { useUIStore } from '@/stores/ui';
 import { parseUrls } from '@/lib/utils';
 
@@ -18,6 +19,7 @@ interface TauriFileDrop {
 }
 
 export function DropZoneOverlay({ onDrop }: DropZoneOverlayProps) {
+  const { t } = useTranslation();
   const [isExternalDrag, setIsExternalDrag] = useState(false);
   const isInternalDrag = useUIStore((s) => s.isDragging);
   const dragCounter = useRef(0);
@@ -212,19 +214,19 @@ export function DropZoneOverlay({ onDrop }: DropZoneOverlayProps) {
               <Download className="h-12 w-12" />
             </div>
             <div>
-              <h3 className="text-2xl font-bold">Drop to Download</h3>
+              <h3 className="text-2xl font-bold">{t('dropZone.title')}</h3>
               <p className="text-muted-foreground mt-1">
-                Drop links or files here to start downloading
+                {t('dropZone.subtitle')}
               </p>
             </div>
             <div className="flex gap-8 mt-4">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Link className="h-4 w-4" />
-                <span>Browser Links</span>
+                <span>{t('dropZone.browserLinks')}</span>
               </div>
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Download className="h-4 w-4" />
-                <span>Direct Files</span>
+                <span>{t('dropZone.directFiles')}</span>
               </div>
             </div>
           </div>

@@ -1,5 +1,40 @@
 # Changelog
 
+## [1.10.0] - 2026-06-28
+
+### ✨ New Features
+
+**Multi-Language Support (Internationalization)**
+- The entire UI can now be shown in different languages — every screen, dialog, menu, toast, and even the native OS menu and system-tray labels are translatable
+- Ships with English and a complete Persian (فارسی) translation
+- Full right-to-left (RTL) layout support, applied automatically for RTL languages
+- Language picker in Settings ▸ Appearance (defaults to English); switches instantly, no restart needed
+- Native app menu and tray labels rebuild on the fly when the language changes
+- Built on i18next — contributors can add a new language by dropping in a single translation file (see `docs/TRANSLATING.md`)
+
+**Typography & Fonts**
+- Bundled, fully-offline fonts (no external CDN): Inter for Latin, Vazirmatn for Persian/Arabic
+- Each language maps to a recommended font automatically; CJK falls back to a system stack
+- Optional font override in Settings ▸ Appearance (defaults to the language's recommended font)
+
+**Linux AppImage Delta Updates**
+- AppImages now embed update information (`.upd_info` section + companion `.zsync` file)
+- AppImageUpdate / AppImageLauncher / AM can perform delta updates, downloading only the changed chunks instead of the whole image
+
+### 🐛 Bug Fixes
+
+**Temp Files Now Live on the Target Filesystem** (#7)
+- Partial/segment files are written to a hidden `.dlman-cache` folder **inside the chosen destination**, instead of the system data directory (`~/.local/share/com.dlman.app/temp`)
+- Large downloads (e.g. to an external drive) no longer fill up the system disk, and the final assembly is a same-filesystem copy rather than a cross-device transfer
+- The scratch folder is cleaned up automatically when a download completes or is removed
+
+### 🔧 Internal
+
+- Language and font preferences persist in the SQLite settings store (single source of truth, same as theme), with a localStorage mirror to prevent a flash of the wrong language/direction on startup
+- Unified all download entry points behind a single `auto_start` flag
+- Added `i18next-parser` tooling (`pnpm i18n:extract`) to keep translation catalogs in sync
+- Release workflow now supports prerelease builds: tags like `vX.Y.Z-beta.N` publish as GitHub prereleases and are kept out of the stable "latest" channel
+
 ## [1.9.2] - 2026-02-10
 
 ### ✨ New Features

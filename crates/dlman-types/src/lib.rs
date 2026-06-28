@@ -305,6 +305,18 @@ pub struct Settings {
     /// Proxy configuration
     #[serde(default)]
     pub proxy: ProxySettings,
+    /// UI display language as a BCP-47 code (e.g. "en", "fa"). Desktop UI only;
+    /// the CLI ignores it. Defaults to English.
+    #[serde(default = "default_language")]
+    pub language: String,
+    /// UI font override key (see the desktop font registry). `None` means the
+    /// font follows the active language's recommended default.
+    #[serde(default)]
+    pub font: Option<String>,
+}
+
+fn default_language() -> String {
+    "en".to_string()
 }
 
 /// Proxy configuration
@@ -347,6 +359,8 @@ impl Default for Settings {
             max_retries: 5,
             retry_delay_seconds: 30,
             proxy: ProxySettings::default(),
+            language: default_language(),
+            font: None,
         }
     }
 }
@@ -550,4 +564,92 @@ pub struct ImportResult {
 pub struct ImportError {
     pub url: String,
     pub error: String,
+}
+
+// ============================================================================
+// Media / Video Download Types
+// ============================================================================
+
+/// Protocol used to deliver the media stream
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MediaProtocol {
+    /// Direct file URL (.mp4, .webm, etc.)
+    Direct,
+    /// HTTP Live Streaming (.m3u8)
+    Hls,
+    /// Dynamic Adaptive Streaming over HTTP (.mpd)
+    Dash,
+}
+
+/// A single variant/quality of a detected media stream
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MediaVariant {
+    /// URL of this variant's manifest or direct file
+    pub url: String,
+    /// Human-readable label (e.g. "1080p", "720p", "audio-only")
+    pub label: String,
+    /// Width in pixels (if video)
+    pub width: Option<u32>,
+    /// Height in pixels (if video)
+    pub height: Option<u32>,
+    /// Bitrate in bits per second
+    pub bandwidth: Option<u64>,
+    /// Codec string (e.g. "avc1.4d401f", "mp4a.40.2")
+    pub codecs: Option<String>,
+    /// Whether this variant is audio-only
+    #[serde(default)]
+    pub audio_only: bool,
+    /// Estimated file size in bytes (if known)
+    pub estimated_size: Option<u64>,
+}
+
+/// A media stream detected on a webpage
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DetectedMedia {
+    /// Unique ID for this detection
+    pub id: String,
+    /// Page URL where the media was found
+    pub page_url: String,
+    /// Page title
+    pub page_title: Option<String>,
+    /// The master/top-level URL of the stream
+    pub master_url: String,
+    /// Protocol (direct, hls, dash)
+    pub protocol: MediaProtocol,
+    /// Available variants/qualities (empty for direct files)
+    pub variants: Vec<MediaVariant>,
+    /// Detected MIME type
+    pub mime_type: Option<String>,
+    /// Suggested filename
+    pub filename: Option<String>,
+    /// Duration in seconds (if known)
+    pub duration: Option<f64>,
+    /// Thumbnail URL (if available)
+    pub thumbnail: Option<String>,
+    /// Browser cookies for authenticated streams
+    pub cookies: Option<String>,
+    /// HTTP referrer
+    pub referrer: Option<String>,
+}
+
+/// Request from extension to download a media stream
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MediaDownloadRequest {
+    /// The detected media info
+    pub media: DetectedMedia,
+    /// Index of chosen variant (None = best quality)
+    pub variant_index: Option<usize>,
+    /// Desired output filename (without extension)
+    pub output_filename: Option<String>,
+    /// Target queue ID
+    pub queue_id: Option<Uuid>,
+}
+
+/// Response after initiating a media download
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MediaDownloadResponse {
+    pub success: bool,
+    pub download_id: Option<Uuid>,
+    pub error: Option<String>,
 }

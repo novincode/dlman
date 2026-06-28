@@ -29,6 +29,8 @@ import {
   KeyRound,
   Eye,
   EyeOff,
+  Languages,
+  Type,
 } from 'lucide-react';
 
 import {
@@ -60,23 +62,30 @@ import { useCredentialsStore } from '@/stores/credentials';
 import { getIconComponent } from '@/lib/categoryIcons';
 import { CategoryDialog } from './CategoryDialog';
 import type { Settings as SettingsType, Theme, ProxySettings, SiteCredential } from '@/types';
+import { useTranslation } from 'react-i18next';
+import { LOCALES } from '@/i18n/config';
+import { FONTS } from '@/i18n/fonts';
+
+// Sentinel Select value meaning "no explicit font override — follow the language".
+const FONT_AUTO = 'auto';
 
 type SettingsTab = 'downloads' | 'categories' | 'notifications' | 'appearance' | 'extensions' | 'proxy' | 'saved-logins' | 'advanced';
 
-const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
-  { id: 'downloads', label: 'Downloads', icon: <Download className="h-4 w-4" /> },
-  { id: 'categories', label: 'Categories', icon: <Tag className="h-4 w-4" /> },
-  { id: 'notifications', label: 'Notifications', icon: <Bell className="h-4 w-4" /> },
-  { id: 'appearance', label: 'Appearance', icon: <Palette className="h-4 w-4" /> },
-  { id: 'extensions', label: 'Extensions', icon: <Layers className="h-4 w-4" /> },
-  { id: 'proxy', label: 'Proxy', icon: <Network className="h-4 w-4" /> },
-  { id: 'saved-logins', label: 'Saved Logins', icon: <KeyRound className="h-4 w-4" /> },
-  { id: 'advanced', label: 'Advanced', icon: <Gauge className="h-4 w-4" /> },
+const tabs: { id: SettingsTab; icon: React.ReactNode }[] = [
+  { id: 'downloads', icon: <Download className="h-4 w-4" /> },
+  { id: 'categories', icon: <Tag className="h-4 w-4" /> },
+  { id: 'notifications', icon: <Bell className="h-4 w-4" /> },
+  { id: 'appearance', icon: <Palette className="h-4 w-4" /> },
+  { id: 'extensions', icon: <Layers className="h-4 w-4" /> },
+  { id: 'proxy', icon: <Network className="h-4 w-4" /> },
+  { id: 'saved-logins', icon: <KeyRound className="h-4 w-4" /> },
+  { id: 'advanced', icon: <Gauge className="h-4 w-4" /> },
 ];
 
 export function SettingsDialog() {
   const { showSettingsDialog, setShowSettingsDialog, consoleLogLimits, setConsoleLogLimits } = useUIStore();
   const { settings, updateSettings, setTheme } = useSettingsStore();
+  const { t } = useTranslation();
   const { categories, updateCategory, removeCategory } = useCategoryStore();
   const { credentials, loadFromBackend: loadCredentials, addCredential, updateCredential, deleteCredential } = useCredentialsStore();
 
@@ -203,7 +212,7 @@ export function SettingsDialog() {
       const selected = await open({
         directory: true,
         multiple: false,
-        title: 'Select Download Path for Category',
+        title: t('settings.selectCategoryPathTitle'),
         defaultPath: currentPath || undefined,
       });
       if (selected && typeof selected === 'string') {
@@ -212,7 +221,7 @@ export function SettingsDialog() {
     } catch (err) {
       console.error('Failed to open directory picker:', err);
     }
-  }, [handleCategoryPathChange]);
+  }, [handleCategoryPathChange, t]);
 
   const handleSave = useCallback(async () => {
     try {
@@ -263,7 +272,7 @@ export function SettingsDialog() {
             <div className="space-y-4">
               <h3 className="text-sm font-medium flex items-center gap-2">
                 <Folder className="h-4 w-4" />
-                Default Location
+                {t('settings.defaultLocation')}
               </h3>
               <div className="pl-6 space-y-2">
                 <div className="flex gap-2">
@@ -272,7 +281,7 @@ export function SettingsDialog() {
                     onChange={(e) =>
                       handleChange('default_download_path', e.target.value)
                     }
-                    placeholder="/path/to/downloads"
+                    placeholder={t('settings.defaultPathPlaceholder')}
                     className="flex-1"
                   />
                   <Button
@@ -283,7 +292,7 @@ export function SettingsDialog() {
                       const selected = await open({
                         directory: true,
                         multiple: false,
-                        title: 'Select Default Download Location',
+                        title: t('settings.selectDefaultLocationTitle'),
                       });
                       if (selected && typeof selected === 'string') {
                         handleChange('default_download_path', selected);
@@ -295,7 +304,7 @@ export function SettingsDialog() {
                 </div>
                 <div className="flex items-center justify-between">
                   <Label htmlFor="rememberPath" className="cursor-pointer">
-                    Remember last used path
+                    {t('settings.rememberLastPath')}
                   </Label>
                   <Switch
                     id="rememberPath"
@@ -311,12 +320,12 @@ export function SettingsDialog() {
             <div className="space-y-4">
               <h3 className="text-sm font-medium flex items-center gap-2">
                 <Gauge className="h-4 w-4" />
-                Performance
+                {t('settings.performance')}
               </h3>
               <div className="pl-6 space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="maxConcurrent">
-                    Maximum concurrent downloads
+                    {t('settings.maxConcurrent')}
                   </Label>
                   <Input
                     id="maxConcurrent"
@@ -334,7 +343,7 @@ export function SettingsDialog() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="segments">Default segments per download</Label>
+                  <Label htmlFor="segments">{t('settings.defaultSegments')}</Label>
                   <Input
                     id="segments"
                     type="number"
@@ -352,7 +361,7 @@ export function SettingsDialog() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="speedLimit">
-                    Global speed limit (KB/s, 0 for unlimited)
+                    {t('settings.speedLimitLabel')}
                   </Label>
                   <div className="flex items-center gap-2">
                     <Input
@@ -366,10 +375,14 @@ export function SettingsDialog() {
                       }}
                       className="w-32"
                     />
-                    <span className="text-sm text-muted-foreground">KB/s</span>
+                    <span className="text-sm text-muted-foreground">{t('settings.speedLimitUnit')}</span>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Set to 0 for unlimited speed. Current: {localSettings.global_speed_limit ? `${Math.round(localSettings.global_speed_limit / 1024)} KB/s` : 'Unlimited'}
+                    {t('settings.speedLimitCurrent', {
+                      current: localSettings.global_speed_limit
+                        ? `${Math.round(localSettings.global_speed_limit / 1024)} ${t('settings.speedLimitUnit')}`
+                        : t('settings.unlimited'),
+                    })}
                   </p>
                 </div>
               </div>
@@ -378,12 +391,12 @@ export function SettingsDialog() {
             <div className="space-y-4">
               <h3 className="text-sm font-medium flex items-center gap-2">
                 <RotateCcw className="h-4 w-4" />
-                Retry Settings
+                {t('settings.retrySettings')}
               </h3>
               <div className="pl-6 space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="maxRetries">
-                    Maximum retry attempts
+                    {t('settings.maxRetries')}
                   </Label>
                   <Input
                     id="maxRetries"
@@ -400,12 +413,12 @@ export function SettingsDialog() {
                     className="w-24"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Number of times to automatically retry a failed download. Set to 0 to disable automatic retries.
+                    {t('settings.maxRetriesHint')}
                   </p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="retryDelay">
-                    Retry delay (seconds)
+                    {t('settings.retryDelay')}
                   </Label>
                   <Input
                     id="retryDelay"
@@ -422,7 +435,7 @@ export function SettingsDialog() {
                     className="w-24"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Time to wait between retry attempts. Default: 30 seconds.
+                    {t('settings.retryDelayHint')}
                   </p>
                 </div>
               </div>
@@ -436,7 +449,7 @@ export function SettingsDialog() {
             <div className="space-y-4">
               <h3 className="text-sm font-medium flex items-center gap-2">
                 <Palette className="h-4 w-4" />
-                Theme
+                {t('settings.theme')}
               </h3>
               <div className="pl-6">
                 <div className="grid grid-cols-3 gap-3">
@@ -456,9 +469,78 @@ export function SettingsDialog() {
                       {theme === 'light' && <Sun className="h-6 w-6" />}
                       {theme === 'dark' && <Moon className="h-6 w-6" />}
                       {theme === 'system' && <Monitor className="h-6 w-6" />}
-                      <span className="text-sm capitalize">{theme}</span>
+                      <span className="text-sm">
+                        {theme === 'light'
+                          ? t('settings.themeLight')
+                          : theme === 'dark'
+                            ? t('settings.themeDark')
+                            : t('settings.themeSystem')}
+                      </span>
                     </button>
                   ))}
+                </div>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Language & Font */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-medium flex items-center gap-2">
+                <Languages className="h-4 w-4" />
+                {t('settings.language')}
+              </h3>
+              <div className="pl-6 space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="language">{t('settings.language')}</Label>
+                  <Select
+                    value={localSettings.language || 'en'}
+                    onValueChange={(code) => {
+                      handleChange('language', code);
+                      updateSettings({ language: code }); // apply immediately
+                    }}
+                  >
+                    <SelectTrigger id="language">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {LOCALES.map((l) => (
+                        <SelectItem key={l.code} value={l.code}>
+                          {l.nativeName}
+                          {l.name !== l.nativeName ? ` (${l.name})` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">{t('settings.languageHint')}</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="font" className="flex items-center gap-2">
+                    <Type className="h-3.5 w-3.5" />
+                    {t('settings.font')}
+                  </Label>
+                  <Select
+                    value={localSettings.font ?? FONT_AUTO}
+                    onValueChange={(value) => {
+                      const font = value === FONT_AUTO ? null : value;
+                      handleChange('font', font);
+                      updateSettings({ font }); // apply immediately
+                    }}
+                  >
+                    <SelectTrigger id="font">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={FONT_AUTO}>{t('settings.fontAuto')}</SelectItem>
+                      {FONTS.map((f) => (
+                        <SelectItem key={f.key} value={f.key} style={{ fontFamily: f.stack }}>
+                          {f.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">{t('settings.fontHint')}</p>
                 </div>
               </div>
             </div>
@@ -468,16 +550,16 @@ export function SettingsDialog() {
             <div className="space-y-4">
               <h3 className="text-sm font-medium flex items-center gap-2">
                 <Monitor className="h-4 w-4" />
-                System
+                {t('settings.system')}
               </h3>
               <div className="pl-6 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
                     <Label htmlFor="minimizeToTray" className="cursor-pointer">
-                      Minimize to system tray
+                      {t('settings.minimizeToTray.label')}
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      Keep DLMan running in the background when closed
+                      {t('settings.minimizeToTray.hint')}
                     </p>
                   </div>
                   <Switch
@@ -491,10 +573,10 @@ export function SettingsDialog() {
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
                     <Label htmlFor="startOnBoot" className="cursor-pointer">
-                      Start on system boot
+                      {t('settings.startOnBoot.label')}
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      Automatically launch DLMan when you log in
+                      {t('settings.startOnBoot.hint')}
                     </p>
                   </div>
                   <Switch
@@ -517,7 +599,7 @@ export function SettingsDialog() {
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-medium flex items-center gap-2">
                   <Tag className="h-4 w-4" />
-                  File Categories
+                  {t('settings.categoriesTitle')}
                 </h3>
                 <Button
                   type="button"
@@ -529,11 +611,11 @@ export function SettingsDialog() {
                   }}
                 >
                   <Plus className="h-4 w-4 mr-1" />
-                  New Category
+                  {t('settings.newCategory')}
                 </Button>
               </div>
               <p className="text-sm text-muted-foreground">
-                Manage categories for organizing your downloads. Each category can have custom file extensions and download paths.
+                {t('settings.categoriesDesc')}
               </p>
               <div className="space-y-3">
                 {Array.from(categories.values()).map((category) => {
@@ -551,9 +633,9 @@ export function SettingsDialog() {
                         <div className="flex-1 min-w-0">
                           <span className="font-medium">{category.name}</span>
                           <p className="text-xs text-muted-foreground truncate">
-                            {category.extensions.length > 0 
+                            {category.extensions.length > 0
                               ? category.extensions.slice(0, 8).join(', ') + (category.extensions.length > 8 ? '...' : '')
-                              : 'No extensions defined'}
+                              : t('settings.noExtensions')}
                           </p>
                         </div>
                         <div className="flex items-center gap-1">
@@ -565,7 +647,7 @@ export function SettingsDialog() {
                               setEditingCategory(category);
                               setShowCategoryDialog(true);
                             }}
-                            title="Edit category"
+                            title={t('settings.editCategory')}
                           >
                             <Pencil className="h-4 w-4" />
                           </Button>
@@ -574,11 +656,11 @@ export function SettingsDialog() {
                             variant="ghost"
                             size="icon"
                             onClick={() => {
-                              if (confirm(`Delete category "${category.name}"?`)) {
+                              if (confirm(t('settings.deleteCategoryConfirm', { name: category.name }))) {
                                 removeCategory(category.id);
                               }
                             }}
-                            title="Delete category"
+                            title={t('settings.deleteCategory')}
                             className="text-destructive hover:text-destructive"
                           >
                             <Trash2 className="h-4 w-4" />
@@ -587,12 +669,12 @@ export function SettingsDialog() {
                       </div>
                       <Separator />
                       <div className="space-y-1">
-                        <Label className="text-xs text-muted-foreground">Download path</Label>
+                        <Label className="text-xs text-muted-foreground">{t('settings.categoryDownloadPath')}</Label>
                         <div className="flex gap-2">
                           <Input
                             value={currentPath}
                             onChange={(e) => handleCategoryPathChange(category.id, e.target.value)}
-                            placeholder="Uses default download location"
+                            placeholder={t('settings.categoryPathPlaceholder')}
                             className="flex-1 text-sm h-8"
                           />
                           <Button
@@ -611,7 +693,7 @@ export function SettingsDialog() {
                               size="icon"
                               className="h-8 w-8"
                               onClick={() => handleCategoryPathChange(category.id, '')}
-                              title="Reset to default"
+                              title={t('settings.resetToDefault')}
                             >
                               <RotateCcw className="h-3.5 w-3.5" />
                             </Button>
@@ -624,8 +706,8 @@ export function SettingsDialog() {
                 {categories.size === 0 && (
                   <div className="text-center py-8 text-muted-foreground">
                     <Tag className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                    <p>No categories defined</p>
-                    <p className="text-xs">Click "New Category" to create one</p>
+                    <p>{t('settings.noCategoriesTitle')}</p>
+                    <p className="text-xs">{t('settings.noCategoriesHint')}</p>
                   </div>
                 )}
               </div>
@@ -639,16 +721,16 @@ export function SettingsDialog() {
             <div className="space-y-4">
               <h3 className="text-sm font-medium flex items-center gap-2">
                 <Bell className="h-4 w-4" />
-                Notification Settings
+                {t('settings.notificationSettings')}
               </h3>
               <div className="pl-6 space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
                     <Label htmlFor="notifyOnComplete" className="cursor-pointer">
-                      Download complete
+                      {t('settings.notifyComplete.label')}
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      Show notification when a download finishes
+                      {t('settings.notifyComplete.hint')}
                     </p>
                   </div>
                   <Switch
@@ -662,10 +744,10 @@ export function SettingsDialog() {
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
                     <Label htmlFor="notifyOnError" className="cursor-pointer">
-                      Download failed
+                      {t('settings.notifyFailed.label')}
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      Show notification when a download fails
+                      {t('settings.notifyFailed.hint')}
                     </p>
                   </div>
                   <Switch
@@ -679,10 +761,10 @@ export function SettingsDialog() {
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
                     <Label htmlFor="notifySound" className="cursor-pointer">
-                      Play sound
+                      {t('settings.notifySound.label')}
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      Play a sound for notifications
+                      {t('settings.notifySound.hint')}
                     </p>
                   </div>
                   <Switch
@@ -701,19 +783,19 @@ export function SettingsDialog() {
             <div className="space-y-4">
               <h3 className="text-sm font-medium flex items-center gap-2">
                 <MessageSquare className="h-4 w-4" />
-                In-App Toasts
+                {t('settings.inAppToasts')}
               </h3>
               <p className="text-xs text-muted-foreground">
-                Control which toast messages appear in the app
+                {t('settings.inAppToastsDesc')}
               </p>
               <div className="pl-6 space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
                     <Label htmlFor="toastShowSuccess" className="cursor-pointer">
-                      Show success messages
+                      {t('settings.toastSuccess.label')}
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      Show toasts for successful actions
+                      {t('settings.toastSuccess.hint')}
                     </p>
                   </div>
                   <Switch
@@ -727,10 +809,10 @@ export function SettingsDialog() {
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
                     <Label htmlFor="toastShowError" className="cursor-pointer">
-                      Show error messages
+                      {t('settings.toastError.label')}
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      Show toasts for errors and failures
+                      {t('settings.toastError.hint')}
                     </p>
                   </div>
                   <Switch
@@ -744,10 +826,10 @@ export function SettingsDialog() {
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
                     <Label htmlFor="toastShowInfo" className="cursor-pointer">
-                      Show info messages
+                      {t('settings.toastInfo.label')}
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      Show informational toasts
+                      {t('settings.toastInfo.hint')}
                     </p>
                   </div>
                   <Switch
@@ -766,16 +848,16 @@ export function SettingsDialog() {
             <div className="space-y-4">
               <h3 className="text-sm font-medium flex items-center gap-2">
                 <RefreshCw className="h-4 w-4" />
-                Updates
+                {t('settings.updates')}
               </h3>
               <div className="pl-6 space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
                     <Label htmlFor="autoCheckUpdates" className="cursor-pointer">
-                      Check for updates automatically
+                      {t('settings.autoCheckUpdates.label')}
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      Check for new versions on startup
+                      {t('settings.autoCheckUpdates.hint')}
                     </p>
                   </div>
                   <Switch
@@ -797,12 +879,12 @@ export function SettingsDialog() {
             <div className="space-y-4">
               <h3 className="text-sm font-medium flex items-center gap-2">
                 <Layers className="h-4 w-4" />
-                Browser Extensions
+                {t('settings.browserExtensions')}
               </h3>
               <p className="text-sm text-muted-foreground">
-                Install the DLMan browser extension to capture downloads directly from your browser.
+                {t('settings.browserExtensionsDesc')}
               </p>
-              
+
               <div className="grid gap-4">
                 {/* Chrome Extension */}
                 <div className="flex items-center justify-between p-4 border rounded-lg">
@@ -811,8 +893,8 @@ export function SettingsDialog() {
                       <Chrome className="h-5 w-5 text-white" />
                     </div>
                     <div>
-                      <p className="font-medium">Chrome / Edge / Brave</p>
-                      <p className="text-xs text-muted-foreground">Chromium-based browsers</p>
+                      <p className="font-medium">{t('settings.chromeTitle')}</p>
+                      <p className="text-xs text-muted-foreground">{t('settings.chromeDesc')}</p>
                     </div>
                   </div>
                   <Button
@@ -823,7 +905,7 @@ export function SettingsDialog() {
                     }}
                   >
                     <ExternalLink className="h-4 w-4 mr-2" />
-                    Download
+                    {t('settings.download')}
                   </Button>
                 </div>
 
@@ -836,8 +918,8 @@ export function SettingsDialog() {
                       </svg>
                     </div>
                     <div>
-                      <p className="font-medium">Firefox</p>
-                      <p className="text-xs text-muted-foreground">Mozilla Firefox</p>
+                      <p className="font-medium">{t('settings.firefoxTitle')}</p>
+                      <p className="text-xs text-muted-foreground">{t('settings.firefoxDesc')}</p>
                     </div>
                   </div>
                   <Button
@@ -848,7 +930,7 @@ export function SettingsDialog() {
                     }}
                   >
                     <ExternalLink className="h-4 w-4 mr-2" />
-                    Download
+                    {t('settings.download')}
                   </Button>
                 </div>
               </div>
@@ -859,11 +941,11 @@ export function SettingsDialog() {
             <div className="space-y-4">
               <h3 className="text-sm font-medium flex items-center gap-2">
                 <Network className="h-4 w-4" />
-                Integration Settings
+                {t('settings.integrationSettings')}
               </h3>
               <div className="pl-6 space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="browserPort">Integration port</Label>
+                  <Label htmlFor="browserPort">{t('settings.integrationPort')}</Label>
                   <div className="flex items-center gap-2">
                     <Input
                       id="browserPort"
@@ -879,10 +961,10 @@ export function SettingsDialog() {
                       }
                       className="w-32"
                     />
-                    <span className="text-sm text-muted-foreground">(default: 7899)</span>
+                    <span className="text-sm text-muted-foreground">{t('settings.integrationPortDefault')}</span>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Browser extensions connect to this port. Change only if there's a conflict.
+                    {t('settings.integrationPortHint')}
                   </p>
                 </div>
               </div>
@@ -896,20 +978,20 @@ export function SettingsDialog() {
             <div className="space-y-4">
               <h3 className="text-sm font-medium flex items-center gap-2">
                 <Network className="h-4 w-4" />
-                Proxy Configuration
+                {t('settings.proxyConfiguration')}
               </h3>
               <p className="text-sm text-muted-foreground">
-                Configure how DLMan connects to the internet. Choose between system proxy, manual configuration, or direct connection.
+                {t('settings.proxyConfigDesc')}
               </p>
 
               {/* Proxy Mode Selection */}
               <div className="space-y-3">
-                <Label>Proxy Mode</Label>
+                <Label>{t('settings.proxyMode')}</Label>
                 <div className="grid gap-2">
                   {[
-                    { value: 'system', label: 'Use System Proxy', description: 'Use your operating system\'s proxy settings' },
-                    { value: 'none', label: 'No Proxy', description: 'Connect directly without any proxy' },
-                    { value: 'manual', label: 'Manual Configuration', description: 'Specify proxy servers manually' },
+                    { value: 'system', label: t('settings.proxySystem.label'), description: t('settings.proxySystem.desc') },
+                    { value: 'none', label: t('settings.proxyNone.label'), description: t('settings.proxyNone.desc') },
+                    { value: 'manual', label: t('settings.proxyManual.label'), description: t('settings.proxyManual.desc') },
                   ].map((option) => (
                     <div
                       key={option.value}
@@ -948,11 +1030,11 @@ export function SettingsDialog() {
               {localSettings.proxy?.mode === 'manual' && (
                 <div className="space-y-4 pl-4 border-l-2 border-primary/30">
                   <div className="space-y-2">
-                    <Label htmlFor="httpProxy">HTTP Proxy</Label>
+                    <Label htmlFor="httpProxy">{t('settings.httpProxy')}</Label>
                     <Input
                       id="httpProxy"
                       type="text"
-                      placeholder="http://proxy.example.com:8080"
+                      placeholder={t('settings.proxyExamplePlaceholder')}
                       value={localSettings.proxy?.http_proxy || ''}
                       onChange={(e) => {
                         const newProxy = {
@@ -963,16 +1045,16 @@ export function SettingsDialog() {
                       }}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Proxy server for HTTP connections
+                      {t('settings.httpProxyHint')}
                     </p>
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="httpsProxy">HTTPS Proxy</Label>
+                    <Label htmlFor="httpsProxy">{t('settings.httpsProxy')}</Label>
                     <Input
                       id="httpsProxy"
                       type="text"
-                      placeholder="http://proxy.example.com:8080"
+                      placeholder={t('settings.proxyExamplePlaceholder')}
                       value={localSettings.proxy?.https_proxy || ''}
                       onChange={(e) => {
                         const newProxy = {
@@ -983,18 +1065,18 @@ export function SettingsDialog() {
                       }}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Proxy server for HTTPS connections (usually the same as HTTP)
+                      {t('settings.httpsProxyHint')}
                     </p>
                   </div>
 
                   <Separator />
 
                   <div className="space-y-2">
-                    <Label htmlFor="noProxy">Bypass Proxy For</Label>
+                    <Label htmlFor="noProxy">{t('settings.bypassProxy')}</Label>
                     <Input
                       id="noProxy"
                       type="text"
-                      placeholder="localhost, 127.0.0.1, .local"
+                      placeholder={t('settings.bypassProxyPlaceholder')}
                       value={localSettings.proxy?.no_proxy || ''}
                       onChange={(e) => {
                         const newProxy = {
@@ -1005,21 +1087,21 @@ export function SettingsDialog() {
                       }}
                     />
                     <p className="text-xs text-muted-foreground">
-                      Comma-separated list of hosts to bypass the proxy
+                      {t('settings.bypassProxyHint')}
                     </p>
                   </div>
 
                   <Separator />
 
                   <div className="space-y-4">
-                    <h4 className="text-sm font-medium">Proxy Authentication (Optional)</h4>
+                    <h4 className="text-sm font-medium">{t('settings.proxyAuth')}</h4>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="proxyUsername">Username</Label>
+                        <Label htmlFor="proxyUsername">{t('settings.username')}</Label>
                         <Input
                           id="proxyUsername"
                           type="text"
-                          placeholder="Username"
+                          placeholder={t('settings.usernamePlaceholder')}
                           value={localSettings.proxy?.username || ''}
                           onChange={(e) => {
                             const newProxy = {
@@ -1031,11 +1113,11 @@ export function SettingsDialog() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="proxyPassword">Password</Label>
+                        <Label htmlFor="proxyPassword">{t('settings.password')}</Label>
                         <Input
                           id="proxyPassword"
                           type="password"
-                          placeholder="Password"
+                          placeholder={t('settings.passwordPlaceholder')}
                           value={localSettings.proxy?.password || ''}
                           onChange={(e) => {
                             const newProxy = {
@@ -1060,16 +1142,16 @@ export function SettingsDialog() {
             <div className="space-y-4">
               <h3 className="text-sm font-medium flex items-center gap-2">
                 <Info className="h-4 w-4" />
-                Developer Options
+                {t('settings.developerOptions')}
               </h3>
               <div className="pl-6 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="space-y-0.5">
                     <Label htmlFor="devMode" className="cursor-pointer">
-                      Enable developer mode
+                      {t('settings.devMode.label')}
                     </Label>
                     <p className="text-xs text-muted-foreground">
-                      Shows the dev console and enables additional debugging features.
+                      {t('settings.devMode.hint')}
                     </p>
                   </div>
                   <Switch
@@ -1084,10 +1166,10 @@ export function SettingsDialog() {
                 {/* Console Log Limits - only show when dev mode is enabled */}
                 {localSettings.dev_mode && (
                   <div className="pt-4 mt-4 border-t space-y-3">
-                    <Label className="text-xs text-muted-foreground">Console Log Limits (per type)</Label>
+                    <Label className="text-xs text-muted-foreground">{t('settings.consoleLogLimits')}</Label>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="flex items-center gap-2">
-                        <Label htmlFor="logLimitInfo" className="text-xs w-12">Info</Label>
+                        <Label htmlFor="logLimitInfo" className="text-xs w-12">{t('settings.logInfo')}</Label>
                         <Input
                           id="logLimitInfo"
                           type="number"
@@ -1099,7 +1181,7 @@ export function SettingsDialog() {
                         />
                       </div>
                       <div className="flex items-center gap-2">
-                        <Label htmlFor="logLimitWarn" className="text-xs w-12">Warn</Label>
+                        <Label htmlFor="logLimitWarn" className="text-xs w-12">{t('settings.logWarn')}</Label>
                         <Input
                           id="logLimitWarn"
                           type="number"
@@ -1111,7 +1193,7 @@ export function SettingsDialog() {
                         />
                       </div>
                       <div className="flex items-center gap-2">
-                        <Label htmlFor="logLimitError" className="text-xs w-12">Error</Label>
+                        <Label htmlFor="logLimitError" className="text-xs w-12">{t('settings.logError')}</Label>
                         <Input
                           id="logLimitError"
                           type="number"
@@ -1123,7 +1205,7 @@ export function SettingsDialog() {
                         />
                       </div>
                       <div className="flex items-center gap-2">
-                        <Label htmlFor="logLimitDebug" className="text-xs w-12">Debug</Label>
+                        <Label htmlFor="logLimitDebug" className="text-xs w-12">{t('settings.logDebug')}</Label>
                         <Input
                           id="logLimitDebug"
                           type="number"
@@ -1136,7 +1218,7 @@ export function SettingsDialog() {
                       </div>
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Limits how many logs of each type are kept in memory.
+                      {t('settings.consoleLogLimitsHint')}
                     </p>
                   </div>
                 )}
@@ -1152,7 +1234,7 @@ export function SettingsDialog() {
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-medium flex items-center gap-2">
                   <KeyRound className="h-4 w-4" />
-                  Saved Logins
+                  {t('settings.savedLoginsTitle')}
                 </h3>
                 <Button
                   variant="outline"
@@ -1163,32 +1245,32 @@ export function SettingsDialog() {
                   }}
                 >
                   <Plus className="h-4 w-4 mr-1" />
-                  Add Login
+                  {t('settings.addLogin')}
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
-                Save credentials for subscription-based websites. Matching credentials are automatically applied when downloading from these domains.
+                {t('settings.savedLoginsDesc')}
               </p>
 
               {/* Credential Form (Add/Edit) */}
               {showCredentialForm && (
                 <div className="border rounded-lg p-4 space-y-3 bg-muted/30">
                   <h4 className="text-sm font-medium">
-                    {editingCredential ? 'Edit Login' : 'Add New Login'}
+                    {editingCredential ? t('settings.editLogin') : t('settings.addNewLogin')}
                   </h4>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
-                      <Label htmlFor="credDomain" className="text-xs">Domain</Label>
+                      <Label htmlFor="credDomain" className="text-xs">{t('settings.domain')}</Label>
                       <Input
                         id="credDomain"
-                        placeholder="example.com or *.example.com"
+                        placeholder={t('settings.domainPlaceholder')}
                         value={credentialForm.domain}
                         onChange={(e) => setCredentialForm({ ...credentialForm, domain: e.target.value })}
                         className="h-8 text-sm"
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <Label htmlFor="credProtocol" className="text-xs">Protocol</Label>
+                      <Label htmlFor="credProtocol" className="text-xs">{t('settings.protocol')}</Label>
                       <Select
                         value={credentialForm.protocol}
                         onValueChange={(value) => setCredentialForm({ ...credentialForm, protocol: value })}
@@ -1206,22 +1288,22 @@ export function SettingsDialog() {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
-                      <Label htmlFor="credUsername" className="text-xs">Username</Label>
+                      <Label htmlFor="credUsername" className="text-xs">{t('settings.username')}</Label>
                       <Input
                         id="credUsername"
-                        placeholder="Username"
+                        placeholder={t('settings.usernamePlaceholder')}
                         value={credentialForm.username}
                         onChange={(e) => setCredentialForm({ ...credentialForm, username: e.target.value })}
                         className="h-8 text-sm"
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <Label htmlFor="credPassword" className="text-xs">Password</Label>
+                      <Label htmlFor="credPassword" className="text-xs">{t('settings.password')}</Label>
                       <div className="relative">
                         <Input
                           id="credPassword"
                           type={showPasswords.has('form') ? 'text' : 'password'}
-                          placeholder="Password"
+                          placeholder={t('settings.passwordPlaceholder')}
                           value={credentialForm.password}
                           onChange={(e) => setCredentialForm({ ...credentialForm, password: e.target.value })}
                           className="h-8 text-sm pr-8"
@@ -1237,10 +1319,10 @@ export function SettingsDialog() {
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="credNotes" className="text-xs">Notes (optional)</Label>
+                    <Label htmlFor="credNotes" className="text-xs">{t('settings.notesOptional')}</Label>
                     <Input
                       id="credNotes"
-                      placeholder="e.g., Premium subscription account"
+                      placeholder={t('settings.notesPlaceholder')}
                       value={credentialForm.notes}
                       onChange={(e) => setCredentialForm({ ...credentialForm, notes: e.target.value })}
                       className="h-8 text-sm"
@@ -1253,18 +1335,18 @@ export function SettingsDialog() {
                         checked={credentialForm.enabled}
                         onCheckedChange={(checked: boolean) => setCredentialForm({ ...credentialForm, enabled: checked })}
                       />
-                      <Label htmlFor="credEnabled" className="text-xs cursor-pointer">Enabled</Label>
+                      <Label htmlFor="credEnabled" className="text-xs cursor-pointer">{t('settings.enabled')}</Label>
                     </div>
                     <div className="flex gap-2">
                       <Button variant="outline" size="sm" onClick={resetCredentialForm}>
-                        Cancel
+                        {t('common.cancel')}
                       </Button>
                       <Button
                         size="sm"
                         onClick={handleSaveCredential}
                         disabled={!credentialForm.domain || !credentialForm.username || !credentialForm.password}
                       >
-                        {editingCredential ? 'Update' : 'Save'}
+                        {editingCredential ? t('common.update') : t('common.save')}
                       </Button>
                     </div>
                   </div>
@@ -1276,8 +1358,8 @@ export function SettingsDialog() {
                 {credentials.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground">
                     <KeyRound className="h-8 w-8 mx-auto mb-2 opacity-40" />
-                    <p className="text-sm">No saved logins yet</p>
-                    <p className="text-xs mt-1">Add credentials for subscription-based download sites</p>
+                    <p className="text-sm">{t('settings.noLoginsTitle')}</p>
+                    <p className="text-xs mt-1">{t('settings.noLoginsHint')}</p>
                   </div>
                 ) : (
                   credentials.map((cred) => (
@@ -1295,7 +1377,7 @@ export function SettingsDialog() {
                           </span>
                           {!cred.enabled && (
                             <span className="text-[10px] text-muted-foreground px-1.5 py-0.5 rounded bg-muted">
-                              Disabled
+                              {t('settings.disabled')}
                             </span>
                           )}
                         </div>
@@ -1320,7 +1402,7 @@ export function SettingsDialog() {
                         )}
                         {cred.last_used_at && (
                           <p className="text-[10px] text-muted-foreground mt-0.5">
-                            Last used: {new Date(cred.last_used_at).toLocaleDateString()}
+                            {t('settings.lastUsed', { date: new Date(cred.last_used_at).toLocaleDateString() })}
                           </p>
                         )}
                       </div>
@@ -1355,16 +1437,27 @@ export function SettingsDialog() {
     }
   };
 
+  const tabLabels: Record<SettingsTab, string> = {
+    downloads: t('settings.tabs.downloads'),
+    categories: t('settings.tabs.categories'),
+    notifications: t('settings.tabs.notifications'),
+    appearance: t('settings.tabs.appearance'),
+    extensions: t('settings.tabs.extensions'),
+    proxy: t('settings.tabs.proxy'),
+    'saved-logins': t('settings.tabs.savedLogins'),
+    advanced: t('settings.tabs.advanced'),
+  };
+
   return (
     <Dialog open={showSettingsDialog} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-[800px] h-[600px] flex flex-col p-0 gap-0">
         <DialogHeader className="px-6 py-4 border-b border-border flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Settings className="h-5 w-5" />
-            Settings
+            {t('settings.title')}
           </DialogTitle>
           <DialogDescription>
-            Configure DLMan to work the way you want.
+            {t('settings.subtitle')}
           </DialogDescription>
         </DialogHeader>
 
@@ -1383,7 +1476,7 @@ export function SettingsDialog() {
                   }`}
                 >
                   {tab.icon}
-                  {tab.label}
+                  {tabLabels[tab.id]}
                 </button>
               ))}
             </nav>
@@ -1397,16 +1490,16 @@ export function SettingsDialog() {
 
         <DialogFooter className="px-6 py-4 border-t border-border flex-shrink-0">
           <Button variant="outline" onClick={handleClose}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button onClick={handleSave} disabled={!hasChanges || isSaving}>
             {isSaving ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Saving...
+                {t('settings.saving')}
               </>
             ) : (
-              'Save Changes'
+              t('settings.saveChanges')
             )}
           </Button>
         </DialogFooter>

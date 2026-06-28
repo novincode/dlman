@@ -104,6 +104,11 @@ export interface Settings {
   toast_show_info: boolean;
   // Update settings
   auto_check_updates: boolean;
+  // Localization
+  /** UI language as a BCP-47 code (e.g. "en", "fa"). */
+  language: string;
+  /** Font override key (see src/i18n/fonts.ts). null/undefined = follow language. */
+  font?: string | null;
   // Proxy settings
   proxy?: ProxySettings;
 }

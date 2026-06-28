@@ -10,6 +10,7 @@ import {
   rectIntersection,
 } from "@dnd-kit/core";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useUIStore } from "@/stores/ui";
 import { useDownloadStore } from "@/stores/downloads";
 import { useCategoryStore } from "@/stores/categories";
@@ -30,6 +31,7 @@ interface DndProviderProps {
 }
 
 export function DndProvider({ children }: DndProviderProps) {
+  const { t } = useTranslation();
   const { setIsDragging } = useUIStore();
   const { moveToQueue, selectedIds, updateDownload } = useDownloadStore();
   const { categories } = useCategoryStore();
@@ -70,7 +72,7 @@ export function DndProvider({ children }: DndProviderProps) {
         
         if (destinationType === "queue") {
           moveToQueue(idsToMove, destinationId);
-          toast.success(`Moved ${idsToMove.length} item${idsToMove.length > 1 ? 's' : ''} to queue`);
+          toast.success(t('toasts.movedToQueueN', { n: idsToMove.length }));
         } else if (destinationType === "category") {
           const category = categories.get(destinationId);
           if (category) {
@@ -90,11 +92,11 @@ export function DndProvider({ children }: DndProviderProps) {
                 console.error("Failed to update download category:", err);
                 // Revert local state on failure
                 updateDownload(id, { category_id: null }); // or previous value, but we don't have it
-                toast.error("Failed to move item to category");
+                toast.error(t('toasts.moveToCategoryFailed'));
               }
             });
-            
-            toast.success(`Moved ${idsToMove.length} item${idsToMove.length > 1 ? 's' : ''} to ${category.name} category`);
+
+            toast.success(t('toasts.movedToCategoryN', { n: idsToMove.length, category: category.name }));
           }
         }
       }
@@ -136,9 +138,9 @@ export function DndProvider({ children }: DndProviderProps) {
                 {selectedIds.has(activeItem.id) ? selectedIds.size : 1}
               </div>
               <span className="text-sm font-medium">
-                {selectedIds.has(activeItem.id) && selectedIds.size > 1 
-                  ? "Items" 
-                  : activeItem.data?.filename || "Download"}
+                {selectedIds.has(activeItem.id) && selectedIds.size > 1
+                  ? t('dnd.items')
+                  : activeItem.data?.filename || t('dnd.download')}
               </span>
             </div>
           ) : null}

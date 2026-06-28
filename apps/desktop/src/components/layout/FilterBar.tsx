@@ -1,4 +1,5 @@
 import { Search, ArrowUpDown, SortAsc, SortDesc, Activity, ListTodo, Folder, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,26 +18,28 @@ import { useQueueStore, useQueuesArray } from "@/stores/queues";
 import { useCategoryStore, useCategoriesArray } from "@/stores/categories";
 import { getCategoryIcon } from "@/lib/categoryIcons";
 
-// Status filter options with colors
-const FILTERS: { value: DownloadFilter; label: string; color: string }[] = [
-  { value: "all", label: "All", color: "text-foreground" },
-  { value: "active", label: "Active", color: "text-blue-500" },
-  { value: "completed", label: "Completed", color: "text-green-500" },
-  { value: "paused", label: "Paused", color: "text-amber-500" },
-  { value: "queued", label: "Queued", color: "text-slate-500" },
-  { value: "failed", label: "Failed", color: "text-red-500" },
-];
-
-const SORT_OPTIONS: { value: SortField; label: string }[] = [
-  { value: "date", label: "Date" },
-  { value: "name", label: "Name" },
-  { value: "size", label: "Size" },
-  { value: "progress", label: "Progress" },
-  { value: "status", label: "Status" },
-];
-
 export function FilterBar() {
-  const { 
+  const { t } = useTranslation();
+
+  // Status filter options with colors
+  const FILTERS: { value: DownloadFilter; label: string; color: string }[] = [
+    { value: "all", label: t('filters.all'), color: "text-foreground" },
+    { value: "active", label: t('filters.active'), color: "text-blue-500" },
+    { value: "completed", label: t('filters.completed'), color: "text-green-500" },
+    { value: "paused", label: t('filters.paused'), color: "text-amber-500" },
+    { value: "queued", label: t('filters.queued'), color: "text-slate-500" },
+    { value: "failed", label: t('filters.failed'), color: "text-red-500" },
+  ];
+
+  const SORT_OPTIONS: { value: SortField; label: string }[] = [
+    { value: "date", label: t('sort.date') },
+    { value: "name", label: t('sort.name') },
+    { value: "size", label: t('sort.size') },
+    { value: "progress", label: t('sort.progress') },
+    { value: "status", label: t('sort.status') },
+  ];
+
+  const {
     filter, 
     searchQuery, 
     sortBy, 
@@ -110,7 +113,7 @@ export function FilterBar() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all" className="text-xs">
-              All Queues
+              {t('filterBar.allQueues')}
             </SelectItem>
             {queues.map((queue) => (
               <SelectItem key={queue.id} value={queue.id} className="text-xs">
@@ -134,7 +137,7 @@ export function FilterBar() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all" className="text-xs">
-              All Categories
+              {t('sidebar.allCategories')}
             </SelectItem>
             {categories.map((category) => {
               const iconConfig = getCategoryIcon(category.icon, category.name);
@@ -163,7 +166,7 @@ export function FilterBar() {
             onClick={clearAllFilters}
           >
             <X className="h-3 w-3" />
-            Clear
+            {t('common.clear')}
           </Button>
         )}
       </div>
@@ -191,7 +194,7 @@ export function FilterBar() {
           size="icon"
           className="h-7 w-7"
           onClick={toggleSortOrder}
-          title={sortOrder === "asc" ? "Ascending" : "Descending"}
+          title={sortOrder === "asc" ? t('sort.ascending') : t('sort.descending')}
         >
           {sortOrder === "asc" ? (
             <SortAsc className="h-3.5 w-3.5" />
@@ -205,7 +208,7 @@ export function FilterBar() {
       <div className="relative w-28 sm:w-36 flex-shrink-0">
         <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
         <Input
-          placeholder="Search..."
+          placeholder={t('common.searchPlaceholder')}
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="pl-8 h-7 text-xs"

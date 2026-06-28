@@ -6,6 +6,7 @@ import type {
   Queue,
   Download,
 } from '@/types';
+import type { MediaDownloadRequest, MediaDownloadResponse } from '@/lib/media-types';
 
 // ============================================================================
 // WebSocket event types — matches Rust WsEvent struct exactly
@@ -343,6 +344,23 @@ export class DlmanClient {
         `/api/downloads/${id}/cancel`,
       );
     } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  /**
+   * Send a media download request to the desktop app.
+   * For direct files, opens the download dialog.
+   * For HLS/DASH, the core engine handles segment download and merge.
+   */
+  async downloadMedia(request: MediaDownloadRequest): Promise<MediaDownloadResponse> {
+    try {
+      return await this.httpRequest<MediaDownloadResponse>('POST', '/api/media/download', request);
+    } catch (error) {
+      console.error('[DLMan] Failed to send media download:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',

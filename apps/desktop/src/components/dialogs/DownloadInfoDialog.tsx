@@ -40,6 +40,7 @@ import {
   X,
   FolderInput,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { formatBytes } from '@/lib/utils';
 import { useQueueStore } from '@/stores/queues';
 import { useCategoryStore } from '@/stores/categories';
@@ -54,6 +55,7 @@ interface DownloadInfoDialogProps {
 }
 
 export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInfoDialogProps) {
+  const { t } = useTranslation();
   const queue = useQueueStore((s) => download ? s.queues.get(download.queue_id) : null);
   const updateDownload = useDownloadStore((s) => s.updateDownload);
   
@@ -94,21 +96,21 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
           id: download.id,
           new_destination: editedDestination,
         });
-        toast.success('File moved successfully');
+        toast.success(t('toasts.fileMoved'));
       } else {
         // For pending/queued/paused downloads, just update the destination
         await invoke('update_download', {
           id: download.id,
           updates: { destination: editedDestination },
         });
-        toast.success('Destination updated');
+        toast.success(t('toasts.destinationUpdated'));
       }
-      
+
       updateDownload(download.id, { destination: editedDestination });
       setIsEditingDestination(false);
     } catch (err) {
       console.error('Failed to update destination:', err);
-      toast.error(`Failed to update destination: ${err}`);
+      toast.error(t('toasts.updateDestinationFailed', { error: String(err) }));
     }
   };
   
@@ -119,7 +121,7 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
         directory: true,
         multiple: false,
         defaultPath: editedDestination,
-        title: 'Select Destination Folder',
+        title: t('downloadInfo.selectFolder'),
       });
       
       if (selected && typeof selected === 'string') {
@@ -207,16 +209,16 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
   const getStatusInfo = () => {
     switch (download.status) {
       case 'completed':
-        return { icon: CheckCircle2, color: 'text-green-500', label: 'Completed' };
+        return { icon: CheckCircle2, color: 'text-green-500', label: t('status.completed') };
       case 'downloading':
-        return { icon: DownloadIcon, color: 'text-blue-500', label: 'Downloading' };
+        return { icon: DownloadIcon, color: 'text-blue-500', label: t('status.downloading') };
       case 'paused':
-        return { icon: Pause, color: 'text-yellow-500', label: 'Paused' };
+        return { icon: Pause, color: 'text-yellow-500', label: t('status.paused') };
       case 'failed':
-        return { icon: XCircle, color: 'text-red-500', label: 'Failed' };
+        return { icon: XCircle, color: 'text-red-500', label: t('status.failed') };
       case 'queued':
       case 'pending':
-        return { icon: Clock, color: 'text-muted-foreground', label: 'Queued' };
+        return { icon: Clock, color: 'text-muted-foreground', label: t('status.queued') };
       default:
         return { icon: Clock, color: 'text-muted-foreground', label: download.status };
     }
@@ -228,9 +230,9 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
   const handleCopyUrl = async () => {
     try {
       await navigator.clipboard.writeText(download.url);
-      toast.success('URL copied to clipboard');
+      toast.success(t('toasts.urlCopied'));
     } catch (err) {
-      toast.error('Failed to copy URL');
+      toast.error(t('toasts.copyUrlFailed'));
     }
   };
 
@@ -240,7 +242,7 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
       await invoke('show_in_folder', { path: filePath });
     } catch (err) {
       console.error('Failed to open folder:', err);
-      toast.error('Failed to open folder');
+      toast.error(t('toasts.openFolderFailed'));
     }
   };
 
@@ -250,17 +252,17 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
       await invoke('open_file', { path: filePath });
     } catch (err) {
       console.error('Failed to open file:', err);
-      toast.error('Failed to open file');
+      toast.error(t('toasts.openFileFailed'));
     }
   };
 
   const formatDate = (dateString: string | null) => {
-    if (!dateString) return 'N/A';
+    if (!dateString) return t('downloadInfo.na');
     return new Date(dateString).toLocaleString();
   };
 
   const formatEta = (seconds: number | null) => {
-    if (seconds === null) return 'Calculating...';
+    if (seconds === null) return t('downloadInfo.calculating');
     if (seconds < 60) return `${Math.round(seconds)}s`;
     if (seconds < 3600) return `${Math.floor(seconds / 60)}m ${Math.round(seconds % 60)}s`;
     const hours = Math.floor(seconds / 3600);
@@ -276,7 +278,7 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
 
   // Format speed limit (KB/s value) with auto-scaling to MB/s or GB/s
   const formatSpeedLimitDisplay = (kbps: number) => {
-    if (kbps === 0) return 'Unlimited';
+    if (kbps === 0) return t('downloadItem.unlimited');
     if (kbps < 1024) return `${kbps} KB/s`;
     if (kbps < 1024 * 1024) return `${(kbps / 1024).toFixed(1)} MB/s`;
     return `${(kbps / (1024 * 1024)).toFixed(2)} GB/s`;
@@ -291,7 +293,7 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
             <span className="truncate">{download.filename}</span>
           </DialogTitle>
           <DialogDescription>
-            Detailed information about this download
+            {t('downloadInfo.desc')}
           </DialogDescription>
         </DialogHeader>
 
@@ -320,7 +322,7 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm">
                   <Activity className="h-4 w-4 text-blue-500 animate-pulse" />
-                  <span className="font-medium">Live Statistics</span>
+                  <span className="font-medium">{t('downloadInfo.liveStats')}</span>
                 </div>
               </div>
               
@@ -328,7 +330,7 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
               <div className="space-y-1.5">
                 <Progress value={progress} className="h-2" />
                 <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>{formatBytes(download.downloaded)} / {download.size ? formatBytes(download.size) : 'Unknown'}</span>
+                  <span>{formatBytes(download.downloaded)} / {download.size ? formatBytes(download.size) : t('downloadItem.unknown')}</span>
                   <span>{Math.round(progress)}%</span>
                 </div>
               </div>
@@ -337,14 +339,14 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
                 <div className="space-y-1">
                   <p className="text-muted-foreground flex items-center gap-1">
                     <Gauge className="h-3.5 w-3.5" />
-                    Speed
+                    {t('downloadInfo.speed')}
                   </p>
                   <p className="font-medium text-blue-500">{formatSpeed(currentSpeed)}</p>
                 </div>
                 <div className="space-y-1">
                   <p className="text-muted-foreground flex items-center gap-1">
                     <Timer className="h-3.5 w-3.5" />
-                    Time Remaining
+                    {t('downloadInfo.timeRemaining')}
                   </p>
                   <p className="font-medium">{formatEta(eta)}</p>
                 </div>
@@ -358,7 +360,7 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
               <div className="flex items-center justify-between">
                 <Label className="flex items-center gap-1.5 text-sm">
                   <Gauge className="h-3.5 w-3.5" />
-                  Speed Limit
+                  {t('downloadItem.speedLimit')}
                 </Label>
                 <span className="text-sm font-medium">
                   {formatSpeedLimitDisplay(speedLimitKB)}
@@ -373,7 +375,7 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
                 className="w-full"
               />
               <p className="text-xs text-muted-foreground">
-                Set to 0 for unlimited speed. This overrides the global speed limit for this download.
+                {t('downloadInfo.speedLimitHint')}
               </p>
             </div>
           )}
@@ -385,17 +387,17 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
             <div className="space-y-1">
               <p className="text-muted-foreground flex items-center gap-1">
                 <HardDrive className="h-3.5 w-3.5" />
-                Size
+                {t('downloadInfo.size')}
               </p>
               <p className="font-medium">
-                {download.size ? formatBytes(download.size) : 'Unknown'}
+                {download.size ? formatBytes(download.size) : t('downloadItem.unknown')}
               </p>
             </div>
 
             <div className="space-y-1">
               <p className="text-muted-foreground flex items-center gap-1">
                 <DownloadIcon className="h-3.5 w-3.5" />
-                Downloaded
+                {t('downloadInfo.downloaded')}
               </p>
               <p className="font-medium">{formatBytes(download.downloaded)}</p>
             </div>
@@ -403,7 +405,7 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
             <div className="space-y-1">
               <p className="text-muted-foreground flex items-center gap-1">
                 <Calendar className="h-3.5 w-3.5" />
-                Started
+                {t('downloadInfo.started')}
               </p>
               <p className="font-medium">{formatDate(download.created_at)}</p>
             </div>
@@ -411,7 +413,7 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
             <div className="space-y-1">
               <p className="text-muted-foreground flex items-center gap-1">
                 <CheckCircle2 className="h-3.5 w-3.5" />
-                Completed
+                {t('status.completed')}
               </p>
               <p className="font-medium">{formatDate(download.completed_at)}</p>
             </div>
@@ -419,7 +421,7 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
             <div className="space-y-1">
               <p className="text-muted-foreground flex items-center gap-1">
                 <ListTodo className="h-3.5 w-3.5" />
-                Queue
+                {t('newDownload.queue')}
               </p>
               <div className="flex items-center gap-2">
                 {queue && (
@@ -428,7 +430,7 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
                     style={{ backgroundColor: queue.color }}
                   />
                 )}
-                <p className="font-medium">{queue?.name || 'Unknown'}</p>
+                <p className="font-medium">{queue?.name || t('downloadItem.unknown')}</p>
               </div>
             </div>
 
@@ -436,7 +438,7 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
               <div className="space-y-1">
                 <p className="text-muted-foreground flex items-center gap-1">
                   <FileType className="h-3.5 w-3.5" />
-                  Category
+                  {t('newDownload.category')}
                 </p>
                 <p className="font-medium">{category.name}</p>
               </div>
@@ -450,7 +452,7 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
             <div className="flex items-center justify-between">
               <p className="text-sm text-muted-foreground flex items-center gap-1">
                 <FolderOpen className="h-3.5 w-3.5" />
-                Save Location
+                {t('downloadInfo.saveLocation')}
               </p>
               {!isEditingDestination && download.status !== 'downloading' && (
                 <Button
@@ -460,7 +462,7 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
                   onClick={() => setIsEditingDestination(true)}
                 >
                   <Pencil className="h-3 w-3 mr-1" />
-                  Edit
+                  {t('common.edit')}
                 </Button>
               )}
             </div>
@@ -472,7 +474,7 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
                     value={editedDestination}
                     onChange={(e) => setEditedDestination(e.target.value)}
                     className="font-mono text-sm"
-                    placeholder="Enter destination path"
+                    placeholder={t('downloadInfo.destinationPlaceholder')}
                   />
                   <Button
                     variant="outline"
@@ -486,7 +488,7 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
                 <div className="flex gap-2">
                   <Button size="sm" onClick={handleSaveDestination}>
                     <Save className="h-3.5 w-3.5 mr-1" />
-                    {download.status === 'completed' ? 'Move File' : 'Save'}
+                    {download.status === 'completed' ? t('downloadInfo.moveFile') : t('common.save')}
                   </Button>
                   <Button
                     variant="ghost"
@@ -497,12 +499,12 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
                     }}
                   >
                     <X className="h-3.5 w-3.5 mr-1" />
-                    Cancel
+                    {t('common.cancel')}
                   </Button>
                 </div>
                 {download.status === 'completed' && (
                   <p className="text-xs text-muted-foreground">
-                    The downloaded file will be moved to the new location.
+                    {t('downloadInfo.moveHint')}
                   </p>
                 )}
               </div>
@@ -517,7 +519,7 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground flex items-center gap-1">
               <Link2 className="h-3.5 w-3.5" />
-              URL
+              {t('newDownload.url')}
             </p>
             <p className="text-sm font-mono bg-muted rounded px-2 py-1 break-all line-clamp-2">
               {download.url}
@@ -530,7 +532,7 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
               <div className="space-y-3">
                 <p className="text-sm text-muted-foreground flex items-center gap-1">
                   <Layers className="h-3.5 w-3.5" />
-                  Segments ({download.segments.length})
+                  {t('downloadInfo.segmentsCount', { n: download.segments.length })}
                 </p>
                 
                 {/* Segment Visualization */}
@@ -544,12 +546,12 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
                       : (isUnknownSize 
                           ? (segment.downloaded > 0 ? 50 : 0)
                           : (segmentSize > 0 ? ((segment.downloaded || 0) / segmentSize) * 100 : 0));
-                    const displaySize = isUnknownSize ? `${formatBytes(segment.downloaded || 0)} (streaming)` : formatBytes(segmentSize);
+                    const displaySize = isUnknownSize ? t('downloadItem.streaming', { size: formatBytes(segment.downloaded || 0) }) : formatBytes(segmentSize);
                     return (
                       <div
                         key={index}
                         className="flex-1 relative"
-                        title={`Segment ${index + 1}: ${formatBytes(segment.downloaded || 0)} / ${displaySize}`}
+                        title={t('downloadInfo.segmentBarTitle', { n: index + 1, downloaded: formatBytes(segment.downloaded || 0), size: displaySize })}
                       >
                         <div
                           className="absolute inset-0 bg-primary/40 transition-all"
@@ -566,10 +568,10 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
                     {download.segments.map((segment, index) => {
                       const isUnknownSize = segment.end > Number.MAX_SAFE_INTEGER / 2;
                       const segmentSize = isUnknownSize ? segment.downloaded : (segment.end - segment.start + 1);
-                      const displaySize = isUnknownSize ? "(streaming)" : formatBytes(segmentSize);
+                      const displaySize = isUnknownSize ? t('downloadInfo.streamingShort') : formatBytes(segmentSize);
                       return (
                         <div key={index} className="flex items-center justify-between px-2 py-1 rounded bg-muted/50">
-                          <span className="font-medium">Segment {index + 1}</span>
+                          <span className="font-medium">{t('downloadInfo.segmentN', { n: index + 1 })}</span>
                           <span className="text-muted-foreground">
                             {formatBytes(segment.downloaded || 0)} / {displaySize}
                           </span>
@@ -588,24 +590,24 @@ export function DownloadInfoDialog({ open, onOpenChange, download }: DownloadInf
         <div className="flex flex-wrap gap-2 pt-4 border-t shrink-0">
           <Button variant="outline" size="sm" onClick={handleCopyUrl}>
             <Copy className="h-4 w-4 mr-2" />
-            Copy URL
+            {t('downloadItem.copyUrl')}
           </Button>
           {download.status === 'completed' && (
             <>
               <Button variant="outline" size="sm" onClick={handleOpenFile}>
                 <ExternalLink className="h-4 w-4 mr-2" />
-                Open File
+                {t('downloadItem.openFile')}
               </Button>
               <Button variant="outline" size="sm" onClick={handleOpenFolder}>
                 <FolderOpen className="h-4 w-4 mr-2" />
-                Open Folder
+                {t('categories.openFolder')}
               </Button>
             </>
           )}
           {download.status === 'failed' && (
             <Button variant="outline" size="sm">
               <RefreshCw className="h-4 w-4 mr-2" />
-              Retry
+              {t('common.retry')}
             </Button>
           )}
         </div>

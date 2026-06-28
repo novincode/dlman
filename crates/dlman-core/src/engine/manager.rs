@@ -25,8 +25,6 @@ pub struct DownloadManager {
     client: Client,
     /// Database
     db: DownloadDatabase,
-    /// Temporary directory for segment files
-    temp_dir: PathBuf,
     /// Event broadcaster
     event_tx: broadcast::Sender<CoreEvent>,
 }
@@ -45,7 +43,7 @@ struct DownloadTaskHandle {
 /// Build an HTTP client with optional proxy settings
 pub fn build_http_client(proxy_settings: Option<&ProxySettings>) -> Result<Client, DlmanError> {
     let mut builder = Client::builder()
-        .user_agent("DLMan/2.0.0")
+        .user_agent(crate::USER_AGENT)
         .connect_timeout(Duration::from_secs(30))
         .timeout(Duration::from_secs(120));
     
@@ -123,10 +121,6 @@ impl DownloadManager {
         event_tx: broadcast::Sender<CoreEvent>,
         proxy_settings: Option<&ProxySettings>,
     ) -> Result<Self, DlmanError> {
-        // Create temp directory for segment files
-        let temp_dir = data_dir.join("temp");
-        tokio::fs::create_dir_all(&temp_dir).await?;
-        
         // Initialize database
         let db_path = data_dir.join("downloads.db");
         let db = DownloadDatabase::new(db_path).await?;
@@ -138,7 +132,6 @@ impl DownloadManager {
             active_tasks: Arc::new(RwLock::new(HashMap::new())),
             client,
             db,
-            temp_dir,
             event_tx,
         })
     }
@@ -340,7 +333,6 @@ impl DownloadManager {
         // Create download task with its own rate limiter
         let task = DownloadTask::new_with_credentials(
             download,
-            self.temp_dir.clone(),
             self.client.clone(),
             download_rate_limiter,
             self.db.clone(),
@@ -506,9 +498,10 @@ impl DownloadManager {
                 }
             }
             
-            // Delete temp files
+            // Delete partial segment files from the on-destination scratch dir.
+            let cache_dir = super::download_task::segment_cache_dir(&download);
             for segment in &download.segments {
-                let temp_path = self.temp_dir.join(format!(
+                let temp_path = cache_dir.join(format!(
                     "{}_segment_{}.part",
                     id, segment.index
                 ));
@@ -516,6 +509,8 @@ impl DownloadManager {
                     let _ = tokio::fs::remove_file(&temp_path).await;
                 }
             }
+            // Best-effort: drop the scratch dir if no other downloads' parts remain.
+            let _ = tokio::fs::remove_dir(&cache_dir).await;
         }
         
         // Delete from DB (always happens, even if file deletion failed)
@@ -618,7 +613,7 @@ impl DownloadManager {
             .collect();
         
         for download in &downloading {
-            info!("Auto-resuming download: {}", download.filename);
+            tracing::debug!("Resetting stale Downloading → Paused: {}", download.filename);
             // Set to paused first so resume logic works
             self.db.update_download_status(download.id, DownloadStatus::Paused, None).await?;
         }

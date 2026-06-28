@@ -59,25 +59,37 @@ export async function getAppVersion(): Promise<VersionInfo> {
 }
 
 /**
- * Compare two semantic versions
- * Returns: 1 if v1 > v2, -1 if v1 < v2, 0 if equal
+ * Compare two semantic versions (pre-release aware).
+ * Returns: 1 if v1 > v2, -1 if v1 < v2, 0 if equal.
+ *
+ * Handles pre-release suffixes per semver: a version with a pre-release
+ * (1.10.0-beta.1) is LOWER than its release (1.10.0). This keeps update
+ * notifications correct for beta testers — once stable ships they're told to
+ * upgrade, and they're never nagged to "update" to an older stable build.
  */
 export function compareVersions(v1: string, v2: string): number {
-  // Remove 'v' prefix if present
-  const clean1 = v1.replace(/^v/, '');
-  const clean2 = v2.replace(/^v/, '');
+  const parse = (v: string) => {
+    const clean = v.replace(/^v/, '');
+    const [core, pre = ''] = clean.split('-', 2);
+    const nums = core.split('.').map((n) => parseInt(n, 10) || 0);
+    return { nums, pre };
+  };
 
-  const parts1 = clean1.split('.').map(Number);
-  const parts2 = clean2.split('.').map(Number);
+  const a = parse(v1);
+  const b = parse(v2);
 
-  for (let i = 0; i < Math.max(parts1.length, parts2.length); i++) {
-    const p1 = parts1[i] || 0;
-    const p2 = parts2[i] || 0;
-
+  for (let i = 0; i < Math.max(a.nums.length, b.nums.length); i++) {
+    const p1 = a.nums[i] || 0;
+    const p2 = b.nums[i] || 0;
     if (p1 > p2) return 1;
     if (p1 < p2) return -1;
   }
 
+  // Equal cores: a release outranks a pre-release; otherwise compare suffixes.
+  if (!a.pre && b.pre) return 1;
+  if (a.pre && !b.pre) return -1;
+  if (a.pre > b.pre) return 1;
+  if (a.pre < b.pre) return -1;
   return 0;
 }
 

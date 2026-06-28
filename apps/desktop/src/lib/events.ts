@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { toast } from "sonner";
+import i18n from "@/i18n";
 import { useDownloadStore } from "@/stores/downloads";
 import { useQueueStore } from "@/stores/queues";
 import { useUIStore } from "@/stores/ui";
@@ -47,6 +48,14 @@ let pendingDropUrls: string[] = [];
 let pendingClipboardUrls: string[] = [];
 // Store for cookies passed from browser extension
 let pendingCookies: string | undefined = undefined;
+// Store for media metadata from browser extension (HLS/DASH streaming)
+let pendingMediaMeta: {
+  protocol: string;
+  master_url: string;
+  page_title?: string;
+  variant_index?: number;
+  referrer?: string;
+} | undefined = undefined;
 
 export function getPendingDropUrls(): string[] {
   const urls = [...pendingDropUrls];
@@ -76,6 +85,16 @@ export function getPendingCookies(): string | undefined {
 
 export function setPendingCookies(cookies: string | undefined) {
   pendingCookies = cookies;
+}
+
+export function getPendingMediaMeta() {
+  const meta = pendingMediaMeta;
+  pendingMediaMeta = undefined;
+  return meta;
+}
+
+export function setPendingMediaMeta(meta: typeof pendingMediaMeta) {
+  pendingMediaMeta = meta;
 }
 
 export function setupEventListeners(): () => void {
@@ -185,8 +204,8 @@ export function setupEventListeners(): () => void {
       // Show toast notification for completed/failed downloads
       if (data.payload.status === "completed") {
         const download = useDownloadStore.getState().downloads.get(data.payload.id);
-        const filename = download?.filename || 'Unknown file';
-        toast.success(`Download completed: ${filename}`);
+        const filename = download?.filename || i18n.t('toasts.unknownFile');
+        toast.success(i18n.t('toasts.downloadCompletedNamed', { filename }));
         // Also send OS notification if app not focused
         if (document.hidden && download) {
           notifyDownloadComplete(filename, download.destination);
@@ -198,8 +217,8 @@ export function setupEventListeners(): () => void {
         }
       } else if (data.payload.status === "failed" && data.payload.error) {
         const download = useDownloadStore.getState().downloads.get(data.payload.id);
-        const filename = download?.filename || 'Unknown file';
-        toast.error(`Download failed: ${filename}`, {
+        const filename = download?.filename || i18n.t('toasts.unknownFile');
+        toast.error(i18n.t('toasts.downloadFailedNamed', { filename }), {
           description: data.payload.error,
         });
         // Also send OS notification if app not focused
@@ -245,7 +264,7 @@ export function setupEventListeners(): () => void {
       const queues = useQueueStore.getState().queues;
       const queue = queues.get(data.payload.id);
       if (queue) {
-        toast.info(`Queue "${queue.name}" started`);
+        toast.info(i18n.t('toasts.queueStarted', { name: queue.name }));
         // Send OS notification
         notifyQueueStarted(queue.name);
       }
@@ -260,7 +279,7 @@ export function setupEventListeners(): () => void {
       const queues = useQueueStore.getState().queues;
       const queue = queues.get(data.payload.id);
       if (queue) {
-        toast.success(`Queue "${queue.name}" stopped`);
+        toast.success(i18n.t('toasts.queueStopped', { name: queue.name }));
         // Send OS notification if app not focused
         if (document.hidden) {
           notifyQueueComplete(queue.name);
@@ -274,8 +293,8 @@ export function setupEventListeners(): () => void {
     if (isCleanedUp) return;
     const data = event.payload;
     if (data.type === "CredentialRequired") {
-      toast.info(`Authentication required for ${data.payload.domain}`, {
-        description: "Please provide credentials to continue downloading.",
+      toast.info(i18n.t('toasts.authRequiredFor', { domain: data.payload.domain }), {
+        description: i18n.t('toasts.authRequiredDesc'),
       });
       // Set the pending request to open the credential prompt dialog
       useCredentialsStore.getState().setPendingRequest(data.payload);
@@ -307,7 +326,8 @@ export function setupEventListeners(): () => void {
 
   // Listen for show-new-download-dialog event (from deep links / extension)
   // Payload can be a plain URL string (legacy) or structured object with url, referrer, filename, cookies
-  registerListener(listen<string | { url: string; referrer?: string; filename?: string; cookies?: string } | null>(
+  // For HLS/DASH media, also includes media_protocol, media_master_url, etc.
+  registerListener(listen<string | { url: string; referrer?: string; filename?: string; cookies?: string; media_protocol?: string; media_master_url?: string; media_page_title?: string; variant_index?: number } | null>(
     "show-new-download-dialog",
     (event) => {
       if (isCleanedUp) return;
@@ -319,10 +339,23 @@ export function setupEventListeners(): () => void {
           // Legacy: plain URL string
           setPendingClipboardUrls([payload]);
           setPendingCookies(undefined);
+          setPendingMediaMeta(undefined);
         } else if (typeof payload === 'object' && payload.url) {
           // Structured payload from browser extension
           setPendingClipboardUrls([payload.url]);
           setPendingCookies(payload.cookies);
+          // Store media metadata if this is an HLS/DASH stream
+          if (payload.media_protocol && payload.media_protocol !== 'direct') {
+            setPendingMediaMeta({
+              protocol: payload.media_protocol,
+              master_url: payload.media_master_url || payload.url,
+              page_title: payload.media_page_title,
+              variant_index: payload.variant_index,
+              referrer: payload.referrer,
+            });
+          } else {
+            setPendingMediaMeta(undefined);
+          }
         }
       }
       
@@ -387,14 +420,14 @@ async function checkQueueCompletion(queueId: string) {
         action: 'run_command', 
         command: postAction.run_command 
       });
-      toast.info(`Executed command for queue "${queue.name}"`);
+      toast.info(i18n.t('toasts.executedCommand', { name: queue.name }));
     } else if (postAction !== 'notify') {
       // Sleep, shutdown, hibernate
-      toast.info(`Executing ${postAction}...`, { duration: 5000 });
+      toast.info(i18n.t('toasts.executingAction', { action: postAction }), { duration: 5000 });
       await invoke('execute_post_action', { action: postAction });
     }
   } catch (err) {
     console.error('Failed to execute post-action:', err);
-    toast.error(`Failed to execute ${postAction}: ${err}`);
+    toast.error(i18n.t('toasts.executeActionFailed', { action: postAction, error: String(err) }));
   }
 }

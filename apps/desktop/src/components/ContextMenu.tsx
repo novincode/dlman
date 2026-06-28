@@ -7,6 +7,7 @@ import {
   Clipboard,
   Import,
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { useUIStore } from '@/stores/ui';
 import { cn, parseUrls } from '@/lib/utils';
 import { setPendingClipboardUrls } from '@/lib/events';
@@ -137,6 +138,7 @@ export function ContextMenuProvider({ children }: { children: ReactNode }) {
 
 // Hook for global context menu (right-click on empty areas)
 export function useGlobalContextMenu() {
+  const { t } = useTranslation();
   const { showContextMenu, hideContextMenu } = useContextMenu();
   const { setShowNewDownloadDialog, setShowBatchImportDialog, setShowQueueManagerDialog, setShowSettingsDialog } = useUIStore();
 
@@ -169,19 +171,19 @@ export function useGlobalContextMenu() {
       e.stopPropagation();
       showContextMenu(e.clientX, e.clientY, [
         {
-          label: 'Add Download',
+          label: t('welcome.addDownload'),
           icon: <Plus className="h-4 w-4" />,
           shortcut: '⌘N',
           onClick: () => setShowNewDownloadDialog(true),
         },
         {
-          label: 'Batch Import',
+          label: t('contextMenu.batchImport'),
           icon: <Import className="h-4 w-4" />,
           shortcut: '⌘I',
           onClick: () => setShowBatchImportDialog(true),
         },
         {
-          label: 'Paste Links',
+          label: t('contextMenu.pasteLinks'),
           icon: <Clipboard className="h-4 w-4" />,
           shortcut: '⌘V',
           onClick: async () => {
@@ -203,13 +205,13 @@ export function useGlobalContextMenu() {
         },
         { separator: true, label: '' },
         {
-          label: 'New Queue',
+          label: t('contextMenu.newQueue'),
           icon: <FolderPlus className="h-4 w-4" />,
           onClick: () => setShowQueueManagerDialog(true),
         },
         { separator: true, label: '' },
         {
-          label: 'Settings',
+          label: t('settings.title'),
           icon: <Settings className="h-4 w-4" />,
           shortcut: '⌘,',
           onClick: () => setShowSettingsDialog(true),
@@ -219,7 +221,7 @@ export function useGlobalContextMenu() {
       // Hide our custom context menu if we're not handling this
       hideContextMenu();
     }
-  }, [showContextMenu, hideContextMenu, setShowNewDownloadDialog, setShowBatchImportDialog, setShowQueueManagerDialog, setShowSettingsDialog]);
+  }, [t, showContextMenu, hideContextMenu, setShowNewDownloadDialog, setShowBatchImportDialog, setShowQueueManagerDialog, setShowSettingsDialog]);
 
   return handleGlobalContextMenu;
 }

@@ -1,4 +1,8 @@
 import { defineContentScript } from 'wxt/sandbox';
+import { VideoDetector } from '@/lib/video-detector';
+import { VideoOverlayManager } from '@/lib/video-overlay';
+import { resolveHlsVariants } from '@/lib/hls-parser';
+import type { DetectedMedia, MediaDownloadRequest } from '@/lib/media-types';
 
 /**
  * Content script for detecting downloadable links on web pages
@@ -385,5 +389,133 @@ export default defineContentScript({
 
     // Initialize
     setupLinkClickHandler();
+
+    // Notify background we're ready — triggers delivery of any
+    // stream URLs caught by webRequest before we loaded.
+    browser.runtime.sendMessage({ type: 'content-script-ready' }).catch(() => {});
+
+    // ========================================================================
+    // Video Detection & Overlay
+    // ========================================================================
+
+    const overlayManager = new VideoOverlayManager((request: MediaDownloadRequest) => {
+      browser.runtime.sendMessage({
+        type: 'media-download',
+        request,
+      }).catch((err) => {
+        console.error('[DLMan] Failed to send media download request:', err);
+      });
+      showDlmanToast(1);
+    });
+
+    const detector = new VideoDetector({
+      onDetected: async (media: DetectedMedia) => {
+        console.log('[DLMan] Media detected:', media.protocol, media.master_url);
+
+        let variants = media.variants;
+        if (media.protocol === 'hls' && variants.length === 0) {
+          try {
+            variants = await resolveHlsVariants(
+              media.master_url,
+              media.cookies,
+              media.referrer,
+            );
+            media.variants = variants;
+          } catch (err) {
+            console.warn('[DLMan] Failed to resolve HLS variants:', err);
+          }
+        }
+
+        overlayManager.addOverlay(media, variants);
+
+        browser.runtime.sendMessage({
+          type: 'media-detected',
+          media,
+        }).catch(() => {});
+      },
+      minDuration: 8,
+      observeDOM: true,
+    });
+
+    detector.start();
+
+    // ========================================================================
+    // MAIN-world media hook listener
+    //
+    // The early content script (content-early.ts) injects media-hook.js into
+    // the MAIN world at document_start. That script hooks fetch(), XHR,
+    // URL.createObjectURL(MediaSource), and SourceBuffer — and communicates
+    // back to us here via window.postMessage().
+    // ========================================================================
+
+    window.addEventListener('message', (event) => {
+      if (event.source !== window) return;
+      if (!event.data || event.data.source !== 'dlman-media-hook') return;
+
+      const { type: msgType, url, protocol } = event.data;
+
+      if (msgType === 'media-url-detected' && url) {
+        // The MAIN-world hook detected a media URL via fetch/XHR interception
+        detector.injectStreamUrl(url, protocol);
+      }
+
+      if (msgType === 'mse-blob-created') {
+        // A MediaSource was created — the page uses MSE for video.
+        // The manifest URL will come from fetch/XHR hooks or webRequest.
+        console.log('[DLMan] MSE blob detected — streams will be caught by network hooks');
+      }
+    });
+
+    // ========================================================================
+    // Messages from background: stream detection + context menu video lookup
+    // ========================================================================
+
+    browser.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
+      const msg = message as { type: string; url?: string; protocol?: string; x?: number; y?: number };
+
+      if (msg.type === 'stream-detected' && msg.url) {
+        // Background's webRequest detected a stream URL — inject it into the detector
+        // Pass protocol hint if background already classified it
+        detector.injectStreamUrl(msg.url, msg.protocol as any);
+        sendResponse({ ok: true });
+        return true;
+      }
+
+      if (msg.type === 'get-video-at-point') {
+        // Context menu "Download Video" — find detected media near click point
+        const x = msg.x ?? 0;
+        const y = msg.y ?? 0;
+        let media = detector.getMediaNearPoint(x, y);
+        if (!media) {
+          media = detector.getAnyDetectedMedia();
+        }
+        if (media) {
+          const request: MediaDownloadRequest = {
+            media,
+            variant_index: undefined,
+          };
+          sendResponse({ request });
+        } else {
+          sendResponse({ request: null });
+        }
+        return true;
+      }
+
+      return false; // Not handled here — let other listeners handle
+    });
+
+    // Store last right-click position for context menu video lookup
+    document.addEventListener('contextmenu', (e) => {
+      // Save last right-click coordinates in extension storage for the background
+      browser.storage.local.set({
+        lastRightClick: { x: e.clientX, y: e.clientY },
+      });
+    });
+
+    // Clean up on page unload
+    window.addEventListener('beforeunload', () => {
+      detector.destroy();
+      overlayManager.destroy();
+    });
   },
 });

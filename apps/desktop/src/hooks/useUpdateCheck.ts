@@ -8,6 +8,7 @@
 import { useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { open as openUrl } from '@tauri-apps/plugin-shell';
+import { useTranslation } from 'react-i18next';
 import { checkForUpdates, getReleasesPageUrl } from '@/lib/version';
 import { useUpdateStore } from '@/stores/update';
 import { useSettingsStore } from '@/stores/settings';
@@ -16,6 +17,7 @@ import { useSettingsStore } from '@/stores/settings';
 let hasCheckedThisSession = false;
 
 export function useUpdateCheck() {
+  const { t } = useTranslation();
   const hasRun = useRef(false);
   const { setUpdateInfo, setIsChecking, shouldShowNotification } = useUpdateStore();
   const autoCheckUpdates = useSettingsStore((s) => s.settings.auto_check_updates);
@@ -45,11 +47,11 @@ export function useUpdateCheck() {
         if (updateInfo.hasUpdate && updateInfo.latestVersion) {
           const store = useUpdateStore.getState();
           if (store.shouldShowNotification()) {
-            toast.info(`New version available: v${updateInfo.latestVersion}`, {
-              description: 'Click to download the latest version',
+            toast.info(t('about.newVersion', { version: updateInfo.latestVersion }), {
+              description: t('update.clickToDownload'),
               duration: 10000,
               action: {
-                label: 'Download',
+                label: t('update.download'),
                 onClick: () => {
                   openUrl(updateInfo.releaseUrl || getReleasesPageUrl());
                 }

@@ -25,6 +25,8 @@ import { loadCredentialsFromBackend } from "@/stores/credentials";
 import { setupEventListeners, setPendingClipboardUrls, setPendingDropUrls } from "@/lib/events";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useUpdateCheck } from "@/hooks/useUpdateCheck";
+import { useApplyLocale } from "@/i18n/useApplyLocale";
+import { useTranslation } from "react-i18next";
 import { parseUrls } from "@/lib/utils";
 import { initSystemIntegrations } from "@/lib/system-tray";
 import { initNotifications } from "@/lib/notifications";
@@ -39,6 +41,7 @@ function AppContent() {
   const { setShowNewDownloadDialog, setShowBatchImportDialog, showBulkDeleteDialog, setShowBulkDeleteDialog } = useUIStore();
   const { selectedIds, downloads, removeDownload, clearSelection } = useDownloadStore();
   const [actualTheme, setActualTheme] = useState<"light" | "dark">("light");
+  const { t } = useTranslation();
 
   // Get selected downloads for bulk delete dialog
   const selectedDownloads = Array.from(selectedIds)
@@ -78,11 +81,11 @@ function AppContent() {
     clearSelection();
     
     if (fileDeleteCount > 0) {
-      toast.success(`Removed ${successCount} download(s), deleted ${fileDeleteCount} file(s)`);
+      toast.success(t('toasts.bulkRemovedWithFiles', { n: successCount, files: fileDeleteCount }));
     } else {
-      toast.success(`Removed ${successCount} download(s)`);
+      toast.success(t('toasts.bulkRemoved', { n: successCount }));
     }
-  }, [selectedIds, downloads, removeDownload, clearSelection, setShowBulkDeleteDialog]);
+  }, [selectedIds, downloads, removeDownload, clearSelection, setShowBulkDeleteDialog, t]);
 
   // Determine actual theme for Sonner (system theme needs real detection)
   const getActualTheme = useCallback((): "light" | "dark" => {
@@ -97,6 +100,9 @@ function AppContent() {
     }
     return "light";
   }, [theme]);
+
+  // Apply the persisted language, text direction, and font (and react to changes)
+  useApplyLocale();
 
   // Enable keyboard shortcuts
   useKeyboardShortcuts();

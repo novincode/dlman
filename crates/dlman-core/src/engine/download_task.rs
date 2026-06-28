@@ -16,6 +16,21 @@ use tokio::sync::broadcast;
 use tokio::task::JoinSet;
 use tracing::{error, info, warn};
 
+/// Per-download scratch directory for partial segment files.
+///
+/// This lives **inside the user's chosen destination folder** (a hidden
+/// `.dlman-cache` subdirectory), so partial data is written to the *same*
+/// filesystem as the final file — e.g. the external drive the user picked —
+/// instead of the system data directory. That keeps large downloads from
+/// filling the system disk, and makes the final merge an in-place,
+/// same-filesystem copy rather than a cross-device transfer. See issue #7.
+///
+/// Segment files within are namespaced by download id, so a shared cache
+/// directory per destination is safe for concurrent downloads.
+pub(crate) fn segment_cache_dir(download: &Download) -> PathBuf {
+    download.destination.join(".dlman-cache")
+}
+
 /// A download task that manages multiple segment workers
 pub struct DownloadTask {
     pub download: Download,
@@ -41,7 +56,6 @@ impl DownloadTask {
     /// Create a new download task
     pub fn new(
         download: Download,
-        temp_dir: PathBuf,
         client: Client,
         rate_limiter: RateLimiter,
         db: DownloadDatabase,
@@ -53,15 +67,14 @@ impl DownloadTask {
         retry_delay_secs: u32,
     ) -> Self {
         Self::new_with_credentials(
-            download, temp_dir, client, rate_limiter, db, event_tx,
+            download, client, rate_limiter, db, event_tx,
             paused, cancelled, segment_count, max_retries, retry_delay_secs, None,
         )
     }
-    
+
     /// Create a new download task with credentials
     pub fn new_with_credentials(
         download: Download,
-        temp_dir: PathBuf,
         client: Client,
         rate_limiter: RateLimiter,
         db: DownloadDatabase,
@@ -73,6 +86,8 @@ impl DownloadTask {
         retry_delay_secs: u32,
         credentials: Option<(String, String)>,
     ) -> Self {
+        // Scratch dir lives on the destination filesystem (see segment_cache_dir).
+        let temp_dir = segment_cache_dir(&download);
         // Calculate total downloaded from segments if available, otherwise use download.downloaded
         let total_from_segments: u64 = download.segments.iter().map(|s| s.downloaded).sum();
         let initial_downloaded = if total_from_segments > 0 {
@@ -138,7 +153,15 @@ impl DownloadTask {
         self.download.status = DownloadStatus::Downloading;
         self.db.update_download_status(self.download.id, DownloadStatus::Downloading, None).await?;
         self.emit_status_change(DownloadStatus::Downloading, None).await;
-        
+
+        // Ensure the on-destination scratch directory exists before any segment
+        // worker writes to it. It lives on the user's chosen target filesystem
+        // (see segment_cache_dir), so partial data never lands on the system disk.
+        if let Err(e) = tokio::fs::create_dir_all(&self.temp_dir).await {
+            error!("Failed to create scratch directory {:?}: {}", self.temp_dir, e);
+            return Err(DlmanError::Io(e));
+        }
+
         // Emit initial progress so UI shows current state immediately
         let initial_downloaded = self.total_downloaded.load(Ordering::Acquire);
         let _ = self.event_tx.send(CoreEvent::DownloadProgress {
@@ -841,7 +864,12 @@ impl DownloadTask {
         
         output.flush().await?;
         output.sync_all().await?;
-        
+
+        // Best-effort: remove the scratch dir now that this download's parts are
+        // merged. remove_dir only succeeds if empty, so concurrent downloads
+        // sharing the destination's cache are left untouched.
+        let _ = tokio::fs::remove_dir(&self.temp_dir).await;
+
         info!("Merge complete: {:?}", final_path);
         Ok(segment_sizes)
     }

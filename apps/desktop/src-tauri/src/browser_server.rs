@@ -20,7 +20,7 @@ use axum::{
     Router,
 };
 use dlman_core::DlmanCore;
-use dlman_types::{CoreEvent, Download};
+use dlman_types::{CoreEvent, Download, MediaDownloadRequest, MediaDownloadResponse, MediaProtocol};
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
@@ -155,6 +155,8 @@ impl BrowserServer {
             .route("/api/downloads/:id/pause", post(handle_pause_download))
             .route("/api/downloads/:id/resume", post(handle_resume_download))
             .route("/api/downloads/:id/cancel", post(handle_cancel_download))
+            // Media download — handles video streams from extension
+            .route("/api/media/download", post(handle_media_download))
             // WebSocket for real-time events (optional)
             .route("/ws", get(handle_websocket))
             .layer(cors)
@@ -207,12 +209,26 @@ async fn handle_show_dialog(
     let state = state.read().await;
     let app_handle = &state.app_handle;
 
+    // Auto-detect HLS/DASH streaming URLs and include media metadata
+    // so the frontend dialog routes to start_media_download instead of add_download.
+    let url_lower = req.url.split('?').next().unwrap_or(&req.url).to_lowercase();
+    let media_protocol = if url_lower.ends_with(".m3u8") || url_lower.contains(".m3u8/") {
+        Some("hls")
+    } else if url_lower.ends_with(".mpd") || url_lower.contains(".mpd/") {
+        Some("dash")
+    } else {
+        None
+    };
+
     // Emit event to frontend with the full request (url, referrer, filename, cookies)
     let payload = serde_json::json!({
         "url": req.url,
         "referrer": req.referrer,
         "filename": req.filename,
         "cookies": req.cookies,
+        // Include media metadata when URL is a streaming manifest
+        "media_protocol": media_protocol,
+        "media_master_url": if media_protocol.is_some() { Some(&req.url) } else { None },
     });
     if let Err(e) = app_handle.emit("show-new-download-dialog", payload) {
         tracing::error!("Failed to emit show-new-download-dialog: {}", e);
@@ -393,6 +409,102 @@ async fn handle_cancel_download(
             error: Some(e.to_string()),
         }),
     }
+}
+
+// ============================================================================
+// Media Download — handles video stream downloads from extension
+// ============================================================================
+
+/// POST /api/media/download — show dialog for detected media stream
+///
+/// UNIFIED PIPELINE: ALL protocols (Direct, HLS, DASH) go through the
+/// download dialog first. The user must approve before any download starts.
+/// This matches the standard download flow and enables pause/cancel.
+async fn handle_media_download(
+    State(state): axum::extract::State<SharedState>,
+    axum::Json(req): axum::Json<MediaDownloadRequest>,
+) -> impl axum::response::IntoResponse {
+    let state = state.read().await;
+    let app_handle = &state.app_handle;
+
+    // For ALL protocols, show the download dialog first.
+    // The dialog will call /api/media/start when the user confirms.
+    let download_url = match req.media.protocol {
+        MediaProtocol::Direct => {
+            // For direct files, use variant URL if specified
+            if let Some(idx) = req.variant_index {
+                req.media
+                    .variants
+                    .get(idx)
+                    .map(|v| v.url.clone())
+                    .unwrap_or(req.media.master_url.clone())
+            } else {
+                req.media.master_url.clone()
+            }
+        }
+        MediaProtocol::Hls | MediaProtocol::Dash => {
+            // For streaming protocols, use the master URL
+            req.media.master_url.clone()
+        }
+    };
+
+    // Build a human-readable filename from page title or URL.
+    // Filter out manifest filenames (master.m3u8 etc.) — they're not useful.
+    let clean_filename = req.output_filename.clone()
+        .or_else(|| req.media.filename.clone())
+        .and_then(|f| {
+            let lower = f.to_lowercase();
+            if lower.ends_with(".m3u8") || lower.ends_with(".mpd")
+                || lower == "master" || lower == "index" || lower == "playlist"
+            {
+                None // useless manifest name, skip it
+            } else {
+                Some(f)
+            }
+        });
+    let filename = clean_filename
+        .or_else(|| {
+            req.media.page_title.as_ref().map(|title| {
+                let sanitized: String = title
+                    .chars()
+                    .map(|c| if "/\\:*?\"<>|".contains(c) { '_' } else { c })
+                    .collect();
+                let sanitized = sanitized.trim().to_string();
+                if !sanitized.is_empty() && sanitized.len() <= 200 {
+                    sanitized
+                } else {
+                    "video".to_string()
+                }
+            })
+        });
+
+    let payload = serde_json::json!({
+        "url": download_url,
+        "referrer": req.media.referrer,
+        "filename": filename,
+        "cookies": req.media.cookies,
+        // Pass media metadata for HLS/DASH so the start command has full context
+        "media_protocol": format!("{:?}", req.media.protocol).to_lowercase(),
+        "media_master_url": req.media.master_url,
+        "media_page_title": req.media.page_title,
+        "variant_index": req.variant_index,
+    });
+
+    if let Err(e) = app_handle.emit("show-new-download-dialog", payload) {
+        return axum::Json(MediaDownloadResponse {
+            success: false,
+            download_id: None,
+            error: Some(format!("Failed to open download dialog: {}", e)),
+        });
+    }
+
+    request_attention(app_handle);
+
+    axum::Json(MediaDownloadResponse {
+        success: true,
+        download_id: None,
+        error: None,
+    })
 }
 
 // ============================================================================
