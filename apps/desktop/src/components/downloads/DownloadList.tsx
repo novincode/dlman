@@ -16,17 +16,47 @@ interface DownloadListProps {
   downloads: Download[];
 }
 
+// Marquee tuning
+const MARQUEE_THRESHOLD = 4; // px of movement before a press becomes a drag-select
+const AUTO_SCROLL_EDGE = 56; // px from top/bottom edge where auto-scroll kicks in
+const AUTO_SCROLL_MAX = 18; // max px/frame auto-scroll speed
+
+interface MarqueeRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+interface MarqueeDragState {
+  baseSelection: Set<string>; // selection to merge into (existing when shift-drag, else empty)
+  startX: number; // content-space coords (include scroll offset)
+  startY: number;
+  pointerId: number;
+  additive: boolean;
+  moved: boolean;
+  lastClientX: number;
+  lastClientY: number;
+}
+
 export function DownloadList({ downloads }: DownloadListProps) {
   const { t } = useTranslation();
   const parentRef = useRef<HTMLDivElement>(null);
   const focusedId = useDownloadStore((s) => s.focusedId);
   const setFocusedId = useDownloadStore((s) => s.setFocusedId);
   const toggleSelected = useDownloadStore((s) => s.toggleSelected);
+  const setSelected = useDownloadStore((s) => s.setSelected);
+  const clearSelection = useDownloadStore((s) => s.clearSelection);
   const removeDownload = useDownloadStore((s) => s.removeDownload);
 
   // Delete confirmation dialog state
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [downloadToDelete, setDownloadToDelete] = useState<Download | null>(null);
+
+  // Marquee (rubber-band) selection
+  const [marqueeRect, setMarqueeRect] = useState<MarqueeRect | null>(null);
+  const marqueeRef = useRef<MarqueeDragState | null>(null);
+  const autoScrollRafRef = useRef<number | null>(null);
 
   const virtualizer = useVirtualizer({
     count: downloads.length,
@@ -49,6 +79,199 @@ export function DownloadList({ downloads }: DownloadListProps) {
     }
   }, [focusedIndex, virtualizer]);
 
+  // ----- Marquee selection -----------------------------------------------
+  // Translate a viewport point into content-space coords (so selection stays
+  // correct across scrolling / auto-scroll).
+  const getContentPoint = useCallback((clientX: number, clientY: number) => {
+    const el = parentRef.current;
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    return {
+      x: clientX - rect.left + el.scrollLeft,
+      y: clientY - rect.top + el.scrollTop,
+    };
+  }, []);
+
+  // Select every item whose row overlaps the vertical band, merged onto `base`.
+  const applyMarqueeSelection = useCallback(
+    (startY: number, endY: number, base: Set<string>) => {
+      const total = virtualizer.getTotalSize();
+      const rawMin = Math.min(startY, endY);
+      const rawMax = Math.max(startY, endY);
+      const selected = new Set(base);
+
+      // Only intersect when the band actually overlaps the content range.
+      if (downloads.length > 0 && rawMax >= 0 && rawMin <= total - 1) {
+        const min = Math.max(0, rawMin);
+        const max = Math.min(total - 1, rawMax);
+        const first = virtualizer.getVirtualItemForOffset(min);
+        const last = virtualizer.getVirtualItemForOffset(max);
+        if (first && last) {
+          const lo = Math.min(first.index, last.index);
+          const hi = Math.max(first.index, last.index);
+          for (let i = lo; i <= hi; i++) {
+            const d = downloads[i];
+            if (d) selected.add(d.id);
+          }
+        }
+      }
+
+      setSelected(Array.from(selected));
+    },
+    [virtualizer, downloads, setSelected]
+  );
+
+  const updateMarqueeFromClient = useCallback(
+    (clientX: number, clientY: number) => {
+      const state = marqueeRef.current;
+      if (!state) return;
+      state.lastClientX = clientX;
+      state.lastClientY = clientY;
+
+      const p = getContentPoint(clientX, clientY);
+      if (!p) return;
+
+      if (!state.moved) {
+        if (
+          Math.abs(p.x - state.startX) < MARQUEE_THRESHOLD &&
+          Math.abs(p.y - state.startY) < MARQUEE_THRESHOLD
+        ) {
+          return; // not a drag yet
+        }
+        state.moved = true;
+      }
+
+      setMarqueeRect({
+        left: Math.min(state.startX, p.x),
+        top: Math.min(state.startY, p.y),
+        width: Math.abs(p.x - state.startX),
+        height: Math.abs(p.y - state.startY),
+      });
+      applyMarqueeSelection(state.startY, p.y, state.baseSelection);
+    },
+    [getContentPoint, applyMarqueeSelection]
+  );
+
+  const stopAutoScroll = useCallback(() => {
+    if (autoScrollRafRef.current != null) {
+      cancelAnimationFrame(autoScrollRafRef.current);
+      autoScrollRafRef.current = null;
+    }
+  }, []);
+
+  const ensureAutoScroll = useCallback(() => {
+    if (autoScrollRafRef.current != null) return;
+    const tick = () => {
+      const el = parentRef.current;
+      const state = marqueeRef.current;
+      if (!el || !state) {
+        autoScrollRafRef.current = null;
+        return;
+      }
+      const rect = el.getBoundingClientRect();
+      const y = state.lastClientY;
+      let delta = 0;
+      if (y < rect.top + AUTO_SCROLL_EDGE) {
+        delta = -Math.ceil(((rect.top + AUTO_SCROLL_EDGE - y) / AUTO_SCROLL_EDGE) * AUTO_SCROLL_MAX);
+      } else if (y > rect.bottom - AUTO_SCROLL_EDGE) {
+        delta = Math.ceil(((y - (rect.bottom - AUTO_SCROLL_EDGE)) / AUTO_SCROLL_EDGE) * AUTO_SCROLL_MAX);
+      }
+      if (delta !== 0) {
+        const maxScroll = el.scrollHeight - el.clientHeight;
+        const before = el.scrollTop;
+        el.scrollTop = Math.max(0, Math.min(maxScroll, el.scrollTop + delta));
+        if (el.scrollTop !== before) {
+          updateMarqueeFromClient(state.lastClientX, state.lastClientY);
+        }
+      }
+      autoScrollRafRef.current = requestAnimationFrame(tick);
+    };
+    autoScrollRafRef.current = requestAnimationFrame(tick);
+  }, [updateMarqueeFromClient]);
+
+  const endMarquee = useCallback(() => {
+    const state = marqueeRef.current;
+    marqueeRef.current = null;
+    stopAutoScroll();
+    setMarqueeRect(null);
+    if (state) {
+      try {
+        parentRef.current?.releasePointerCapture(state.pointerId);
+      } catch {
+        // capture may already be gone
+      }
+    }
+    return state;
+  }, [stopAutoScroll]);
+
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      // Primary button only.
+      if (e.button !== 0) return;
+      const target = e.target as HTMLElement;
+      // Presses on an item (drag-to-queue / click) or any interactive control
+      // are not marquee starts — only empty list space is.
+      if (target.closest('[data-download-item]')) return;
+      if (
+        target.closest(
+          'button, a, input, textarea, [role="checkbox"], [role="menuitem"], [data-radix-popper-content-wrapper]'
+        )
+      ) {
+        return;
+      }
+
+      const p = getContentPoint(e.clientX, e.clientY);
+      if (!p) return;
+
+      const additive = e.shiftKey;
+      marqueeRef.current = {
+        baseSelection: additive
+          ? new Set(useDownloadStore.getState().selectedIds)
+          : new Set<string>(),
+        startX: p.x,
+        startY: p.y,
+        pointerId: e.pointerId,
+        additive,
+        moved: false,
+        lastClientX: e.clientX,
+        lastClientY: e.clientY,
+      };
+      try {
+        parentRef.current?.setPointerCapture(e.pointerId);
+      } catch {
+        // ignore
+      }
+      ensureAutoScroll();
+    },
+    [getContentPoint, ensureAutoScroll]
+  );
+
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (!marqueeRef.current) return;
+      updateMarqueeFromClient(e.clientX, e.clientY);
+      if (marqueeRef.current?.moved) e.preventDefault();
+    },
+    [updateMarqueeFromClient]
+  );
+
+  const handlePointerUp = useCallback(() => {
+    const state = endMarquee();
+    if (!state) return;
+    // A plain click on empty space (no drag) clears the selection — unless the
+    // user was holding shift to keep/extend it.
+    if (!state.moved && !state.additive) {
+      clearSelection();
+    }
+  }, [endMarquee, clearSelection]);
+
+  const handlePointerCancel = useCallback(() => {
+    endMarquee();
+  }, [endMarquee]);
+
+  // Clean up any running auto-scroll on unmount.
+  useEffect(() => stopAutoScroll, [stopAutoScroll]);
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (downloads.length === 0) return;
@@ -59,12 +282,25 @@ export function DownloadList({ downloads }: DownloadListProps) {
         return;
       }
 
+      // Ctrl/Cmd+A selects everything in the current view.
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "a") {
+        e.preventDefault();
+        setSelected(downloads.map((d) => d.id));
+        return;
+      }
+
+      if (e.key === "Escape") {
+        e.preventDefault();
+        clearSelection();
+        return;
+      }
+
       if (e.key === "ArrowDown") {
         e.preventDefault();
         const currentIndex = focusedIndex >= 0 ? focusedIndex : -1;
         const nextIndex = Math.min(currentIndex + 1, downloads.length - 1);
         setFocusedId(downloads[nextIndex].id);
-        
+
         // If shift is held, also select the item
         if (e.shiftKey && downloads[nextIndex]) {
           toggleSelected(downloads[nextIndex].id, true);
@@ -74,7 +310,7 @@ export function DownloadList({ downloads }: DownloadListProps) {
         const currentIndex = focusedIndex >= 0 ? focusedIndex : downloads.length;
         const prevIndex = Math.max(currentIndex - 1, 0);
         setFocusedId(downloads[prevIndex].id);
-        
+
         // If shift is held, also select the item
         if (e.shiftKey && downloads[prevIndex]) {
           toggleSelected(downloads[prevIndex].id, true);
@@ -111,18 +347,18 @@ export function DownloadList({ downloads }: DownloadListProps) {
         }
       }
     },
-    [downloads, focusedId, focusedIndex, setFocusedId, toggleSelected]
+    [downloads, focusedId, focusedIndex, setFocusedId, toggleSelected, setSelected, clearSelection]
   );
 
   // Handle delete confirmation
   const handleConfirmDelete = useCallback(async (deleteFile: boolean) => {
     if (!downloadToDelete) return;
-    
+
     setShowDeleteDialog(false);
-    
+
     // Remove from store first
     removeDownload(downloadToDelete.id);
-    
+
     if (isTauri()) {
       try {
         // If user chose to also delete the file, use delete_file: true
@@ -147,9 +383,13 @@ export function DownloadList({ downloads }: DownloadListProps) {
     <>
       <div
         ref={parentRef}
-        className="h-full overflow-auto focus:outline-none p-2"
+        className="h-full overflow-auto focus:outline-none p-2 select-none"
         tabIndex={0}
         onKeyDown={handleKeyDown}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
       >
         <div
           className="relative w-full min-w-0"
@@ -174,9 +414,22 @@ export function DownloadList({ downloads }: DownloadListProps) {
               </div>
             );
           })}
+
+          {/* Rubber-band selection rectangle (content-space coords) */}
+          {marqueeRect && (
+            <div
+              className="pointer-events-none absolute z-20 rounded-sm border border-primary bg-primary/10"
+              style={{
+                left: `${marqueeRect.left}px`,
+                top: `${marqueeRect.top}px`,
+                width: `${marqueeRect.width}px`,
+                height: `${marqueeRect.height}px`,
+              }}
+            />
+          )}
         </div>
       </div>
-      
+
       {/* Delete Confirmation Dialog */}
       {downloadToDelete && (
         <DeleteConfirmDialog
