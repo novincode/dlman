@@ -15,6 +15,7 @@
 
 mod engine;
 mod error;
+pub mod filename;
 pub mod media;
 mod queue;
 mod scheduler;
@@ -177,28 +178,33 @@ impl DlmanCore {
     
     /// Get a unique filename in the destination directory
     /// If file exists or another download is using it, appends (1), (2), etc. until unique
-    async fn get_unique_filename(destination: &PathBuf, filename: &str, db: &DownloadDatabase) -> String {
+    ///
+    /// `exclude` is the download currently *being renamed*, so it is not treated
+    /// as a collision with its own existing name.
+    async fn get_unique_filename(
+        destination: &PathBuf,
+        filename: &str,
+        db: &DownloadDatabase,
+        exclude: Option<Uuid>,
+    ) -> String {
         // Get all existing downloads in this destination
         let existing_downloads = db.load_all_downloads().await.unwrap_or_default();
         let existing_filenames: std::collections::HashSet<String> = existing_downloads
             .into_iter()
-            .filter(|d| d.destination == *destination)
+            .filter(|d| d.destination == *destination && Some(d.id) != exclude)
             .map(|d| d.filename)
             .collect();
-        
+
         let full_path = destination.join(filename);
         if !full_path.exists() && !existing_filenames.contains(filename) {
             return filename.to_string();
         }
-        
-        // Split filename into stem and extension
-        let path = std::path::Path::new(filename);
-        let stem = path.file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or(filename);
-        let extension = path.extension()
-            .and_then(|s| s.to_str());
-        
+
+        // Split filename into stem and extension. Uses our own splitter rather
+        // than `Path::extension`, which reads the `.1` of `app-v1.11.1` as an
+        // extension and so produced names like `app-v1.11 (1).1`.
+        let (stem, extension) = crate::filename::split_stem_ext(filename);
+
         // Try incrementing numbers until we find a unique name
         for i in 1..1000 {
             let new_filename = match extension {
@@ -218,7 +224,22 @@ impl DlmanCore {
             None => format!("{}_{}", stem, uuid_suffix),
         }
     }
-    
+
+    /// Resolve a collision-free filename inside `destination`.
+    ///
+    /// Callers that override a download's name after it has been created (for
+    /// example with a filename probed by the UI) should route it through here,
+    /// otherwise two downloads can be pointed at the same file. Pass the
+    /// download's own id as `exclude` so it does not collide with itself.
+    pub async fn unique_filename(
+        &self,
+        destination: &PathBuf,
+        filename: &str,
+        exclude: Option<Uuid>,
+    ) -> String {
+        Self::get_unique_filename(destination, filename, self.download_manager.db(), exclude).await
+    }
+
     /// Add a new download.
     ///
     /// When `auto_start` is true the download begins immediately.
@@ -243,17 +264,41 @@ impl DlmanCore {
         let parsed_url = url::Url::parse(url)
             .map_err(|_| DlmanError::InvalidUrl(url.to_string()))?;
 
-        // Extract filename from URL path
-        let filename = parsed_url.path_segments()
-            .and_then(|s| s.last())
-            .filter(|s| !s.is_empty())
-            .unwrap_or("download")
-            .to_string();
-        let filename = urlencoding::decode(&filename)
-            .map(|s| s.into_owned())
-            .unwrap_or(filename);
+        // Start from the URL's own path segment.
+        let mut filename = crate::filename::filename_from_url(&parsed_url)
+            .unwrap_or_else(|| crate::filename::DEFAULT_FILENAME.to_string());
 
-        let unique_filename = Self::get_unique_filename(&destination, &filename, self.download_manager.db()).await;
+        // A segment with no extension means the URL is not naming the file —
+        // `codeload.github.com/owner/repo/zip/refs/heads/main` is `main`, while
+        // the server's Content-Disposition says `repo-main.zip`. Ask before
+        // committing to a name; the probe also covers Content-Type. Callers that
+        // already know the name (the New Download dialog) overwrite it anyway,
+        // so this only costs a request on the path that would otherwise be wrong.
+        if crate::filename::split_stem_ext(&filename).1.is_none() {
+            match self.download_manager.probe_url(&parsed_url).await {
+                Ok(probed) if !probed.filename.trim().is_empty() => {
+                    if probed.filename != filename {
+                        info!(
+                            "[add_download] Resolved filename '{}' → '{}' from response headers",
+                            filename, probed.filename
+                        );
+                    }
+                    filename = probed.filename;
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    // Not fatal: an unreachable or auth-walled URL still gets the
+                    // URL-derived name, exactly as before.
+                    debug!(
+                        "[add_download] Could not probe '{}' for a better filename ({}), keeping '{}'",
+                        url, e, filename
+                    );
+                }
+            }
+        }
+
+        let unique_filename =
+            Self::get_unique_filename(&destination, &filename, self.download_manager.db(), None).await;
 
         let mut download = Download::new(url.to_string(), destination, queue_id);
         download.category_id = category_id;
@@ -995,7 +1040,8 @@ impl DlmanCore {
                 }
                 _ => {
                     let unique_filename =
-                        Self::get_unique_filename(&destination, &out_filename, self.download_manager.db()).await;
+                        Self::get_unique_filename(&destination, &out_filename, self.download_manager.db(), None)
+                            .await;
                     let mut download = Download::new(master_url.to_string(), destination.clone(), Uuid::nil());
                     download.filename = unique_filename.clone();
                     download.status = initial_status;
@@ -1015,7 +1061,8 @@ impl DlmanCore {
         } else {
             // Fresh download — create new record
             let unique_filename =
-                Self::get_unique_filename(&destination, &out_filename, self.download_manager.db()).await;
+                Self::get_unique_filename(&destination, &out_filename, self.download_manager.db(), None)
+                    .await;
             let mut download = Download::new(master_url.to_string(), destination.clone(), Uuid::nil());
             download.filename = unique_filename.clone();
             download.status = initial_status;
