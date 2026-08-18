@@ -72,13 +72,25 @@ pub async fn add_download(
     state
         .with_core_async(|core| async move { 
             let mut download = core.add_download(&url, dest_path, queue_uuid, category_uuid, cookies.clone(), auto_start).await?;
-            
+
             // Apply probed info if provided (filename, size from dialog probe)
             if let Some(info) = probed_info {
                 let mut updated = false;
-                if let Some(filename) = info.filename {
-                    download.filename = filename;
-                    updated = true;
+                // The dialog's filename is user-editable, so sanitize it, and run it
+                // through the collision check — assigning it straight through let two
+                // downloads point at the same file on disk.
+                if let Some(filename) = info
+                    .filename
+                    .as_deref()
+                    .and_then(dlman_core::filename::sanitize_filename)
+                {
+                    let filename = core
+                        .unique_filename(&download.destination, &filename, Some(download.id))
+                        .await;
+                    if filename != download.filename {
+                        download.filename = filename;
+                        updated = true;
+                    }
                 }
                 if let Some(size) = info.size {
                     download.size = Some(size);
@@ -137,9 +149,20 @@ pub async fn add_downloads_batch(
                         // Apply probed info if provided
                         if let Some(info) = req.probed_info {
                             let mut updated = false;
-                            if let Some(filename) = info.filename {
-                                download.filename = filename;
-                                updated = true;
+                            // Sanitized and de-duplicated for the same reason as the
+                            // single-download path above.
+                            if let Some(filename) = info
+                                .filename
+                                .as_deref()
+                                .and_then(dlman_core::filename::sanitize_filename)
+                            {
+                                let filename = core
+                                    .unique_filename(&download.destination, &filename, Some(download.id))
+                                    .await;
+                                if filename != download.filename {
+                                    download.filename = filename;
+                                    updated = true;
+                                }
                             }
                             if let Some(size) = info.size {
                                 download.size = Some(size);

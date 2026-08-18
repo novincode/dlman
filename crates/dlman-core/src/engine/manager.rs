@@ -183,10 +183,8 @@ impl DownloadManager {
         let status = response.status();
         if status.as_u16() == 401 || status.as_u16() == 403 {
             info!("URL requires authentication (HTTP {})", status.as_u16());
-            let filename = url.path_segments()
-                .and_then(|s| s.last())
-                .unwrap_or("download")
-                .to_string();
+            let filename = crate::filename::filename_from_url(url)
+                .unwrap_or_else(|| crate::filename::DEFAULT_FILENAME.to_string());
             return Ok(LinkInfo {
                 url: url.to_string(),
                 final_url: Some(response.url().to_string()),
@@ -205,9 +203,14 @@ impl DownloadManager {
             .get(reqwest::header::CONTENT_LENGTH)
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.parse().ok());
-        let content_type = response
+        let mut content_type = response
             .headers()
             .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string());
+        let mut content_disposition = response
+            .headers()
+            .get(reqwest::header::CONTENT_DISPOSITION)
             .and_then(|v| v.to_str().ok())
             .map(|s| s.to_string());
         let mut resumable = response
@@ -230,7 +233,24 @@ impl DownloadManager {
                 Ok(range_response) => {
                     let status = range_response.status();
                     info!("Partial GET response status: {}", status);
-                    
+
+                    // Some CDNs only name the file on GET, not on HEAD, so take
+                    // whatever the HEAD response didn't already tell us.
+                    if content_disposition.is_none() {
+                        content_disposition = range_response
+                            .headers()
+                            .get(reqwest::header::CONTENT_DISPOSITION)
+                            .and_then(|v| v.to_str().ok())
+                            .map(|s| s.to_string());
+                    }
+                    if content_type.is_none() {
+                        content_type = range_response
+                            .headers()
+                            .get(reqwest::header::CONTENT_TYPE)
+                            .and_then(|v| v.to_str().ok())
+                            .map(|s| s.to_string());
+                    }
+
                     // Check Content-Range header for total size: "bytes 0-0/12345"
                     if let Some(content_range) = range_response.headers().get(reqwest::header::CONTENT_RANGE) {
                         if let Ok(range_str) = content_range.to_str() {
@@ -276,22 +296,12 @@ impl DownloadManager {
             }
         }
         
-        let filename = response
-            .headers()
-            .get(reqwest::header::CONTENT_DISPOSITION)
-            .and_then(|v| v.to_str().ok())
-            .and_then(|v| {
-                v.split("filename=")
-                    .nth(1)
-                    .map(|s| s.trim_matches('"').to_string())
-            })
-            .unwrap_or_else(|| {
-                url.path_segments()
-                    .and_then(|s| s.last())
-                    .unwrap_or("download")
-                    .to_string()
-            });
-        
+        let filename = crate::filename::resolve_filename(
+            url,
+            content_disposition.as_deref(),
+            content_type.as_deref(),
+        );
+
         Ok(LinkInfo {
             url: url.to_string(),
             final_url: Some(final_url),
