@@ -606,33 +606,9 @@ pub async fn open_folder(path: String) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn open_file(path: String) -> Result<(), String> {
-    let path = PathBuf::from(&path);
-    
-    #[cfg(target_os = "macos")]
-    {
-        std::process::Command::new("open")
-            .arg(&path)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-    }
-    
-    #[cfg(target_os = "windows")]
-    {
-        std::process::Command::new("cmd")
-            .args(["/C", "start", "", &path.to_string_lossy()])
-            .spawn()
-            .map_err(|e| e.to_string())?;
-    }
-    
-    #[cfg(target_os = "linux")]
-    {
-        std::process::Command::new("xdg-open")
-            .arg(&path)
-            .spawn()
-            .map_err(|e| e.to_string())?;
-    }
-    
-    Ok(())
+    // Hand the path to the OS's default handler: ShellExecuteW on Windows,
+    // `open` on macOS, xdg-open and friends on Linux.
+    open::that_detached(PathBuf::from(&path)).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

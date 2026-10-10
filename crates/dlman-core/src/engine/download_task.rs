@@ -5,6 +5,7 @@
 
 use crate::engine::{DownloadDatabase, RateLimiter, SegmentWorker};
 use crate::error::DlmanError;
+use crate::request_scope::may_send_site_auth;
 use dlman_types::{CoreEvent, Download, DownloadStatus, Segment, TempStorageSettings};
 use reqwest::Client;
 use std::path::{Path, PathBuf};
@@ -201,6 +202,18 @@ impl DownloadTask {
     /// Uses final_url (after redirects) if available, otherwise the original url
     fn effective_url(&self) -> &str {
         self.download.final_url.as_deref().unwrap_or(&self.download.url)
+    }
+
+    /// Credentials and cookies to send with a request to `url`.
+    ///
+    /// Both belong to the URL the user added, so they are left off once a
+    /// redirect has moved the download to a different host.
+    fn site_auth_for(&self, url: &str) -> (Option<(String, String)>, Option<String>) {
+        if may_send_site_auth(&self.download.url, url) {
+            (self.credentials.clone(), self.download.cookies.clone())
+        } else {
+            (None, None)
+        }
     }
     
     /// Get the paused flag for external control
@@ -403,6 +416,7 @@ impl DownloadTask {
         
         // Use final_url if available (after redirects), otherwise use original url
         let url = self.effective_url().to_string();
+        let (credentials, cookies) = self.site_auth_for(&url);
         
         let worker = SegmentWorker::new_with_credentials(
             self.download.id,
@@ -416,8 +430,8 @@ impl DownloadTask {
             self.paused.clone(),
             self.cancelled.clone(),
             self.total_downloaded.clone(),
-            self.credentials.clone(),
-            self.download.cookies.clone(),
+            credentials,
+            cookies,
         );
         
         // Start progress reporter
@@ -484,6 +498,7 @@ impl DownloadTask {
             // Use final_url if available (after redirects), otherwise use original url
             // This avoids re-resolving redirects for every segment request
             let url = self.effective_url().to_string();
+            let (credentials, cookies) = self.site_auth_for(&url);
             
             // Spawn a worker for each segment that needs downloading
             for segment in &segments_to_download {
@@ -499,8 +514,8 @@ impl DownloadTask {
                     self.paused.clone(),
                     self.cancelled.clone(),
                     self.total_downloaded.clone(),
-                    self.credentials.clone(),
-                    self.download.cookies.clone(),
+                    credentials.clone(),
+                    cookies.clone(),
                 );
                 
                 let segment_index = segment.index;
@@ -760,8 +775,12 @@ impl DownloadTask {
                 .get(probe_url)
                 .header(reqwest::header::RANGE, "bytes=0-0");
             
-            // Apply cookies to the fallback probe too
-            if let Some(ref cookies) = self.download.cookies {
+            // Apply credentials and cookies to the fallback probe too
+            let (credentials, cookies) = self.site_auth_for(probe_url);
+            if let Some((ref username, ref password)) = credentials {
+                range_req = range_req.basic_auth(username, Some(password));
+            }
+            if let Some(ref cookies) = cookies {
                 range_req = range_req.header(reqwest::header::COOKIE, cookies);
             }
             

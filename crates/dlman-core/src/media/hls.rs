@@ -15,6 +15,7 @@
 //! - Live streams (only VOD)
 
 use crate::error::DlmanError;
+use crate::request_scope::scope_headers;
 use crate::media::ProtocolHandler;
 use dlman_types::{MediaProtocol, MediaVariant};
 use url::Url;
@@ -257,7 +258,8 @@ impl ProtocolHandler for HlsHandler {
         if Self::is_master_playlist(&content) {
             let variants = Self::parse_master_playlist(&content, &base_url);
             if let Some(first) = variants.first() {
-                let media_content = self.fetch_playlist(&first.url, headers).await?;
+                let headers = scope_headers(headers, &variant.url, &first.url);
+                let media_content = self.fetch_playlist(&first.url, &headers).await?;
                 let media_base =
                     Url::parse(&first.url).map_err(|e| DlmanError::InvalidUrl(e.to_string()))?;
                 return Ok(Self::parse_media_playlist(&media_content, &media_base));

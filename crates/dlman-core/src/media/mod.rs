@@ -21,6 +21,7 @@ pub mod hls;
 pub mod dash;
 
 use crate::error::DlmanError;
+use crate::request_scope::scope_headers;
 use dlman_types::{DetectedMedia, MediaProtocol, MediaVariant};
 
 // ============================================================================
@@ -118,7 +119,9 @@ impl MediaResolver {
         media: &DetectedMedia,
         variant: &MediaVariant,
     ) -> Result<Vec<String>, DlmanError> {
-        let headers = self.build_headers(media);
+        // Cookies were captured for the master playlist; a variant hosted
+        // elsewhere is fetched without them.
+        let headers = scope_headers(&self.build_headers(media), &media.master_url, &variant.url);
 
         match media.protocol {
             MediaProtocol::Direct => Ok(vec![variant.url.clone()]),

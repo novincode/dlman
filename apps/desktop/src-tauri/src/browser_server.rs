@@ -12,15 +12,19 @@
 use axum::{
     extract::{
         ws::{Message, WebSocket},
-        State, WebSocketUpgrade,
+        Request, State, WebSocketUpgrade,
     },
-    http::{header, Method},
-    response::IntoResponse,
+    http::{header, Method, StatusCode},
+    middleware::{self, Next},
+    response::{IntoResponse, Response},
     routing::{get, post},
     Router,
 };
+use chrono::{DateTime, Utc};
 use dlman_core::DlmanCore;
-use dlman_types::{CoreEvent, Download, MediaDownloadRequest, MediaDownloadResponse, MediaProtocol};
+use dlman_types::{
+    CoreEvent, Download, DownloadStatus, MediaDownloadRequest, MediaDownloadResponse, MediaProtocol,
+};
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use std::net::SocketAddr;
@@ -28,6 +32,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::{broadcast, mpsc, RwLock};
 use tower_http::cors::{Any, CorsLayer};
+use uuid::Uuid;
 
 // ============================================================================
 // Request/Response types
@@ -70,6 +75,53 @@ pub struct StatusResponse {
 pub struct ControlResponse {
     pub success: bool,
     pub error: Option<String>,
+}
+
+/// Public projection of [`Download`] for the browser-extension API.
+///
+/// The extension only needs the fields below, so the response is built from an explicit list
+/// instead of serialising the internal model. Internal fields such as `cookies` and
+/// `destination` stay out of the API, and a field added to [`Download`] later only shows up
+/// here if it is added below as well.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DownloadSummary {
+    pub id: Uuid,
+    pub url: String,
+    pub final_url: Option<String>,
+    pub filename: String,
+    pub size: Option<u64>,
+    pub downloaded: u64,
+    pub status: DownloadStatus,
+    pub queue_id: Uuid,
+    pub category_id: Option<Uuid>,
+    pub color: Option<String>,
+    pub error: Option<String>,
+    pub speed_limit: Option<u64>,
+    pub retry_count: u32,
+    pub created_at: DateTime<Utc>,
+    pub completed_at: Option<DateTime<Utc>>,
+}
+
+impl From<&Download> for DownloadSummary {
+    fn from(d: &Download) -> Self {
+        Self {
+            id: d.id,
+            url: d.url.clone(),
+            final_url: d.final_url.clone(),
+            filename: d.filename.clone(),
+            size: d.size,
+            downloaded: d.downloaded,
+            status: d.status,
+            queue_id: d.queue_id,
+            category_id: d.category_id,
+            color: d.color.clone(),
+            error: d.error.clone(),
+            speed_limit: d.speed_limit,
+            retry_count: d.retry_count,
+            created_at: d.created_at,
+            completed_at: d.completed_at,
+        }
+    }
 }
 
 // ============================================================================
@@ -160,6 +212,8 @@ impl BrowserServer {
             // WebSocket for real-time events (optional)
             .route("/ws", get(handle_websocket))
             .layer(cors)
+            .layer(middleware::from_fn(require_extension_origin))
+            .layer(middleware::from_fn(require_loopback_host))
             .with_state(shared_state);
 
         let addr = SocketAddr::from(([127, 0, 0, 1], self.port));
@@ -182,6 +236,67 @@ impl BrowserServer {
             let _ = tx.send(());
         }
     }
+}
+
+// ============================================================================
+// Origin guard
+// ============================================================================
+
+/// Only serves requests from the browser extension.
+///
+/// The extension is identified by its `Origin` scheme rather than a fixed id, because Firefox
+/// assigns a new `moz-extension://` UUID per installation.
+///
+/// Requests without an `Origin` are allowed: Chrome may omit it for fetches covered by the
+/// extension's host permissions.
+async fn require_extension_origin(request: Request, next: Next) -> Result<Response, StatusCode> {
+    if let Some(origin) = request.headers().get(header::ORIGIN) {
+        let origin = origin.to_str().unwrap_or_default();
+        let is_extension = origin.starts_with("chrome-extension://")
+            || origin.starts_with("moz-extension://")
+            || origin.starts_with("safari-web-extension://");
+        if !is_extension {
+            tracing::warn!("browser server: rejected request from origin {}", origin);
+            return Err(StatusCode::FORBIDDEN);
+        }
+    }
+    Ok(next.run(request).await)
+}
+
+/// Only serves requests addressed to this machine by a loopback name.
+///
+/// The server binds `127.0.0.1` and the extension calls it as `localhost`, so the `Host` header
+/// is always one of `localhost`, `127.0.0.1` or `[::1]` (with the port). Anything else gets 403.
+async fn require_loopback_host(request: Request, next: Next) -> Result<Response, StatusCode> {
+    let host = request
+        .headers()
+        .get(header::HOST)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    if !is_loopback_host(host) {
+        tracing::warn!("browser server: rejected request for host {:?}", host);
+        return Err(StatusCode::FORBIDDEN);
+    }
+    Ok(next.run(request).await)
+}
+
+/// Whether a `Host` header value names this machine: `localhost`, `127.0.0.1` or `[::1]`,
+/// optionally followed by `:port`.
+fn is_loopback_host(host: &str) -> bool {
+    let name = if host.starts_with('[') {
+        match host.find(']') {
+            Some(end) => &host[..=end],
+            None => return false,
+        }
+    } else {
+        host.split(':').next().unwrap_or_default()
+    };
+    let rest = &host[name.len()..];
+    let port_ok = rest.is_empty()
+        || rest
+            .strip_prefix(':')
+            .is_some_and(|port| !port.is_empty() && port.bytes().all(|b| b.is_ascii_digit()));
+    port_ok && ["localhost", "127.0.0.1", "[::1]"].iter().any(|n| n.eq_ignore_ascii_case(name))
 }
 
 // ============================================================================
@@ -334,8 +449,13 @@ async fn handle_get_downloads(
 ) -> impl axum::response::IntoResponse {
     let state = state.read().await;
     match state.core.get_all_downloads().await {
-        Ok(downloads) => axum::Json(downloads),
-        Err(_) => axum::Json(Vec::<Download>::new()),
+        Ok(downloads) => axum::Json(
+            downloads
+                .iter()
+                .map(DownloadSummary::from)
+                .collect::<Vec<_>>(),
+        ),
+        Err(_) => axum::Json(Vec::<DownloadSummary>::new()),
     }
 }
 
@@ -625,4 +745,70 @@ async fn handle_ws_connection(socket: WebSocket, state: SharedState) {
     // Cleanup
     forward_task.abort();
     send_task.abort();
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[test]
+    fn loopback_host_names_are_accepted() {
+        for host in ["localhost:7899", "LOCALHOST:7899", "127.0.0.1:7899", "[::1]:7899", "localhost"] {
+            assert!(is_loopback_host(host), "{host}");
+        }
+    }
+
+    #[test]
+    fn other_host_names_are_refused() {
+        for host in [
+            "",
+            "example.com:7899",
+            "localhost.example.com:7899",
+            "127.0.0.1.example.com",
+            "localhost:7899:1",
+            "localhost:",
+            "localhost:abc",
+            "[::1",
+            "[::2]:7899",
+            "0.0.0.0:7899",
+        ] {
+            assert!(!is_loopback_host(host), "{host}");
+        }
+    }
+
+    /// The download list carries only the fields the extension uses. Guards against
+    /// `DownloadSummary` being replaced by `Download`.
+    #[test]
+    fn download_summary_omits_cookies_and_destination() {
+        let mut download = Download::new(
+            "https://example.com/archive.zip".to_string(),
+            PathBuf::from("/home/someone/Downloads/archive.zip"),
+            Uuid::new_v4(),
+        );
+        download.cookies = Some("session=super-secret-value".to_string());
+
+        let json =
+            serde_json::to_string(&DownloadSummary::from(&download)).expect("summary serialises");
+
+        assert!(!json.contains("cookies"), "cookie field leaked: {json}");
+        assert!(
+            !json.contains("super-secret-value"),
+            "cookie value leaked: {json}"
+        );
+        assert!(
+            !json.contains("destination"),
+            "destination field leaked: {json}"
+        );
+        assert!(!json.contains("/home/someone"), "local path leaked: {json}");
+
+        // The fields the extension actually consumes must survive the projection.
+        assert!(json.contains("archive.zip"));
+        assert!(json.contains("\"downloaded\""));
+        assert!(json.contains("\"status\""));
+    }
 }
