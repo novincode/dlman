@@ -258,7 +258,28 @@ impl DownloadTask {
         // If no segments, probe URL and initialize them
         if self.download.segments.is_empty() {
             info!("No segments found, initializing...");
-            let supports_range = self.probe_url().await?;
+            let supports_range = match self.probe_url().await {
+                Ok(s) => s,
+                Err(e) => {
+                    // Same ending as a failed segment: the row says Failed (it used to stay
+                    // "Downloading" forever and hold a queue slot).
+                    if let DlmanError::AuthenticationRequired { ref domain, ref url, status } = e {
+                        let _ = self.event_tx.send(CoreEvent::CredentialRequired {
+                            download_id: self.download.id,
+                            domain: domain.clone(),
+                            url: url.clone(),
+                            status_code: status,
+                        });
+                    }
+                    error!("Probe failed: {} - {}", self.download.filename, e);
+                    let msg = e.to_string();
+                    self.download.status = DownloadStatus::Failed;
+                    self.download.error = Some(msg.clone());
+                    self.db.update_download_status(self.download.id, DownloadStatus::Failed, Some(msg.clone())).await?;
+                    self.emit_status_change(DownloadStatus::Failed, Some(msg)).await;
+                    return Err(e);
+                }
+            };
             
             // Check for pause/cancel after probe (which might have taken time)
             if self.cancelled.load(Ordering::Acquire) {
@@ -418,7 +439,7 @@ impl DownloadTask {
             self.total_downloaded.clone(),
             self.credentials.clone(),
             self.download.cookies.clone(),
-        );
+        ).with_referrer(self.download.referrer.clone());
         
         // Start progress reporter
         let progress_handle = self.spawn_progress_reporter();
@@ -501,7 +522,7 @@ impl DownloadTask {
                     self.total_downloaded.clone(),
                     self.credentials.clone(),
                     self.download.cookies.clone(),
-                );
+                ).with_referrer(self.download.referrer.clone());
                 
                 let segment_index = segment.index;
                 join_set.spawn(async move { 
@@ -710,8 +731,31 @@ impl DownloadTask {
         if let Some(ref cookies) = self.download.cookies {
             request = request.header(reqwest::header::COOKIE, cookies);
         }
+        if let Some(ref referrer) = self.download.referrer {
+            request = request.header(reqwest::header::REFERER, referrer);
+        }
         
-        let response = request.send().await?;
+        // A fresh googlevideo link answers 403 for its first few seconds (tested:
+        // 403 at t+0s, 206 from t+4s), which isn't a login wall: wait it out.
+        let fresh_403 = url::Url::parse(&self.download.url)
+            .ok()
+            .and_then(|u| u.host_str().map(|h| h.ends_with(".googlevideo.com")))
+            .unwrap_or(false);
+        let retry = if fresh_403 { request.try_clone() } else { None };
+        let mut response = request.send().await?;
+        if let Some(retry) = retry {
+            for delay in [3u64, 5, 8] {
+                if response.status().as_u16() != 403 || self.cancelled.load(Ordering::Acquire) {
+                    break;
+                }
+                info!("googlevideo 403 on a fresh link, retrying in {}s", delay);
+                tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
+                match retry.try_clone() {
+                    Some(r) => response = r.send().await?,
+                    None => break,
+                }
+            }
+        }
         
         // Check for authentication required
         let status = response.status();
@@ -763,6 +807,9 @@ impl DownloadTask {
             // Apply cookies to the fallback probe too
             if let Some(ref cookies) = self.download.cookies {
                 range_req = range_req.header(reqwest::header::COOKIE, cookies);
+            }
+            if let Some(ref referrer) = self.download.referrer {
+                range_req = range_req.header(reqwest::header::REFERER, referrer);
             }
             
             match range_req.send().await
@@ -998,6 +1045,35 @@ impl DownloadTask {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A URL reqwest can't build a request for (no host) must fail, not abort the app.
+    #[tokio::test]
+    async fn probe_hostless_url_errors_instead_of_panicking() {
+        let dir = std::env::temp_dir().join(format!("dlman-probe-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (tx, _) = broadcast::channel(8);
+        let db = DownloadDatabase::new(dir.join("t.db")).await.unwrap();
+        for url in ["mailto:a@b.c", "https://rr1.googlevideo.com/x\nbad"] {
+            let mut d = Download::new(url.to_string(), dir.clone(), uuid::Uuid::nil());
+            d.referrer = Some("bad\nvalue".into());
+            let mut task = DownloadTask::new(
+                d, dir.clone(), Client::new(), RateLimiter::unlimited(), db.clone(), tx.clone(),
+                Arc::new(AtomicBool::new(false)), Arc::new(AtomicBool::new(false)), 1, 0, 0,
+            );
+            assert!(task.probe_url().await.is_err(), "{url}");
+        }
+        // Through run(): the row ends Failed, not stuck at Downloading.
+        let d = Download::new("mailto:a@b.c".to_string(), dir.clone(), uuid::Uuid::nil());
+        let id = d.id;
+        db.upsert_download(&d).await.unwrap();
+        let task = DownloadTask::new(
+            d, dir.clone(), Client::new(), RateLimiter::unlimited(), db.clone(), tx.clone(),
+            Arc::new(AtomicBool::new(false)), Arc::new(AtomicBool::new(false)), 1, 0, 0,
+        );
+        assert!(task.run().await.is_err());
+        assert_eq!(db.load_download(id).await.unwrap().unwrap().status, DownloadStatus::Failed);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     fn policy(mode: &str, custom: Option<&str>) -> TempStorageSettings {
         TempStorageSettings {

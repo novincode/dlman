@@ -43,6 +43,8 @@ pub struct SegmentWorker {
     credentials: Option<(String, String)>, // (username, password)
     /// Optional browser cookies for session-based authentication
     cookies: Option<String>,
+    /// Optional Referer header
+    referrer: Option<String>,
 }
 
 impl SegmentWorker {
@@ -79,6 +81,7 @@ impl SegmentWorker {
             downloaded_bytes,
             credentials: None,
             cookies: None,
+            referrer: None,
         }
     }
     
@@ -117,7 +120,14 @@ impl SegmentWorker {
             downloaded_bytes,
             credentials,
             cookies,
+            referrer: None,
         }
+    }
+
+    /// Send this Referer with every segment request.
+    pub fn with_referrer(mut self, referrer: Option<String>) -> Self {
+        self.referrer = referrer;
+        self
     }
     
     /// Run the segment download
@@ -213,6 +223,9 @@ impl SegmentWorker {
         // Apply browser cookies if available (session-based auth)
         if let Some(ref cookies) = self.cookies {
             request = request.header(reqwest::header::COOKIE, cookies);
+        }
+        if let Some(ref referrer) = self.referrer {
+            request = request.header(reqwest::header::REFERER, referrer);
         }
         
         let response = request.send().await?;

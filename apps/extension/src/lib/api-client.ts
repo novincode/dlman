@@ -351,6 +351,19 @@ export class DlmanClient {
     }
   }
 
+  /** YouTube / Facebook / TikTok: list qualities, or download one (desktop resolves the page). */
+  async social(action: 'resolve' | 'download', body: { url: string; format_id?: string }): Promise<any> {
+    const response = await fetch(`${this.baseUrl}/api/social/${action}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      // Resolving fetches the site's page/API from the desktop app.
+      signal: AbortSignal.timeout(150_000), // > the desktop's worst case (yt-dlp 30s ×2 + page 20s ×3)
+    });
+    if (response.status === 404) throw new Error('This DLMan build has no YouTube/Facebook/TikTok support');
+    return response.json();
+  }
+
   /**
    * Send a media download request to the desktop app.
    * For direct files, opens the download dialog.

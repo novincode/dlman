@@ -17,6 +17,7 @@ mod engine;
 mod error;
 pub mod filename;
 pub mod media;
+pub mod social;
 mod queue;
 mod scheduler;
 mod storage;
@@ -323,6 +324,238 @@ impl DlmanCore {
 
         Ok(download)
     }
+
+    /// A YouTube / Facebook / TikTok video as one finished file: the page is
+    /// resolved again here (fresh, short-lived media URLs) and the chosen format
+    /// is queued like any download. YouTube above 360p comes as a video and an
+    /// audio track: both are downloaded, then joined with ffmpeg (`-c copy`) and
+    /// the list keeps one entry.
+    pub async fn add_social_download(
+        &self,
+        page: &str,
+        format_id: &str,
+        destination: PathBuf,
+        queue_id: Uuid,
+    ) -> Result<Vec<Download>, DlmanError> {
+        let video = social::resolve(page).await?;
+        let format = video
+            .formats
+            .iter()
+            .find(|f| f.id == format_id)
+            .cloned()
+            .ok_or_else(|| DlmanError::Unknown("That quality is no longer offered — open the menu again".into()))?;
+        let stem = crate::filename::sanitize_filename(&video.title).unwrap_or_else(|| "video".into());
+        let final_name = self.unique_filename(&destination, &format!("{stem}.{}", format.ext), None).await;
+
+        if format.extract_audio {
+            // Facebook / TikTok have no separate audio file: download the (small) video
+            // under the .m4a name, then keep only its sound.
+            let ffmpeg = social::find_tool("ffmpeg").ok_or_else(|| {
+                DlmanError::Unknown("ffmpeg is needed for audio only (brew install ffmpeg)".into())
+            })?;
+            let rx = self.subscribe();
+            let d = self.add_social_part(&format.video_url, &destination, queue_id, final_name, &video).await?;
+            // ponytail: like the YouTube join, this waits in memory — quit DLMan mid-download
+            // and the .m4a holds the whole video. Persist the job if that bites.
+            self.spawn_social_extract(rx, ffmpeg, d.clone());
+            return Ok(vec![d]);
+        }
+        let Some(audio_url) = format.audio_url.clone() else {
+            let d = self.add_social_part(&format.video_url, &destination, queue_id, final_name, &video).await?;
+            return Ok(vec![d]);
+        };
+        let ffmpeg = social::find_tool("ffmpeg").ok_or_else(|| {
+            DlmanError::Unknown("ffmpeg is needed to join YouTube video + audio (brew install ffmpeg), or pick the single-file quality".into())
+        })?;
+        // One entry in the list: the video, under the final name. The audio track
+        // downloads alongside it into the scratch dir and is joined in when the video completes.
+        let rx = self.subscribe(); // before the video starts, so its completion isn't missed
+        let v = self.add_social_part(&format.video_url, &destination, queue_id, final_name, &video).await?;
+        // ponytail: the join waits in memory — quit DLMan mid-download and the file
+        // stays video-only. Persist a "merge" job if that bites.
+        self.spawn_social_merge(rx, ffmpeg, v.clone(), audio_url, page.to_string(), format_id.to_string());
+        Ok(vec![v])
+    }
+
+    async fn add_social_part(
+        &self,
+        url: &str,
+        destination: &PathBuf,
+        queue_id: Uuid,
+        filename: String,
+        video: &social::SocialVideo,
+    ) -> Result<Download, DlmanError> {
+        let mut d = Download::new(url.to_string(), destination.clone(), queue_id);
+        d.filename = filename;
+        d.status = DownloadStatus::Queued;
+        d.cookies = video.cookies.clone();
+        d.referrer = video.referrer.clone();
+        self.download_manager.db().upsert_download(&d).await?;
+        self.emit(CoreEvent::DownloadAdded { download: d.clone() });
+        let core = self.clone();
+        let id = d.id;
+        tokio::spawn(async move {
+            if let Err(e) = core.resume_download(id).await {
+                tracing::warn!("Failed to start social download: {}", e);
+            }
+        });
+        Ok(d)
+    }
+
+    fn spawn_social_merge(&self, mut rx: broadcast::Receiver<CoreEvent>, ffmpeg: PathBuf, video: Download, audio_url: String, page: String, format_id: String) {
+        let core = self.clone();
+        tokio::spawn(async move {
+            let audio = video.destination.join(".dlman-cache").join(format!("{}.audio.m4a", video.id));
+            let fail = |e: String| {
+                let core = core.clone();
+                let id = video.id;
+                let name = video.filename.clone();
+                async move {
+                    tracing::error!("[social] {}", e);
+                    // On the entry itself, not only the console. It stays Completed — the file
+                    // is real and plays — because Failed would offer a Retry that can't add the
+                    // audio back (the segments are merged and gone).
+                    let msg = format!("No sound: {e}. The video was kept without audio.");
+                    if let Ok(Some(mut d)) = core.download_manager.db().load_download(id).await {
+                        d.error = Some(msg.clone());
+                        let _ = core.download_manager.db().upsert_download(&d).await;
+                        core.emit(CoreEvent::DownloadUpdated { download: d });
+                    }
+                    core.emit(CoreEvent::Error { message: format!("{name}: {e}"), context: Some("The video was kept without sound.".into()) });
+                }
+            };
+            // Wait for the video entry to finish (paused/failed/cancelled: a resume or
+            // retry still ends in Completed). The audio is fetched after, not alongside:
+            // a cancelled video that's never resumed then costs no audio traffic, and the
+            // track is small next to the video.
+            // ponytail: one task + receiver per unfinished social video until the app quits;
+            // persist a merge job if that ever adds up.
+            let done = loop {
+                match rx.recv().await {
+                    Ok(CoreEvent::DownloadStatusChanged { id, status, .. }) if id == video.id => match status {
+                        DownloadStatus::Completed => break true,
+                        DownloadStatus::Deleted => break false,
+                        _ => {}
+                    },
+                    Ok(CoreEvent::DownloadRemoved { id }) if id == video.id => break false,
+                    Err(broadcast::error::RecvError::Lagged(_)) => {
+                        match core.download_manager.db().load_download(video.id).await {
+                            Ok(Some(d)) if d.status == DownloadStatus::Completed => break true,
+                            Ok(None) => break false,
+                            _ => {}
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Closed) => break false,
+                    _ => {}
+                }
+            };
+            if !done {
+                return;
+            }
+            // Fresh audio link: the one from the menu may have expired while the video downloaded.
+            let audio_url = match social::resolve(&page).await.ok().and_then(|v| {
+                v.formats.into_iter().find(|f| f.id == format_id).and_then(|f| f.audio_url)
+            }) {
+                Some(u) => u,
+                None => audio_url,
+            };
+            let a = social::fetch_ranged(&audio_url, &audio).await;
+            match a {
+                Err(e) => fail(format!("audio track failed: {e}")).await,
+                Ok(()) => {
+                    if let Err(e) = core.join_social_audio(&ffmpeg, &video, &audio).await {
+                        fail(format!("couldn't join the audio: {e}")).await;
+                    }
+                }
+            }
+            let _ = tokio::fs::remove_file(&audio).await;
+        });
+    }
+
+    /// Wait for `d` to complete, then replace the file with just its sound.
+    fn spawn_social_extract(&self, mut rx: broadcast::Receiver<CoreEvent>, ffmpeg: PathBuf, d: Download) {
+        let core = self.clone();
+        tokio::spawn(async move {
+            let done = loop {
+                match rx.recv().await {
+                    Ok(CoreEvent::DownloadStatusChanged { id, status, .. }) if id == d.id => match status {
+                        DownloadStatus::Completed => break true,
+                        DownloadStatus::Deleted => break false,
+                        _ => {}
+                    },
+                    Ok(CoreEvent::DownloadRemoved { id }) if id == d.id => break false,
+                    Err(broadcast::error::RecvError::Lagged(_)) => match core.download_manager.db().load_download(d.id).await {
+                        Ok(Some(x)) if x.status == DownloadStatus::Completed => break true,
+                        Ok(None) => break false,
+                        _ => {}
+                    },
+                    Err(broadcast::error::RecvError::Closed) => break false,
+                    _ => {}
+                }
+            };
+            if !done {
+                return;
+            }
+            if let Err(e) = core.ffmpeg_in_place(&ffmpeg, d.id, &["-vn", "-c:a", "copy"], None).await {
+                tracing::error!("[social] audio only: {e}");
+                if let Ok(Some(mut x)) = core.download_manager.db().load_download(d.id).await {
+                    x.error = Some(format!("Couldn't keep only the sound: {e}. The file is the full video."));
+                    let _ = core.download_manager.db().upsert_download(&x).await;
+                    core.emit(CoreEvent::DownloadUpdated { download: x });
+                }
+            }
+        });
+    }
+
+    async fn join_social_audio(&self, ffmpeg: &PathBuf, video: &Download, audio: &PathBuf) -> Result<(), DlmanError> {
+        self.ffmpeg_in_place(ffmpeg, video.id, &["-map", "0:v:0", "-map", "1:a:0", "-c", "copy"], Some(audio)).await
+    }
+
+    /// Run ffmpeg on entry `id`'s finished file (plus `extra` as a second input) into
+    /// a temp file, then swap it in and update the entry's size. Nothing happens if
+    /// the entry or its file was removed meanwhile.
+    async fn ffmpeg_in_place(&self, ffmpeg: &PathBuf, id: Uuid, args: &[&str], extra: Option<&PathBuf>) -> Result<(), DlmanError> {
+        let Some(d) = self.download_manager.db().load_download(id).await? else { return Ok(()) };
+        let file = d.destination.join(&d.filename);
+        let ext = crate::filename::split_stem_ext(&d.filename).1.unwrap_or("mp4");
+        let tmp = d.destination.join(".dlman-cache").join(format!("{}.out.{ext}", d.id));
+        tokio::fs::create_dir_all(tmp.parent().unwrap()).await?;
+        let mut cmd = tokio::process::Command::new(ffmpeg);
+        // "file:" so no path can read as an ffmpeg option or protocol.
+        let f = |p: &std::path::Path| { let mut s = std::ffi::OsString::from("file:"); s.push(p); s };
+        cmd.args(["-nostdin", "-y", "-loglevel", "error", "-i"]).arg(f(&file));
+        if let Some(x) = extra {
+            cmd.arg("-i").arg(f(x));
+        }
+        let out = cmd.args(args).args(["-movflags", "+faststart"]).arg(f(&tmp)).kill_on_drop(true).output().await?;
+        if !out.status.success() {
+            let _ = tokio::fs::remove_file(&tmp).await;
+            let msg = String::from_utf8_lossy(&out.stderr);
+            if msg.contains("does not contain any stream") || msg.contains("matches no streams") {
+                return Err(DlmanError::Unknown("the video has no sound track".into()));
+            }
+            return Err(DlmanError::Unknown(format!("ffmpeg: {}", msg.trim().lines().last().unwrap_or("failed"))));
+        }
+        // Removed (or its file deleted) while ffmpeg ran: drop the result, don't bring it back.
+        let Some(mut d) = self.download_manager.db().load_download(id).await?.filter(|_| file.exists()) else {
+            let _ = tokio::fs::remove_file(&tmp).await;
+            return Ok(());
+        };
+        if let Err(e) = tokio::fs::rename(&tmp, &file).await {
+            let _ = tokio::fs::remove_file(&tmp).await;
+            return Err(e.into());
+        }
+        let _ = tokio::fs::remove_dir(tmp.parent().unwrap()).await; // only if empty
+        if let Ok(m) = tokio::fs::metadata(&file).await {
+            d.size = Some(m.len());
+            d.downloaded = m.len();
+        }
+        self.download_manager.db().upsert_download(&d).await?;
+        self.emit(CoreEvent::DownloadUpdated { download: d });
+        info!("[social] ffmpeg done: {:?}", file);
+        Ok(())
+    }
+
 
     /// Convenience alias — adds a download without starting it.
     pub async fn add_download_queued(

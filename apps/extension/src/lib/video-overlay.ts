@@ -20,7 +20,7 @@ const dismissed = new Set<string>();
 // Styles (inside Shadow DOM — fully isolated from host page)
 // ============================================================================
 
-function shadowCSS(): string {
+export function shadowCSS(): string {
   return `
 :host{all:initial;position:fixed;z-index:${Z};display:block;pointer-events:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif}
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -65,11 +65,11 @@ function shadowCSS(): string {
 // ============================================================================
 
 /** Small download arrow for the logo badge */
-function logoSvg(): string {
+export function logoSvg(): string {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
 }
 
-function chevSvg(): string {
+export function chevSvg(): string {
   return `<svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
 }
 
@@ -77,7 +77,7 @@ function chevSvg(): string {
 // Helpers
 // ============================================================================
 
-function fmtSize(b: number): string {
+export function fmtSize(b: number): string {
   if (b < 1024) return `${b} B`;
   if (b < 1048576) return `${(b / 1024).toFixed(0)} KB`;
   if (b < 1073741824) return `${(b / 1048576).toFixed(1)} MB`;

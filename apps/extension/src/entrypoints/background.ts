@@ -769,6 +769,7 @@ export default defineBackground(() => {
     links?: string[];
     media?: DetectedMedia;
     request?: MediaDownloadRequest;
+    format_id?: string;
   }
 
   browser.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
@@ -864,6 +865,25 @@ export default defineBackground(() => {
         } else {
           sendResponse({ ok: true });
         }
+        return true;
+
+      case 'social-resolve':
+      case 'social-download':
+        // YouTube / Facebook / TikTok button → DLMan desktop resolves + downloads.
+        // Only the page link is sent; never the user's cookies.
+        (async () => {
+          try {
+            const client = getDlmanClient({ port: currentSettings?.port || 7899 });
+            sendResponse(await client.social(
+              msg.type === 'social-resolve' ? 'resolve' : 'download',
+              { url: msg.url || '', format_id: msg.format_id },
+            ));
+          } catch (error) {
+            const m = (error as Error).message;
+            const timeout = (error as Error).name === 'TimeoutError';
+            sendResponse({ success: false, error: m.includes('no YouTube') ? m : timeout ? 'DLMan took too long — try again' : 'DLMan is not running — open the DLMan app' });
+          }
+        })();
         return true;
 
       case 'media-detected':
