@@ -26,9 +26,27 @@ pub struct SocialFormat {
     /// Separate audio track to merge with `video_url` (YouTube above 360p).
     #[serde(skip)]
     pub audio_url: Option<String>,
-    /// Extension of `video_url`'s file ("mp4" / "m4a").
+    /// Extension of the finished file ("mp4" / "m4a").
     #[serde(skip)]
     pub ext: String,
+    /// `video_url` is a video: keep only its sound (ffmpeg `-vn -c:a copy`) — the
+    /// audio-only choice where the site has no separate audio file.
+    #[serde(skip)]
+    pub extract_audio: bool,
+}
+
+impl SocialFormat {
+    fn audio_from(video: &SocialFormat, id: &str) -> SocialFormat {
+        SocialFormat {
+            id: id.into(),
+            label: "Audio only · M4A".into(),
+            size: None,
+            video_url: video.video_url.clone(),
+            audio_url: None,
+            ext: "m4a".into(),
+            extract_audio: true,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -281,17 +299,22 @@ fn tiktok_from_ytdlp(j: &Value) -> Option<SocialVideo> {
         .collect::<Vec<_>>()
         .join("; ");
     let title = j["title"].as_str().or(j["description"].as_str()).unwrap_or("TikTok video");
+    let play = SocialFormat {
+        id: "tt-play".into(),
+        label: best["height"].as_u64().map_or("Original".into(), |h| format!("{h}p · original")),
+        size: best["filesize"].as_u64(),
+        video_url: best["url"].as_str()?.to_string(),
+        audio_url: None,
+        ext: "mp4".into(),
+        extract_audio: false,
+    };
+    // The video's own soundtrack, cut from the video file. (TikTok's separate "audio"
+    // format is the full background-music track — a different length and no voice-over.)
+    let audio = SocialFormat::audio_from(&play, "tt-audio");
     Some(SocialVideo {
         site: "TikTok".into(),
         title: title.chars().filter(|c| !c.is_control()).take(120).collect(),
-        formats: vec![SocialFormat {
-            id: "tt-play".into(),
-            label: best["height"].as_u64().map_or("Original".into(), |h| format!("{h}p · original")),
-            size: best["filesize"].as_u64(),
-            video_url: best["url"].as_str()?.to_string(),
-            audio_url: None,
-            ext: "mp4".into(),
-        }],
+        formats: vec![play, audio],
         referrer: Some(best["http_headers"]["Referer"].as_str().unwrap_or("https://www.tiktok.com/").to_string()),
         cookies: (!cookies.is_empty()).then_some(cookies),
     })
@@ -401,6 +424,7 @@ pub fn youtube_formats(j: &Value) -> Result<SocialVideo, DlmanError> {
                 video_url: v.url.to_string(),
                 audio_url: Some(a.url.to_string()),
                 ext: "mp4".into(),
+                extract_audio: false,
             });
         }
     }
@@ -412,6 +436,7 @@ pub fn youtube_formats(j: &Value) -> Result<SocialVideo, DlmanError> {
             video_url: m.url.to_string(),
             audio_url: None,
             ext: "mp4".into(),
+            extract_audio: false,
         });
     }
     if let Some(a) = audio {
@@ -422,6 +447,7 @@ pub fn youtube_formats(j: &Value) -> Result<SocialVideo, DlmanError> {
             video_url: a.url.to_string(),
             audio_url: None,
             ext: "m4a".into(),
+            extract_audio: false,
         });
     }
     if out.is_empty() {
@@ -538,8 +564,12 @@ async fn facebook(client: &reqwest::Client, url: &url::Url) -> Result<SocialVide
         let mut formats = Vec::new();
         for (id, label, u) in [("fb-hd", "HD", hd), ("fb-sd", "SD", sd)] {
             if let Some(u) = u {
-                formats.push(SocialFormat { id: id.into(), label: label.into(), size: None, video_url: u, audio_url: None, ext: "mp4".into() });
+                formats.push(SocialFormat { id: id.into(), label: label.into(), size: None, video_url: u, audio_url: None, ext: "mp4".into(), extract_audio: false });
             }
+        }
+        if let Some(small) = formats.last() {
+            let audio = SocialFormat::audio_from(small, "fb-audio");
+            formats.push(audio);
         }
         if !formats.is_empty() {
             let title = og_title(&html).unwrap_or_else(|| "Facebook video".into());
@@ -608,14 +638,19 @@ async fn tiktok(client: &reqwest::Client, url: &url::Url) -> Result<SocialVideo,
     Ok(SocialVideo {
         site: "TikTok".into(),
         title,
-        formats: vec![SocialFormat {
+        formats: {
+            let play = SocialFormat {
             id: "tt-play".into(),
             label: height.map_or("Original".into(), |h| format!("{h}p · original")),
             size,
             video_url: play,
             audio_url: None,
             ext: "mp4".into(),
-        }],
+            extract_audio: false,
+        };
+            let audio = SocialFormat::audio_from(&play, "tt-audio");
+            vec![play, audio]
+        },
         referrer: Some("https://www.tiktok.com/".into()),
         cookies: token.map(|t| format!("tt_chain_token={t}")),
     })
@@ -749,6 +784,10 @@ mod tests {
         ]});
         let v = tiktok_from_ytdlp(&j).unwrap();
         assert_eq!(v.formats[0].video_url, "https://v16.tiktok.com/h264");
+        // Audio only = the video's own sound, cut out (not TikTok's music track).
+        let a = &v.formats[1];
+        assert_eq!((a.id.as_str(), a.ext.as_str(), a.extract_audio), ("tt-audio", "m4a", true));
+        assert_eq!(a.video_url, "https://v16.tiktok.com/h264");
         assert_eq!(v.cookies.as_deref(), Some("ttwid=1%7Cx; tt_chain_token=abc=="));
         assert_eq!(v.referrer.as_deref(), Some("https://www.tiktok.com/@u/video/1"));
     }
