@@ -175,19 +175,29 @@ async fn youtube(client: &reqwest::Client, url: &url::Url) -> Result<SocialVideo
     let id = youtube_id(url).ok_or_else(|| err("Not a YouTube video link"))?;
     // yt-dlp first: YouTube now cuts the Android/iOS player URLs off after the first
     // MB on longer videos (no PO token), and yt-dlp solves the web player's JS check.
-    let mut last = err("YouTube refused every client");
+    // yt-dlp's error, kept: when the built-in route fails too, it's the useful one to show.
+    let mut ytdlp_err = None;
     if let Some(ytdlp) = find_tool("yt-dlp") {
         match youtube_ytdlp(&ytdlp, &id).await {
             Ok(v) => return Ok(v),
             // An outdated yt-dlp (or no deno): the built-in route still serves short videos.
             Err(e) => {
                 tracing::warn!("[social] yt-dlp YouTube: {e}");
-                last = e;
+                ytdlp_err = Some(e);
             }
         }
     }
-    // ponytail: without a working yt-dlp only short videos download fully (Tarteel's InnerTube route).
-    let _ = &last;
+    // ponytail: without a working yt-dlp only short videos download fully (Tarteel's InnerTube
+    // route; fetch_ranged / the segment engine report the cut-off rather than finishing short).
+    let r = youtube_innertube(client, &id).await;
+    match (r, ytdlp_err) {
+        (Ok(v), _) => Ok(v),
+        (Err(_), Some(e)) => Err(e),
+        (Err(e), None) => Err(e),
+    }
+}
+
+async fn youtube_innertube(client: &reqwest::Client, id: &str) -> Result<SocialVideo, DlmanError> {
     let mut last = err("YouTube refused every client");
     for (name, version, ua, num, extra) in YT_CLIENTS {
         let mut c = serde_json::json!({
@@ -290,14 +300,16 @@ fn tiktok_from_ytdlp(j: &Value) -> Option<SocialVideo> {
 /// yt-dlp's `-J` in the shape of an InnerTube `player` answer, so one picker serves both.
 pub fn ytdlp_as_player(j: &Value) -> Value {
     let (mut muxed, mut adaptive) = (vec![], vec![]);
+    let has_original = j["formats"].as_array().into_iter().flatten()
+        .any(|g| g["format_note"].as_str().map_or(false, |n| n.contains("original")));
     for f in j["formats"].as_array().into_iter().flatten() {
         // Plain https files only. "140-drc" is skipped; multi-language videos name
-        // tracks "140-0", "140-1"… — only the original (default) one is kept.
+        // tracks "140-0", "140-1"… — only the "original" one is kept (else the "default").
         let id = f["format_id"].as_str().unwrap_or("");
         let (base, suffix) = id.split_once('-').unwrap_or((id, ""));
         let Ok(itag) = base.parse::<u64>() else { continue };
         let note = f["format_note"].as_str().unwrap_or("");
-        let dubbed = !suffix.is_empty() && !note.contains("original");
+        let dubbed = !suffix.is_empty() && !note.contains(if has_original { "original" } else { "default" });
         if f["protocol"] != "https" || suffix == "drc" || dubbed {
             continue;
         }

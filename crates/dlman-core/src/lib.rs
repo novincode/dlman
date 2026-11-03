@@ -360,7 +360,7 @@ impl DlmanCore {
         let v = self.add_social_part(&format.video_url, &destination, queue_id, final_name, &video).await?;
         // ponytail: the join waits in memory — quit DLMan mid-download and the file
         // stays video-only. Persist a "merge" job if that bites.
-        self.spawn_social_merge(rx, ffmpeg, v.clone(), audio_url);
+        self.spawn_social_merge(rx, ffmpeg, v.clone(), audio_url, page.to_string(), format_id.to_string());
         Ok(vec![v])
     }
 
@@ -389,7 +389,7 @@ impl DlmanCore {
         Ok(d)
     }
 
-    fn spawn_social_merge(&self, mut rx: broadcast::Receiver<CoreEvent>, ffmpeg: PathBuf, video: Download, audio_url: String) {
+    fn spawn_social_merge(&self, mut rx: broadcast::Receiver<CoreEvent>, ffmpeg: PathBuf, video: Download, audio_url: String, page: String, format_id: String) {
         let core = self.clone();
         tokio::spawn(async move {
             let audio = video.destination.join(".dlman-cache").join(format!("{}.audio.m4a", video.id));
@@ -399,46 +399,54 @@ impl DlmanCore {
                 let name = video.filename.clone();
                 async move {
                     tracing::error!("[social] {}", e);
-                    // On the entry itself, not only the console: the file is there but silent.
+                    // On the entry itself, not only the console. It stays Completed — the file
+                    // is real and plays — because Failed would offer a Retry that can't add the
+                    // audio back (the segments are merged and gone).
                     let msg = format!("No sound: {e}. The video was kept without audio.");
-                    let _ = core.download_manager.db().update_download_status(id, DownloadStatus::Failed, Some(msg.clone())).await;
-                    core.emit(CoreEvent::DownloadStatusChanged { id, status: DownloadStatus::Failed, error: Some(msg) });
+                    if let Ok(Some(mut d)) = core.download_manager.db().load_download(id).await {
+                        d.error = Some(msg.clone());
+                        let _ = core.download_manager.db().upsert_download(&d).await;
+                        core.emit(CoreEvent::DownloadUpdated { download: d });
+                    }
                     core.emit(CoreEvent::Error { message: format!("{name}: {e}"), context: Some("The video was kept without sound.".into()) });
                 }
             };
-            let got_audio = social::fetch_ranged(&audio_url, &audio);
-            // Wait for the video entry to finish (paused/failed: a resume or retry still ends in Completed).
-            let video_done = async {
-                loop {
-                    match rx.recv().await {
-                        Ok(CoreEvent::DownloadStatusChanged { id, status, .. }) if id == video.id => match status {
-                            DownloadStatus::Completed => return true,
-                            DownloadStatus::Deleted => return false,
-                            _ => {} // cancelled/paused/failed: a resume or retry still ends in Completed
-                        },
-                        Ok(CoreEvent::DownloadRemoved { id }) if id == video.id => return false,
-                        Err(broadcast::error::RecvError::Lagged(_)) => {
-                            match core.download_manager.db().load_download(video.id).await {
-                                Ok(Some(d)) if d.status == DownloadStatus::Completed => return true,
-                                Ok(None) => return false,
-                                _ => {}
-                            }
-                        }
-                        Err(broadcast::error::RecvError::Closed) => return false,
+            // Wait for the video entry to finish (paused/failed/cancelled: a resume or
+            // retry still ends in Completed). The audio is fetched after, not alongside:
+            // a cancelled video that's never resumed then costs no audio traffic, and the
+            // track is small next to the video.
+            // ponytail: one task + receiver per unfinished social video until the app quits;
+            // persist a merge job if that ever adds up.
+            let done = loop {
+                match rx.recv().await {
+                    Ok(CoreEvent::DownloadStatusChanged { id, status, .. }) if id == video.id => match status {
+                        DownloadStatus::Completed => break true,
+                        DownloadStatus::Deleted => break false,
                         _ => {}
+                    },
+                    Ok(CoreEvent::DownloadRemoved { id }) if id == video.id => break false,
+                    Err(broadcast::error::RecvError::Lagged(_)) => {
+                        match core.download_manager.db().load_download(video.id).await {
+                            Ok(Some(d)) if d.status == DownloadStatus::Completed => break true,
+                            Ok(None) => break false,
+                            _ => {}
+                        }
                     }
+                    Err(broadcast::error::RecvError::Closed) => break false,
+                    _ => {}
                 }
             };
-            // The video ending (cancel / delete) stops the audio fetch too.
-            tokio::pin!(got_audio, video_done);
-            let (a, done) = tokio::select! {
-                a = &mut got_audio => (a, video_done.await),
-                done = &mut video_done => if done { (got_audio.await, true) } else { (Ok(()), false) },
-            };
             if !done {
-                let _ = tokio::fs::remove_file(&audio).await;
                 return;
             }
+            // Fresh audio link: the one from the menu may have expired while the video downloaded.
+            let audio_url = match social::resolve(&page).await.ok().and_then(|v| {
+                v.formats.into_iter().find(|f| f.id == format_id).and_then(|f| f.audio_url)
+            }) {
+                Some(u) => u,
+                None => audio_url,
+            };
+            let a = social::fetch_ranged(&audio_url, &audio).await;
             match a {
                 Err(e) => fail(format!("audio track failed: {e}")).await,
                 Ok(()) => {

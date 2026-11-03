@@ -258,7 +258,28 @@ impl DownloadTask {
         // If no segments, probe URL and initialize them
         if self.download.segments.is_empty() {
             info!("No segments found, initializing...");
-            let supports_range = self.probe_url().await?;
+            let supports_range = match self.probe_url().await {
+                Ok(s) => s,
+                Err(e) => {
+                    // Same ending as a failed segment: the row says Failed (it used to stay
+                    // "Downloading" forever and hold a queue slot).
+                    if let DlmanError::AuthenticationRequired { ref domain, ref url, status } = e {
+                        let _ = self.event_tx.send(CoreEvent::CredentialRequired {
+                            download_id: self.download.id,
+                            domain: domain.clone(),
+                            url: url.clone(),
+                            status_code: status,
+                        });
+                    }
+                    error!("Probe failed: {} - {}", self.download.filename, e);
+                    let msg = e.to_string();
+                    self.download.status = DownloadStatus::Failed;
+                    self.download.error = Some(msg.clone());
+                    self.db.update_download_status(self.download.id, DownloadStatus::Failed, Some(msg.clone())).await?;
+                    self.emit_status_change(DownloadStatus::Failed, Some(msg)).await;
+                    return Err(e);
+                }
+            };
             
             // Check for pause/cancel after probe (which might have taken time)
             if self.cancelled.load(Ordering::Acquire) {
@@ -1041,6 +1062,16 @@ mod tests {
             );
             assert!(task.probe_url().await.is_err(), "{url}");
         }
+        // Through run(): the row ends Failed, not stuck at Downloading.
+        let d = Download::new("mailto:a@b.c".to_string(), dir.clone(), uuid::Uuid::nil());
+        let id = d.id;
+        db.upsert_download(&d).await.unwrap();
+        let task = DownloadTask::new(
+            d, dir.clone(), Client::new(), RateLimiter::unlimited(), db.clone(), tx.clone(),
+            Arc::new(AtomicBool::new(false)), Arc::new(AtomicBool::new(false)), 1, 0, 0,
+        );
+        assert!(task.run().await.is_err());
+        assert_eq!(db.load_download(id).await.unwrap().unwrap().status, DownloadStatus::Failed);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
