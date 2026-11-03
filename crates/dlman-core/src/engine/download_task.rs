@@ -714,17 +714,26 @@ impl DownloadTask {
             request = request.header(reqwest::header::REFERER, referrer);
         }
         
-        let mut response = request.try_clone().expect("HEAD has no body").send().await?;
         // A fresh googlevideo link answers 403 for its first few seconds (tested:
         // 403 at t+0s, 206 from t+4s), which isn't a login wall: wait it out.
-        let fresh_403 = self.download.url.contains(".googlevideo.com/");
-        for delay in [3u64, 5, 8] {
-            if !(fresh_403 && response.status().as_u16() == 403) {
-                break;
+        let fresh_403 = url::Url::parse(&self.download.url)
+            .ok()
+            .and_then(|u| u.host_str().map(|h| h.ends_with(".googlevideo.com")))
+            .unwrap_or(false);
+        let retry = if fresh_403 { request.try_clone() } else { None };
+        let mut response = request.send().await?;
+        if let Some(retry) = retry {
+            for delay in [3u64, 5, 8] {
+                if response.status().as_u16() != 403 || self.cancelled.load(Ordering::Acquire) {
+                    break;
+                }
+                info!("googlevideo 403 on a fresh link, retrying in {}s", delay);
+                tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
+                match retry.try_clone() {
+                    Some(r) => response = r.send().await?,
+                    None => break,
+                }
             }
-            info!("googlevideo 403 on a fresh link, retrying in {}s", delay);
-            tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
-            response = request.try_clone().expect("HEAD has no body").send().await?;
         }
         
         // Check for authentication required
@@ -1015,6 +1024,25 @@ impl DownloadTask {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A URL reqwest can't build a request for (no host) must fail, not abort the app.
+    #[tokio::test]
+    async fn probe_hostless_url_errors_instead_of_panicking() {
+        let dir = std::env::temp_dir().join(format!("dlman-probe-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (tx, _) = broadcast::channel(8);
+        let db = DownloadDatabase::new(dir.join("t.db")).await.unwrap();
+        for url in ["mailto:a@b.c", "https://rr1.googlevideo.com/x\nbad"] {
+            let mut d = Download::new(url.to_string(), dir.clone(), uuid::Uuid::nil());
+            d.referrer = Some("bad\nvalue".into());
+            let mut task = DownloadTask::new(
+                d, dir.clone(), Client::new(), RateLimiter::unlimited(), db.clone(), tx.clone(),
+                Arc::new(AtomicBool::new(false)), Arc::new(AtomicBool::new(false)), 1, 0, 0,
+            );
+            assert!(task.probe_url().await.is_err(), "{url}");
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     fn policy(mode: &str, custom: Option<&str>) -> TempStorageSettings {
         TempStorageSettings {

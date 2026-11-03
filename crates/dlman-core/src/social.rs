@@ -175,10 +175,19 @@ async fn youtube(client: &reqwest::Client, url: &url::Url) -> Result<SocialVideo
     let id = youtube_id(url).ok_or_else(|| err("Not a YouTube video link"))?;
     // yt-dlp first: YouTube now cuts the Android/iOS player URLs off after the first
     // MB on longer videos (no PO token), and yt-dlp solves the web player's JS check.
+    let mut last = err("YouTube refused every client");
     if let Some(ytdlp) = find_tool("yt-dlp") {
-        return youtube_ytdlp(&ytdlp, &id).await;
+        match youtube_ytdlp(&ytdlp, &id).await {
+            Ok(v) => return Ok(v),
+            // An outdated yt-dlp (or no deno): the built-in route still serves short videos.
+            Err(e) => {
+                tracing::warn!("[social] yt-dlp YouTube: {e}");
+                last = e;
+            }
+        }
     }
-    // ponytail: without yt-dlp only short videos download fully (Tarteel's InnerTube route).
+    // ponytail: without a working yt-dlp only short videos download fully (Tarteel's InnerTube route).
+    let _ = &last;
     let mut last = err("YouTube refused every client");
     for (name, version, ua, num, extra) in YT_CLIENTS {
         let mut c = serde_json::json!({
@@ -229,7 +238,7 @@ async fn run_ytdlp(ytdlp: &std::path::Path, url: &str) -> Result<Value, DlmanErr
         .env("PATH", path)
         .stdin(std::process::Stdio::null())
         .kill_on_drop(true);
-    let out = tokio::time::timeout(Duration::from_secs(45), cmd.output())
+    let out = tokio::time::timeout(Duration::from_secs(30), cmd.output())
         .await
         .map_err(|_| err("yt-dlp took too long"))??;
     if !out.status.success() {
@@ -288,7 +297,7 @@ pub fn ytdlp_as_player(j: &Value) -> Value {
         let (base, suffix) = id.split_once('-').unwrap_or((id, ""));
         let Ok(itag) = base.parse::<u64>() else { continue };
         let note = f["format_note"].as_str().unwrap_or("");
-        let dubbed = !suffix.is_empty() && !note.contains("original") && !note.contains("default");
+        let dubbed = !suffix.is_empty() && !note.contains("original");
         if f["protocol"] != "https" || suffix == "drc" || dubbed {
             continue;
         }
@@ -533,11 +542,10 @@ async fn tiktok(client: &reqwest::Client, url: &url::Url) -> Result<SocialVideo,
     if let Some(ytdlp) = find_tool("yt-dlp") {
         for _ in 0..2 {
             match run_ytdlp(&ytdlp, url.as_str()).await {
-                Ok(j) => {
-                    if let Some(v) = tiktok_from_ytdlp(&j) {
-                        return Ok(v);
-                    }
-                }
+                Ok(j) => match tiktok_from_ytdlp(&j) {
+                    Some(v) => return Ok(v),
+                    None => break, // same answer next time: no H.264 file (photo post?)
+                },
                 Err(e) => tracing::warn!("[social] yt-dlp TikTok: {e}"),
             }
         }

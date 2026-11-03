@@ -41,8 +41,9 @@ function currentVideoLink(video: HTMLVideoElement | null): string | null {
     const id = video?.closest('[id^="xgwrapper-"]')?.id.match(/(\d{15,})$/)?.[1];
     if (!id) return null;
     // The author's handle from the same post (TikTok serves "/@/video/<id>" less reliably).
-    const post = video!.closest('article') ?? document;
-    const handle = post.querySelector<HTMLAnchorElement>('a[href^="/@"]')?.getAttribute('href')?.match(/^\/@([\w.-]+)/)?.[1] ?? '';
+    // (No <article> — a profile pop-up: the bare id link; the page's first "/@" link may be the viewer's own.)
+    const post = video!.closest('article');
+    const handle = post?.querySelector<HTMLAnchorElement>('a[href^="/@"]')?.getAttribute('href')?.match(/^\/@([\w.-]+)/)?.[1] ?? '';
     return `https://www.tiktok.com/@${handle}/video/${id}`;
   }
   if (/facebook\.com$/i.test(hostname)) {

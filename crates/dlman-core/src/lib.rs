@@ -394,11 +394,17 @@ impl DlmanCore {
         tokio::spawn(async move {
             let audio = video.destination.join(".dlman-cache").join(format!("{}.audio.m4a", video.id));
             let fail = |e: String| {
-                tracing::error!("[social] {}", e);
-                core.emit(CoreEvent::Error {
-                    message: format!("{}: {e}", video.filename),
-                    context: Some("The video was kept without sound.".into()),
-                });
+                let core = core.clone();
+                let id = video.id;
+                let name = video.filename.clone();
+                async move {
+                    tracing::error!("[social] {}", e);
+                    // On the entry itself, not only the console: the file is there but silent.
+                    let msg = format!("No sound: {e}. The video was kept without audio.");
+                    let _ = core.download_manager.db().update_download_status(id, DownloadStatus::Failed, Some(msg.clone())).await;
+                    core.emit(CoreEvent::DownloadStatusChanged { id, status: DownloadStatus::Failed, error: Some(msg) });
+                    core.emit(CoreEvent::Error { message: format!("{name}: {e}"), context: Some("The video was kept without sound.".into()) });
+                }
             };
             let got_audio = social::fetch_ranged(&audio_url, &audio);
             // Wait for the video entry to finish (paused/failed: a resume or retry still ends in Completed).
@@ -407,15 +413,15 @@ impl DlmanCore {
                     match rx.recv().await {
                         Ok(CoreEvent::DownloadStatusChanged { id, status, .. }) if id == video.id => match status {
                             DownloadStatus::Completed => return true,
-                            DownloadStatus::Cancelled | DownloadStatus::Deleted => return false,
-                            _ => {}
+                            DownloadStatus::Deleted => return false,
+                            _ => {} // cancelled/paused/failed: a resume or retry still ends in Completed
                         },
                         Ok(CoreEvent::DownloadRemoved { id }) if id == video.id => return false,
                         Err(broadcast::error::RecvError::Lagged(_)) => {
-                            if let Ok(Some(d)) = core.download_manager.db().load_download(video.id).await {
-                                if d.status == DownloadStatus::Completed {
-                                    return true;
-                                }
+                            match core.download_manager.db().load_download(video.id).await {
+                                Ok(Some(d)) if d.status == DownloadStatus::Completed => return true,
+                                Ok(None) => return false,
+                                _ => {}
                             }
                         }
                         Err(broadcast::error::RecvError::Closed) => return false,
@@ -434,10 +440,10 @@ impl DlmanCore {
                 return;
             }
             match a {
-                Err(e) => fail(format!("audio track failed: {e}")),
+                Err(e) => fail(format!("audio track failed: {e}")).await,
                 Ok(()) => {
                     if let Err(e) = core.join_social_audio(&ffmpeg, &video, &audio).await {
-                        fail(format!("couldn't join the audio: {e}"));
+                        fail(format!("couldn't join the audio: {e}")).await;
                     }
                 }
             }

@@ -358,7 +358,7 @@ export class DlmanClient {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
       // Resolving fetches the site's page/API from the desktop app.
-      signal: AbortSignal.timeout(120_000), // > the desktop's own limits (yt-dlp 45s, page 20s ×3)
+      signal: AbortSignal.timeout(150_000), // > the desktop's worst case (yt-dlp 30s ×2 + page 20s ×3)
     });
     if (response.status === 404) throw new Error('This DLMan build has no YouTube/Facebook/TikTok support');
     return response.json();
