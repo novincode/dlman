@@ -418,7 +418,7 @@ impl DownloadTask {
             self.total_downloaded.clone(),
             self.credentials.clone(),
             self.download.cookies.clone(),
-        );
+        ).with_referrer(self.download.referrer.clone());
         
         // Start progress reporter
         let progress_handle = self.spawn_progress_reporter();
@@ -501,7 +501,7 @@ impl DownloadTask {
                     self.total_downloaded.clone(),
                     self.credentials.clone(),
                     self.download.cookies.clone(),
-                );
+                ).with_referrer(self.download.referrer.clone());
                 
                 let segment_index = segment.index;
                 join_set.spawn(async move { 
@@ -710,8 +710,22 @@ impl DownloadTask {
         if let Some(ref cookies) = self.download.cookies {
             request = request.header(reqwest::header::COOKIE, cookies);
         }
+        if let Some(ref referrer) = self.download.referrer {
+            request = request.header(reqwest::header::REFERER, referrer);
+        }
         
-        let response = request.send().await?;
+        let mut response = request.try_clone().expect("HEAD has no body").send().await?;
+        // A fresh googlevideo link answers 403 for its first few seconds (tested:
+        // 403 at t+0s, 206 from t+4s), which isn't a login wall: wait it out.
+        let fresh_403 = self.download.url.contains(".googlevideo.com/");
+        for delay in [3u64, 5, 8] {
+            if !(fresh_403 && response.status().as_u16() == 403) {
+                break;
+            }
+            info!("googlevideo 403 on a fresh link, retrying in {}s", delay);
+            tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
+            response = request.try_clone().expect("HEAD has no body").send().await?;
+        }
         
         // Check for authentication required
         let status = response.status();
@@ -763,6 +777,9 @@ impl DownloadTask {
             // Apply cookies to the fallback probe too
             if let Some(ref cookies) = self.download.cookies {
                 range_req = range_req.header(reqwest::header::COOKIE, cookies);
+            }
+            if let Some(ref referrer) = self.download.referrer {
+                range_req = range_req.header(reqwest::header::REFERER, referrer);
             }
             
             match range_req.send().await

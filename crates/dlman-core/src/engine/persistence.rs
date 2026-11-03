@@ -184,6 +184,12 @@ impl DownloadDatabase {
         .execute(pool)
         .await
         .ok(); // Ignore error if column already exists
+
+        // Migration: Add referrer column (same pattern as cookies)
+        sqlx::query("ALTER TABLE downloads ADD COLUMN referrer TEXT")
+            .execute(pool)
+            .await
+            .ok();
         
         Ok(())
     }
@@ -199,8 +205,8 @@ impl DownloadDatabase {
                 id, url, final_url, filename, destination, size, downloaded,
                 status, queue_id, category_id, color, error, speed_limit,
                 created_at, completed_at, retry_count, etag, last_modified, supports_range,
-                cookies
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                cookies, referrer
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
                 url = excluded.url,
                 final_url = excluded.final_url,
@@ -219,7 +225,8 @@ impl DownloadDatabase {
                 etag = excluded.etag,
                 last_modified = excluded.last_modified,
                 supports_range = excluded.supports_range,
-                cookies = excluded.cookies
+                cookies = excluded.cookies,
+                referrer = excluded.referrer
             "#,
         )
         .bind(download.id.to_string())
@@ -242,6 +249,7 @@ impl DownloadDatabase {
         .bind(None::<String>) // last_modified - will add later
         .bind(0i64) // supports_range - will add later
         .bind(download.cookies.as_ref())
+        .bind(download.referrer.as_ref())
         .execute(&mut *tx)
         .await?;
         
@@ -747,6 +755,7 @@ fn row_to_download(row: sqlx::sqlite::SqliteRow, segments: Vec<Segment>) -> Resu
             .map(|dt| dt.with_timezone(&Utc)),
         retry_count: row.get::<i64, _>("retry_count") as u32,
         cookies: row.get("cookies"),
+        referrer: row.try_get("referrer").ok().flatten(),
     })
 }
 

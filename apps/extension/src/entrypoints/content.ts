@@ -2,6 +2,7 @@ import { defineContentScript } from 'wxt/sandbox';
 import { VideoDetector } from '@/lib/video-detector';
 import { VideoOverlayManager } from '@/lib/video-overlay';
 import { resolveHlsVariants } from '@/lib/hls-parser';
+import { SocialOverlay, isSocialSite } from '@/lib/social-overlay';
 import type { DetectedMedia, MediaDownloadRequest } from '@/lib/media-types';
 
 /**
@@ -258,13 +259,16 @@ export default defineContentScript({
      * @param count Number of links sent
      */
     function showDlmanToast(count: number) {
+      const noun = count === 1 ? 'link' : 'links';
+      showDlmanMessage('Sent to DLMan', `${count} ${noun} sent to download manager`);
+    }
+
+    function showDlmanMessage(title: string, message: string) {
       ensureToastInfra();
       if (!toastContainer) return;
 
       const toast = document.createElement('div');
       toast.className = 'dlman-toast';
-
-      const noun = count === 1 ? 'link' : 'links';
 
       // Build toast DOM safely (no innerHTML) to pass Firefox addon validation
       const iconDiv = document.createElement('div');
@@ -290,13 +294,10 @@ export default defineContentScript({
       bodyDiv.className = 'dlman-toast-body';
       const titleDiv = document.createElement('div');
       titleDiv.className = 'dlman-toast-title';
-      titleDiv.textContent = 'Sent to DLMan';
+      titleDiv.textContent = title;
       const msgDiv = document.createElement('div');
       msgDiv.className = 'dlman-toast-message';
-      const accentSpan = document.createElement('span');
-      accentSpan.className = 'dlman-toast-accent';
-      accentSpan.textContent = String(count);
-      msgDiv.append(accentSpan, ` ${noun} sent to download manager`);
+      msgDiv.textContent = message;
       bodyDiv.append(titleDiv, msgDiv);
 
       toast.append(iconDiv, bodyDiv);
@@ -398,6 +399,12 @@ export default defineContentScript({
     // Video Detection & Overlay
     // ========================================================================
 
+    // YouTube / Facebook / TikTok: one quality-menu button resolved by DLMan desktop;
+    // the generic detector would only offer the MSE fragments these players use.
+    const social = isSocialSite(location.hostname) && window === window.top
+      ? new SocialOverlay((title, msg) => showDlmanMessage(title, msg))
+      : null;
+
     const overlayManager = new VideoOverlayManager((request: MediaDownloadRequest) => {
       browser.runtime.sendMessage({
         type: 'media-download',
@@ -426,7 +433,7 @@ export default defineContentScript({
           }
         }
 
-        overlayManager.addOverlay(media, variants);
+        if (!social) overlayManager.addOverlay(media, variants);
 
         browser.runtime.sendMessage({
           type: 'media-detected',
@@ -516,6 +523,7 @@ export default defineContentScript({
     window.addEventListener('beforeunload', () => {
       detector.destroy();
       overlayManager.destroy();
+      social?.destroy();
     });
   },
 });

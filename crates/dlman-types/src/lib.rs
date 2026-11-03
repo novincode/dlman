@@ -38,6 +38,9 @@ pub struct Download {
     /// Format: "name1=value1; name2=value2" (standard HTTP Cookie header format)
     #[serde(default)]
     pub cookies: Option<String>,
+    /// Optional Referer header sent with every request (TikTok's media server answers 403 without it)
+    #[serde(default)]
+    pub referrer: Option<String>,
 }
 
 impl Download {
@@ -67,6 +70,7 @@ impl Download {
             completed_at: None,
             retry_count: 0,
             cookies: None,
+            referrer: None,
         }
     }
 

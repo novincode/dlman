@@ -141,6 +141,7 @@ impl BrowserServer {
             .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
             .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]);
 
+
         let app = Router::new()
             // Health check — extension pings this to check if app is running
             .route("/ping", get(|| async { "pong" }))
@@ -157,6 +158,9 @@ impl BrowserServer {
             .route("/api/downloads/:id/cancel", post(handle_cancel_download))
             // Media download — handles video streams from extension
             .route("/api/media/download", post(handle_media_download))
+            // YouTube / Facebook / TikTok — extension-only (see from_extension)
+            .route("/api/social/resolve", post(handle_social_resolve))
+            .route("/api/social/download", post(handle_social_download))
             // WebSocket for real-time events (optional)
             .route("/ws", get(handle_websocket))
             .layer(cors)
@@ -625,4 +629,65 @@ async fn handle_ws_connection(socket: WebSocket, state: SharedState) {
     // Cleanup
     forward_task.abort();
     send_task.abort();
+}
+
+// ============================================================================
+// Social video (YouTube / Facebook / TikTok) — the extension's download button
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+pub struct SocialRequest {
+    pub url: String,
+    pub format_id: Option<String>,
+}
+
+/// These start downloads without a dialog, so only the extension may call them:
+/// a web page's fetch to localhost carries its own https:// Origin, which it can't forge.
+fn from_extension(headers: &axum::http::HeaderMap) -> bool {
+    headers
+        .get(header::ORIGIN)
+        .and_then(|v| v.to_str().ok())
+        .map_or(false, |o| o.starts_with("chrome-extension://") || o.starts_with("moz-extension://"))
+}
+
+fn social_error(status: axum::http::StatusCode, msg: String) -> axum::response::Response {
+    (status, axum::Json(serde_json::json!({ "success": false, "error": msg }))).into_response()
+}
+
+/// POST /api/social/resolve — the qualities offered for a video page
+async fn handle_social_resolve(
+    headers: axum::http::HeaderMap,
+    axum::Json(req): axum::Json<SocialRequest>,
+) -> axum::response::Response {
+    if !from_extension(&headers) {
+        return social_error(axum::http::StatusCode::FORBIDDEN, "extension only".into());
+    }
+    match dlman_core::social::resolve(&req.url).await {
+        Ok(v) => axum::Json(serde_json::json!({ "success": true, "video": v })).into_response(),
+        Err(e) => social_error(axum::http::StatusCode::OK, e.to_string()),
+    }
+}
+
+/// POST /api/social/download — download one quality into the default folder, now
+async fn handle_social_download(
+    State(state): axum::extract::State<SharedState>,
+    headers: axum::http::HeaderMap,
+    axum::Json(req): axum::Json<SocialRequest>,
+) -> axum::response::Response {
+    if !from_extension(&headers) {
+        return social_error(axum::http::StatusCode::FORBIDDEN, "extension only".into());
+    }
+    let Some(format_id) = req.format_id else {
+        return social_error(axum::http::StatusCode::BAD_REQUEST, "format_id missing".into());
+    };
+    let core = state.read().await.core.clone();
+    let dest = core.get_settings().await.default_download_path;
+    match core.add_social_download(&req.url, &format_id, dest, uuid::Uuid::nil()).await {
+        Ok(ds) => axum::Json(serde_json::json!({
+            "success": true,
+            "filename": ds.first().map(|d| d.filename.clone()),
+        }))
+        .into_response(),
+        Err(e) => social_error(axum::http::StatusCode::OK, e.to_string()),
+    }
 }
